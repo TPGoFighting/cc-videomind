@@ -19,7 +19,8 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   async getTranscript(videoId: string) {
     const html = await this.fetchWatchHtml(videoId);
     const tracks = this.extractCaptionTracks(html);
-    const track = tracks.find((item) => item.languageCode?.startsWith("en")) ?? tracks[0];
+    const track =
+      tracks.find((item) => item.languageCode?.startsWith("en")) ?? tracks[0];
 
     if (!track) {
       throw new Error("No YouTube captions are available for this video.");
@@ -42,9 +43,11 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   private async fetchWatchHtml(videoId: string) {
     const response = await fetchWithTimeout(buildYouTubeWatchUrl(videoId), {
       headers: {
-        "User-Agent": "Mozilla/5.0 VideoMind MVP"
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
       },
-      timeoutMs: 10000,
+      timeoutMs: 12000,
       service: "YouTube watch page"
     });
 
@@ -52,27 +55,122 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   }
 
   private extractCaptionTracks(html: string) {
-    const match = html.match(/"captionTracks":(\[.*?\])\s*,\s*"audioTracks"/);
-    if (!match?.[1]) {
+    // 方法1：从 ytInitialPlayerResponse 中用括号计数法提取完整 JSON
+    const tracks = this.extractFromPlayerResponse(html);
+    if (tracks.length > 0) {
+      return tracks;
+    }
+
+    // 方法2：正则提取（兜底，加上 s 标志支持多行）
+    return this.extractWithRegex(html);
+  }
+
+  private extractFromPlayerResponse(html: string) {
+    const marker = "ytInitialPlayerResponse";
+    const startIndex = html.indexOf(marker);
+    if (startIndex === -1) {
+      return [];
+    }
+
+    // 找到第一个 {
+    const braceStart = html.indexOf("{", startIndex);
+    if (braceStart === -1) {
+      return [];
+    }
+
+    // 括号计数，找到匹配的 }
+    let depth = 0;
+    let end = braceStart;
+    let inString = false;
+    let escape = false;
+
+    for (let i = braceStart; i < html.length && i < braceStart + 2_000_000; i++) {
+      const char = html[i];
+
+      if (escape) {
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (!inString) {
+        if (char === "{") {
+          depth++;
+        } else if (char === "}") {
+          depth--;
+          if (depth === 0) {
+            end = i + 1;
+            break;
+          }
+        }
+      }
+    }
+
+    if (depth !== 0) {
       return [];
     }
 
     try {
-      const json = JSON.parse(match[1].replace(/\\"/g, '"'));
-      return CaptionListSchema.parse(json);
+      const json = JSON.parse(html.slice(braceStart, end));
+      const tracks =
+        json?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+      if (Array.isArray(tracks) && tracks.length > 0) {
+        return CaptionListSchema.parse(tracks);
+      }
+    } catch {
+      // JSON 解析失败，继续下一个方法
+    }
+
+    return [];
+  }
+
+  private extractWithRegex(html: string) {
+    // 使用 [\s\S] 跨行匹配（ES2017 兼容，等价于 s 标志）
+    const match = html.match(
+      /"captionTracks":(\[[\s\S]*?\])\s*,\s*"audioTracks"/
+    );
+    if (!match?.[1]) {
+      // 尝试更宽松的模式（有些视频可能没有 audioTracks 字段）
+      const altMatch = html.match(/"captionTracks":(\[[\s\S]*?\])\s*,/);
+      if (!altMatch?.[1]) {
+        return [];
+      }
+
+      try {
+        return CaptionListSchema.parse(JSON.parse(altMatch[1]));
+      } catch {
+        return [];
+      }
+    }
+
+    try {
+      return CaptionListSchema.parse(JSON.parse(match[1]));
     } catch {
       return [];
     }
   }
 
   private parseTimedText(xml: string) {
-    const matches = xml.matchAll(/<text start="([^"]+)" dur="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g);
+    const matches = xml.matchAll(
+      /<text start="([^"]+)" dur="([^"]+)"[^>]*>([\s\S]*?)<\/text>/g
+    );
     const segments: TranscriptSegment[] = [];
 
     for (const match of matches) {
       const startTime = Number(match[1]);
       const duration = Number(match[2]);
-      const text = decodeHtml(match[3]?.replace(/<[^>]*>/g, " ").trim() ?? "");
+      const text = decodeHtml(
+        match[3]?.replace(/<[^>]*>/g, " ").trim() ?? ""
+      );
 
       if (Number.isFinite(startTime) && Number.isFinite(duration) && text) {
         segments.push(
@@ -108,7 +206,9 @@ export class OfficialWebTranscriptProvider implements TranscriptProvider {
     const segments = this.parseLexTranscript(html);
 
     if (segments.length === 0) {
-      throw new Error("Official transcript page did not contain transcript segments.");
+      throw new Error(
+        "Official transcript page did not contain transcript segments."
+      );
     }
 
     return segments;
@@ -124,11 +224,15 @@ export class OfficialWebTranscriptProvider implements TranscriptProvider {
     return matches.map((match, index) => {
       const startTime = Number(match[1]);
       const nextStartTime = Number(matches[index + 1]?.[1]);
-      const text = decodeHtml(match[3]?.replace(/<[^>]*>/g, " ").trim() ?? "");
+      const text = decodeHtml(
+        match[3]?.replace(/<[^>]*>/g, " ").trim() ?? ""
+      );
 
       return TranscriptSegmentSchema.parse({
         startTime,
-        endTime: Number.isFinite(nextStartTime) ? nextStartTime : startTime + 60,
+        endTime: Number.isFinite(nextStartTime)
+          ? nextStartTime
+          : startTime + 60,
         text
       });
     });
@@ -159,7 +263,9 @@ export function getTranscriptProvider(): TranscriptProvider {
     );
   }
 
-  throw new Error(`TRANSCRIPT_PROVIDER "${provider}" is invalid. Set to "youtube".`);
+  throw new Error(
+    `TRANSCRIPT_PROVIDER "${provider}" is invalid. Set to "youtube".`
+  );
 }
 
 function decodeHtml(value: string) {
@@ -169,5 +275,8 @@ function decodeHtml(value: string) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)));
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code: string) =>
+      String.fromCharCode(Number(code))
+    );
 }

@@ -71,6 +71,10 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Video analysis failed", error);
-    return errorResponse("analysis_failed", "Video analysis could not be generated from the transcript.", 502);
+    const message =
+      error instanceof Error
+        ? `分析失败：${error.message}`
+        : "Video analysis could not be generated from the transcript.";
+    return errorResponse("analysis_failed", message, 502);
   }
 }

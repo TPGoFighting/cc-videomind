@@ -33,7 +33,12 @@ export async function POST(request: Request) {
     ]);
     await upsertTranscriptCache({ videoId: parsed.data.videoId, metadata, transcript });
     return successResponse({ videoId: parsed.data.videoId, transcript, cached: false });
-  } catch {
-    return errorResponse("transcript_unavailable", "No transcript could be loaded for this video.", 502);
+  } catch (error) {
+    console.error("Transcript loading failed", error);
+    const message =
+      error instanceof Error
+        ? `转录获取失败：${error.message}`
+        : "No transcript could be loaded for this video.";
+    return errorResponse("transcript_unavailable", message, 502);
   }
 }
