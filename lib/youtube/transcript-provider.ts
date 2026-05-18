@@ -207,24 +207,7 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
 
     const data = await response.json();
 
-    // 检查错误
-    if (isRecord(data)) {
-      const status = get(data, "playabilityStatus", "status");
-      if (status === "ERROR" || status === "LOGIN_REQUIRED") {
-        throw new TranscriptError(
-          "VIDEO_UNAVAILABLE",
-          "视频播放受限，无法获取字幕。"
-        );
-      }
-
-      if (data.error || data.errorMessage) {
-        throw new TranscriptError(
-          "INNERTUBE_REJECTED",
-          "YouTube API 拒绝请求，正在尝试其他方式。"
-        );
-      }
-    }
-
+    // 先提取字幕 — 即使视频受限，字幕数据通常仍在响应中
     const tracks = get(
       data,
       "captions",
@@ -232,17 +215,35 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
       "captionTracks"
     );
 
-    if (!Array.isArray(tracks) || tracks.length === 0) {
-      return [];
+    if (Array.isArray(tracks) && tracks.length > 0) {
+      return tracks.map((track) => ({
+        baseUrl: String(get(track, "baseUrl") ?? ""),
+        languageCode: String(get(track, "languageCode") ?? ""),
+        name:
+          String(get(track, "name", "simpleText") ?? get(track, "name", "runs", 0, "text") ?? ""),
+        kind: get(track, "kind") === "asr" ? ("asr" as const) : undefined
+      }));
     }
 
-    return tracks.map((track) => ({
-      baseUrl: String(get(track, "baseUrl") ?? ""),
-      languageCode: String(get(track, "languageCode") ?? ""),
-      name:
-        String(get(track, "name", "simpleText") ?? get(track, "name", "runs", 0, "text") ?? ""),
-      kind: get(track, "kind") === "asr" ? ("asr" as const) : undefined
-    }));
+    // 没有字幕时才检查错误原因
+    if (isRecord(data)) {
+      if (data.error || data.errorMessage) {
+        throw new TranscriptError(
+          "INNERTUBE_REJECTED",
+          "YouTube API 拒绝请求，正在尝试其他方式。"
+        );
+      }
+
+      const status = get(data, "playabilityStatus", "status");
+      if (status === "ERROR" || status === "LOGIN_REQUIRED") {
+        throw new TranscriptError(
+          "VIDEO_UNAVAILABLE",
+          "视频播放受限且无字幕数据。"
+        );
+      }
+    }
+
+    return [];
   }
 
   // 选择最佳字幕轨道：优先手动英语 → 自动英语 → 任何英语 → 任何
