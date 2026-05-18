@@ -255,7 +255,7 @@ class FallbackTranscriptProvider implements TranscriptProvider {
 }
 
 export function getTranscriptProvider(): TranscriptProvider {
-  const provider = process.env.TRANSCRIPT_PROVIDER ?? "youtube";
+  const provider = (process.env.TRANSCRIPT_PROVIDER ?? "youtube").trim();
   if (provider === "youtube") {
     return new FallbackTranscriptProvider(
       new YouTubeCaptionTranscriptProvider(),

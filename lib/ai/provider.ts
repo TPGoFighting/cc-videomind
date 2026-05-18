@@ -118,7 +118,7 @@ export class GeminiProvider implements AiProvider {
 }
 
 export function getAiProvider(): AiProvider {
-  const provider = (process.env.AI_PROVIDER ?? "").toLowerCase();
+  const provider = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
   if (provider === "openai-compatible" || provider === "deepseek") {
     return new OpenAiCompatibleProvider();
   }
