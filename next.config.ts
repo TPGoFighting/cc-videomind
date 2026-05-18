@@ -21,4 +21,9 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 
-import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());
+// 仅在非 Vercel 环境下加载 Cloudflare 开发工具（Vercel 构建时不需要）
+if (!process.env.VERCEL) {
+  import("@opennextjs/cloudflare").then((m) =>
+    m.initOpenNextCloudflareForDev()
+  );
+}
