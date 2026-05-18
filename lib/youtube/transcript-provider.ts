@@ -15,8 +15,10 @@ const CaptionTrackSchema = z.object({
 
 const CaptionListSchema = z.array(CaptionTrackSchema);
 
-// YouTube 视频页默认包含 ytInitialPlayerResponse
-// 其中 captions.playerCaptionsTracklistRenderer.captionTracks 包含所有字幕轨道
+// 绕过 YouTube EU 同意页面的 cookie
+const CONSENT_COOKIE = "CONSENT=YES+cb; Path=/; Domain=.youtube.com";
+
+// YouTubeCaptionTranscriptProvider：从 HTML 中提取字幕轨道
 export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   async getTranscript(videoId: string) {
     const html = await this.fetchWatchHtml(videoId);
@@ -42,14 +44,11 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
     return segments;
   }
 
-  private async fetchWatchHtml(videoId: string) {
+  // 公开引用，InnerTube provider 也用它
+  async fetchWatchHtml(videoId: string) {
     const response = await fetchWithTimeout(buildYouTubeWatchUrl(videoId), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9"
-      },
-      timeoutMs: 12000,
+      headers: buildYouTubeHeaders(),
+      timeoutMs: 15000,
       service: "YouTube watch page"
     });
 
@@ -57,15 +56,21 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   }
 
   private extractCaptionTracks(html: string) {
-    // 方法1：括号计数提取 ytInitialPlayerResponse 完整 JSON
+    // 先检查是否包含 captionTracks 或 ytInitialPlayerResponse
+    if (
+      !html.includes("captionTracks") &&
+      !html.includes("ytInitialPlayerResponse")
+    ) {
+      // 页面可能不是正常的视频页（例如被重定向、同意页等）
+      return [];
+    }
+
     let tracks = this.extractFromPlayerResponse(html);
     if (tracks.length > 0) return tracks;
 
-    // 方法2：正则跨行提取
     tracks = this.extractWithRegex(html);
     if (tracks.length > 0) return tracks;
 
-    // 方法3：从 ytInitialData 提取（有些页面结构不同）
     tracks = this.extractFromInitialData(html);
     return tracks;
   }
@@ -85,7 +90,7 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
         return CaptionListSchema.parse(tracks);
       }
     } catch {
-      // JSON 解析失败
+      // 继续下一个方法
     }
 
     return [];
@@ -111,13 +116,12 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
         return CaptionListSchema.parse(tracks);
       }
     } catch {
-      // JSON 解析失败
+      // 继续
     }
 
     return [];
   }
 
-  // 括号计数：从 marker 之后的第一个 { 开始，找到匹配的 }
   private extractJsonObject(html: string, markerIndex: number) {
     const braceStart = html.indexOf("{", markerIndex);
     if (braceStart === -1) return null;
@@ -137,21 +141,17 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
         escape = false;
         continue;
       }
-
       if (char === "\\") {
         escape = true;
         continue;
       }
-
       if (char === '"') {
         inString = !inString;
         continue;
       }
-
       if (!inString) {
-        if (char === "{") {
-          depth++;
-        } else if (char === "}") {
+        if (char === "{") depth++;
+        else if (char === "}") {
           depth--;
           if (depth === 0) {
             try {
@@ -168,7 +168,6 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   }
 
   private extractWithRegex(html: string) {
-    // [\s\S] 等价于 s 标志（ES2017 兼容）
     const match = html.match(
       /"captionTracks":(\[[\s\S]*?\])\s*,\s*"audioTracks"/
     );
@@ -217,15 +216,19 @@ export class YouTubeCaptionTranscriptProvider implements TranscriptProvider {
   }
 }
 
-// InnerTube API 回退方案
-// YouTube 内部 API，比 HTML 抓取更可靠
-// 参考：https://github.com/Kakulukian/youtube-transcript
+// InnerTube API 回退 — 使用 YouTube 内部 API
 export class InnerTubeTranscriptProvider implements TranscriptProvider {
+  constructor(
+    private readonly htmlProvider = new YouTubeCaptionTranscriptProvider()
+  ) {}
+
   async getTranscript(videoId: string) {
-    const html = await this.fetchWatchHtml(videoId);
+    const html = await this.htmlProvider.fetchWatchHtml(videoId);
     const apiKey = this.extractApiKey(html);
+
     if (!apiKey) {
-      throw new Error("无法获取 YouTube API 密钥。");
+      // 尝试直接使用已知的 Web API key（YouTube web client 使用）
+      throw new Error("无法获取 InnerTube API 密钥。");
     }
 
     const segments = await this.callInnerTubeApi(videoId, apiKey);
@@ -236,53 +239,38 @@ export class InnerTubeTranscriptProvider implements TranscriptProvider {
     return segments;
   }
 
-  private async fetchWatchHtml(videoId: string) {
-    const response = await fetchWithTimeout(buildYouTubeWatchUrl(videoId), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9"
-      },
-      timeoutMs: 12000,
-      service: "YouTube watch page"
-    });
-
-    return response.text();
-  }
-
   private extractApiKey(html: string) {
-    // 尝试多种常见的 API key 格式
     for (const pattern of [
       /"(?:INNERTUBE_API_KEY|innertubeApiKey)":"([^"]+)"/,
       /"apiKey":"([^"]+)"/,
-      /"key":"([^"]+)"/
+      /"key":"(AIza[^"]+)"/,
+      /INNERTUBE_API_KEY\s*:\s*"([^"]+)"/,
+      /innertubeApiKey\s*:\s*"([^"]+)"/
     ]) {
       const match = html.match(pattern);
       if (match?.[1]) return match[1];
     }
-
     return null;
   }
 
   private async callInnerTubeApi(videoId: string, apiKey: string) {
     const url = `https://www.youtube.com/youtubei/v1/get_transcript?key=${encodeURIComponent(apiKey)}`;
-
-    // 构造 protobuf 编码的 params
-    // field 1 (string): video ID — tag 0x0a, varint length, then the ID
     const params = encodeTranscriptParams(videoId);
 
     const response = await fetchWithTimeout(url, {
       method: "POST",
-      timeoutMs: 12000,
+      timeoutMs: 15000,
       service: "YouTube InnerTube API",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...buildYouTubeHeaders()
       },
       body: JSON.stringify({
         context: {
           client: {
             clientName: "WEB",
-            clientVersion: "2.20250518.01.00"
+            clientVersion: "2.20250518.01.00",
+            hl: "en"
           }
         },
         params
@@ -296,51 +284,62 @@ export class InnerTubeTranscriptProvider implements TranscriptProvider {
   private parseTranscriptResponse(data: unknown) {
     if (!isRecord(data)) return [];
 
-    const actions = get(data, "actions") ??
+    // 先检查错误
+    if (data.error || data.errorMessage) {
+      return [];
+    }
+
+    const actions =
+      get(data, "actions") ??
       get(get(data, "responseContext"), "actions") ??
       [];
-
     const segments: TranscriptSegment[] = [];
 
-    for (const action of (Array.isArray(actions) ? actions : [])) {
+    for (const action of Array.isArray(actions) ? actions : []) {
       if (!isRecord(action)) continue;
 
       const updatePanel = get(action, "updateEngagementPanelAction");
       const updateTranscript = get(action, "updateTranscriptAction");
       const renderer =
-        get(get(updatePanel, "content"), "transcriptSearchPanelRenderer") ??
+        get(
+          get(updatePanel, "content"),
+          "transcriptSearchPanelRenderer"
+        ) ??
         get(get(updateTranscript, "content"), "transcriptRenderer");
 
       if (!isRecord(renderer)) continue;
 
-      const body = get(get(renderer, "body"), "transcriptSearchPanelBodyRenderer") ??
+      const body =
+        get(get(renderer, "body"), "transcriptSearchPanelBodyRenderer") ??
         get(get(renderer, "body"), "transcriptBodyRenderer");
       if (!isRecord(body)) continue;
 
       const cueGroups = get(body, "cueGroups") ?? [];
-      for (const group of (Array.isArray(cueGroups) ? cueGroups : [])) {
+      for (const group of Array.isArray(cueGroups) ? cueGroups : []) {
         if (!isRecord(group)) continue;
 
-        const cues = get(get(group, "transcriptCueGroupRenderer"), "cues") ?? [];
-        for (const cue of (Array.isArray(cues) ? cues : [])) {
+        const cues =
+          get(get(group, "transcriptCueGroupRenderer"), "cues") ?? [];
+        for (const cue of Array.isArray(cues) ? cues : []) {
           if (!isRecord(cue)) continue;
 
           const c = get(cue, "transcriptCueRenderer");
           if (!isRecord(c)) continue;
 
-          const startTime = parseFloatSafe(get(c, "startMs") ?? get(c, "startOffsetMs"));
-          const endTime = parseFloatSafe(get(c, "endMs") ?? get(c, "endOffsetMs"));
-          const snippet = get(c, "snippet") ?? get(c, "cue") ?? get(c, "formattedText");
+          const startTime = parseFloatSafe(
+            get(c, "startMs") ?? get(c, "startOffsetMs")
+          );
+          const endTime = parseFloatSafe(
+            get(c, "endMs") ?? get(c, "endOffsetMs")
+          );
+          const snippet =
+            get(c, "snippet") ?? get(c, "cue") ?? get(c, "formattedText");
           const text =
             typeof snippet === "string"
               ? decodeHtml(snippet.replace(/<[^>]*>/g, " ").trim())
               : "";
 
-          if (
-            Number.isFinite(startTime) &&
-            Number.isFinite(endTime) &&
-            text
-          ) {
+          if (Number.isFinite(startTime) && Number.isFinite(endTime) && text) {
             segments.push(
               TranscriptSegmentSchema.parse({
                 startTime: startTime / 1000,
@@ -357,7 +356,56 @@ export class InnerTubeTranscriptProvider implements TranscriptProvider {
   }
 }
 
-// 官方转录页面回退（仅有特定视频）
+// youtubetranscript.com API 回退 — 第三方转录服务
+export class YouTubeTranscriptComProvider implements TranscriptProvider {
+  async getTranscript(videoId: string) {
+    const url = `https://youtubetranscript.com/?v=${encodeURIComponent(videoId)}`;
+
+    const response = await fetchWithTimeout(url, {
+      timeoutMs: 15000,
+      service: "youtubetranscript.com",
+      headers: buildYouTubeHeaders()
+    });
+
+    const data: unknown = await response.json();
+    const segments = this.parseApiResponse(data);
+    if (segments.length === 0) {
+      throw new Error("youtubetranscript.com 未返回可用字幕。");
+    }
+
+    return segments;
+  }
+
+  private parseApiResponse(data: unknown) {
+    if (!Array.isArray(data)) return [];
+
+    const segments: TranscriptSegment[] = [];
+    for (const item of data) {
+      if (!isRecord(item)) continue;
+
+      const startTime = parseFloatSafe(get(item, "start") ?? get(item, "offset"));
+      const duration = parseFloatSafe(get(item, "dur") ?? get(item, "duration"));
+      const text =
+        typeof item.text === "string" && item.text.trim()
+          ? decodeHtml(item.text.trim())
+          : "";
+
+      if (Number.isFinite(startTime) && Number.isFinite(duration) && text) {
+        segments.push(
+          TranscriptSegmentSchema.parse({
+            startTime,
+            endTime: startTime + duration,
+            text
+          })
+        );
+      }
+    }
+
+    return segments;
+  }
+}
+
+// 官方转录页面（特定视频）
 export class OfficialWebTranscriptProvider implements TranscriptProvider {
   private readonly transcriptUrls: Record<string, string> = {
     vif8NQcjVf0: "https://lexfridman.com/jensen-huang-transcript/"
@@ -399,16 +447,14 @@ export class OfficialWebTranscriptProvider implements TranscriptProvider {
 
       return TranscriptSegmentSchema.parse({
         startTime,
-        endTime: Number.isFinite(nextStartTime)
-          ? nextStartTime
-          : startTime + 60,
+        endTime: Number.isFinite(nextStartTime) ? nextStartTime : startTime + 60,
         text
       });
     });
   }
 }
 
-// 多层回退链
+// 多层回退
 class FallbackTranscriptProvider implements TranscriptProvider {
   private readonly chain: TranscriptProvider[];
 
@@ -417,13 +463,21 @@ class FallbackTranscriptProvider implements TranscriptProvider {
   }
 
   async getTranscript(videoId: string) {
+    const errors: string[] = [];
     for (const provider of this.chain) {
       try {
         return await provider.getTranscript(videoId);
-      } catch {
-        // 当前 provider 失败，尝试下一个
+      } catch (error) {
+        const msg =
+          error instanceof Error ? error.message : String(error);
+        errors.push(msg);
+        console.error(
+          `[${provider.constructor.name}] 转录获取失败:`,
+          msg
+        );
       }
     }
+    console.error(`[Transcript] 全部 ${this.chain.length} 个提取方式均失败:`, errors.join(" | "));
     throw new Error("所有转录提取方式均失败，此视频可能没有正确配置的字幕。");
   }
 }
@@ -434,6 +488,7 @@ export function getTranscriptProvider(): TranscriptProvider {
     return new FallbackTranscriptProvider(
       new YouTubeCaptionTranscriptProvider(),
       new InnerTubeTranscriptProvider(),
+      new YouTubeTranscriptComProvider(),
       new OfficialWebTranscriptProvider()
     );
   }
@@ -443,13 +498,21 @@ export function getTranscriptProvider(): TranscriptProvider {
   );
 }
 
-// 工具函数
+// === 工具函数 ===
+
+function buildYouTubeHeaders() {
+  return {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    Cookie: CONSENT_COOKIE
+  };
+}
 
 function encodeTranscriptParams(videoId: string) {
-  // protobuf 编码: field 1 (tag 0x0a) + varint length + string
   const bytes: number[] = [];
   bytes.push(0x0a); // field 1, wire type 2
-  bytes.push(videoId.length); // varint（videoId 长度小于 128 所以就是直接值）
+  bytes.push(videoId.length);
   for (let i = 0; i < videoId.length; i++) {
     bytes.push(videoId.charCodeAt(i));
   }
@@ -458,7 +521,6 @@ function encodeTranscriptParams(videoId: string) {
 
 function bytesToBase64(bytes: number[]) {
   const binary = String.fromCharCode(...bytes);
-  // btoa 在 Worker/node 都可用
   return typeof btoa !== "undefined"
     ? btoa(binary)
     : Buffer.from(binary, "binary").toString("base64");
@@ -487,7 +549,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// 安全地遍历嵌套对象，TypeScript 友好
 function get(obj: unknown, ...path: string[]): unknown {
   let current = obj;
   for (const key of path) {
