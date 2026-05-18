@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Framer 暗黑色彩系统 */
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --card: 0 0% 3.5%;
+  --card-foreground: 0 0% 100%;
+  --primary: 205 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 0 0% 65%;
+  --muted-foreground: 0 0% 65%;
+  --accent: 205 100% 50%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 18%;
+  --input: 0 0% 12%;
+  --ring: 205 100% 50%;
+  --radius: 0.5rem;
+
+  /* Framer 特殊色 */
+  --framer-blue: #0099ff;
+  --framer-blue-ring: rgba(0, 153, 255, 0.15);
+  --framer-frosted: rgba(255, 255, 255, 0.08);
+  --framer-frosted-hover: rgba(255, 255, 255, 0.14);
+  --framer-surface: #090909;
+  --framer-silver: #a6a6a6;
+  --framer-white-edge: rgba(255, 255, 255, 0.08);
+
+  /* 中文字体栈 */
+  --font-sans: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", system-ui, -apple-system, sans-serif;
+  --font-display: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", monospace;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  background: #000000;
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+}
+
+/* 中文标题的压缩感 — 用负 letter-spacing 仅在大标题上 */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+/* 按钮与输入框全局样式 */
+button, input, textarea, select {
+  font-family: var(--font-sans);
+}
+
+/* 选中颜色 */
+::selection {
+  background: rgba(0, 153, 255, 0.3);
+  color: #ffffff;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 聚焦环 — 统一使用 Framer Blue */
+:focus-visible {
+  outline: 2px solid var(--framer-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 毛玻璃动画工具类 */
+@layer utilities {
+  .frosted {
+    background: var(--framer-frosted);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .frosted-hover {
+    transition: background 0.2s ease;
+  }
+  .frosted-hover:hover {
+    background: var(--framer-frosted-hover);
+  }
+
+  .ring-blue {
+    box-shadow: var(--framer-blue-ring) 0px 0px 0px 1px;
+  }
+
+  .elevate-card {
+    box-shadow:
+      var(--framer-white-edge) 0px 0.5px 0px 0.5px,
+      rgba(0, 0, 0, 0.25) 0px 10px 30px;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* 中文大标题压缩 */
+  .heading-compressed {
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+}
+
+/* 脉冲呼吸动画 — 用于加载态 */
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.animate-breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* 渐入动画 */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out forwards;
+}
+
+.animate-fade-in-up-delay-1 { animation-delay: 0.1s; opacity: 0; }
+.animate-fade-in-up-delay-2 { animation-delay: 0.2s; opacity: 0; }
+.animate-fade-in-up-delay-3 { animation-delay: 0.3s; opacity: 0; }
+.animate-fade-in-up-delay-4 { animation-delay: 0.4s; opacity: 0; }
