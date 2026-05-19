@@ -54,7 +54,11 @@ export async function getCachedMoments(
     const age = Date.now() - new Date(parsed.data.created_at).getTime();
     if (age > SUCCESS_TTL_MS) return null;
 
-    return parsed.data.result;
+    // 不返回空结果（可能是上次失败的毒缓存）
+    const result = parsed.data.result;
+    if (!result || result.length === 0) return null;
+
+    return result;
   } catch {
     return null; // 表不存在等情况，静默降级
   }
@@ -67,6 +71,9 @@ export async function upsertMomentsCache(input: {
   theme?: string;
   moments: KeyMoment[];
 }) {
+  // 不缓存空结果，避免后续请求命中毒缓存
+  if (!input.moments || input.moments.length === 0) return;
+
   const supabase = createSupabaseServiceClient();
   if (!supabase) return;
 
@@ -112,7 +119,11 @@ export async function getCachedSummary(
     const age = Date.now() - new Date(parsed.data.created_at).getTime();
     if (age > SUCCESS_TTL_MS) return null;
 
-    return parsed.data.result;
+    // 不返回空结果（可能是上次失败的毒缓存）
+    const result = parsed.data.result;
+    if (!result || result.length === 0) return null;
+
+    return result;
   } catch {
     return null; // 表不存在等情况，静默降级
   }
@@ -123,6 +134,9 @@ export async function upsertSummaryCache(input: {
   lang: string;
   takeaways: SummaryTakeaway[];
 }) {
+  // 不缓存空结果，避免后续请求命中毒缓存
+  if (!input.takeaways || input.takeaways.length === 0) return;
+
   const supabase = createSupabaseServiceClient();
   if (!supabase) return;
 
