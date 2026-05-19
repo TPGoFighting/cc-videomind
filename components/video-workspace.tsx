@@ -46,6 +46,18 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     playerRef.current?.seekTo(seconds);
   }, []);
 
+  // 渲染状态日志
+  useEffect(() => {
+    console.log("[Frontend:Render] 状态快照:", {
+      momentsLoading,
+      summaryLoading,
+      loading,
+      momentCount: moments.length,
+      takeawayCount: takeaways.length,
+      error
+    });
+  }, [momentsLoading, summaryLoading, loading, moments.length, takeaways.length, error]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -109,10 +121,25 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
           const payload = (await momentsRes.value.json()) as JsonResponse<{
             moments: KeyMoment[];
           }>;
+          console.log("[Frontend:Moments] 收到响应:", {
+            ok: payload.ok,
+            status: momentsRes.value.status,
+            momentCount: payload.ok ? payload.data.moments.length : "N/A",
+            error: payload.ok ? null : payload.error?.message,
+            momentsPreview: payload.ok ? payload.data.moments.slice(0, 2).map(m => ({
+              title: m.title,
+              timestamp: m.timestamp,
+              quoteLen: m.quote?.length ?? 0
+            })) : null
+          });
           if (payload.ok) {
             setMoments(payload.data.moments);
           }
-        } catch { /* moments 加载失败不影响其他功能 */ }
+        } catch (err) {
+          console.error("[Frontend:Moments] JSON 解析失败:", err instanceof Error ? err.message : err);
+        }
+      } else {
+        console.error("[Frontend:Moments] 请求失败(rejected):", momentsRes.reason);
       }
       setMomentsLoading(false);
 
@@ -121,10 +148,25 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
           const payload = (await summaryRes.value.json()) as JsonResponse<{
             takeaways: SummaryTakeaway[];
           }>;
+          console.log("[Frontend:Summary] 收到响应:", {
+            ok: payload.ok,
+            status: summaryRes.value.status,
+            takeawayCount: payload.ok ? payload.data.takeaways.length : "N/A",
+            error: payload.ok ? null : payload.error?.message,
+            takeawaysPreview: payload.ok ? payload.data.takeaways.slice(0, 2).map(t => ({
+              label: t.label,
+              insightLen: t.insight?.length ?? 0,
+              timestamps: t.timestamps
+            })) : null
+          });
           if (payload.ok) {
             setTakeaways(payload.data.takeaways);
           }
-        } catch { /* summary 加载失败不影响其他功能 */ }
+        } catch (err) {
+          console.error("[Frontend:Summary] JSON 解析失败:", err instanceof Error ? err.message : err);
+        }
+      } else {
+        console.error("[Frontend:Summary] 请求失败(rejected):", summaryRes.reason);
       }
       setSummaryLoading(false);
     }

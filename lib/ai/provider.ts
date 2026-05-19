@@ -94,32 +94,54 @@ export class OpenAiCompatibleProvider implements AiProvider {
     targetLanguage?: "zh" | "en";
   }): Promise<KeyMoment[]> {
     const lang = input.targetLanguage ?? "zh";
+    const t0 = Date.now();
 
     // Fast 模式：切片 → 多次 AI → 归并
     if (input.mode === "fast") {
       const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
+      console.log("[AI:Moments] Fast 模式, chunk 数量: %d", chunks.length);
       const allCandidates: KeyMoment[] = [];
 
       for (const chunk of chunks) {
         const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
         const content = await this.chatJson(prompt);
         const candidates = parseKeyMoments(content).slice(0, 2);
+        console.log("[AI:Moments] Chunk 解析出 %d 候选, AI 响应前200字: %s", candidates.length, content.slice(0, 200));
         allCandidates.push(...candidates);
       }
 
-      if (allCandidates.length === 0) return [];
+      console.log("[AI:Moments] 全部候选: %d 条", allCandidates.length);
+      if (allCandidates.length === 0) {
+        console.warn("[AI:Moments] 无候选, 提前返回");
+        return [];
+      }
 
       const reducePrompt = buildKeyMomentsReducePrompt(input.title, allCandidates, input.transcript, lang);
       const reduceContent = await this.chatJson(reducePrompt);
+      console.log("[AI:Moments] Reduce 响应前200字: %s", reduceContent.slice(0, 200));
       const final = parseKeyMoments(reduceContent);
-      return validateAndDedupMoments(final, input.transcript).slice(0, 5);
+      console.log("[AI:Moments] Reduce 解析出 %d 条", final.length);
+      const validated = validateAndDedupMoments(final, input.transcript).slice(0, 5);
+      console.log("[AI:Moments] 校验去重后: %d 条, 耗时 %dms", validated.length, Date.now() - t0);
+      return validated;
     }
 
     // Smart 模式：全文单次分析
     const prompt = buildKeyMomentsPrompt(input.title, input.transcript, lang, input.theme);
+    console.log("[AI:Moments] Smart 模式, prompt 长度: %d 字符", prompt.length);
     const content = await this.chatJson(prompt);
+    console.log("[AI:Moments] AI 原始响应长度: %d 字符", content.length);
+    console.log("[AI:Moments] AI 原始响应(前500字): %s", content.slice(0, 500));
     const moments = parseKeyMoments(content);
-    return validateAndDedupMoments(moments, input.transcript).slice(0, 5);
+    console.log("[AI:Moments] parseKeyMoments 解析出 %d 条", moments.length);
+    if (moments.length > 0) {
+      console.log("[AI:Moments] 解析结果:", moments.map(m => ({ title: m.title, timestamp: m.timestamp, quoteLen: m.quote.length })));
+    } else {
+      console.warn("[AI:Moments] parseKeyMoments 返回空数组! 原始响应可能是无效 JSON 或不满足 schema");
+    }
+    const validated = validateAndDedupMoments(moments, input.transcript).slice(0, 5);
+    console.log("[AI:Moments] validateAndDedupMoments: %d 条 → %d 条, 耗时 %dms", moments.length, validated.length, Date.now() - t0);
+    return validated;
   }
 
   async generateStructuredSummary(input: {
@@ -128,13 +150,27 @@ export class OpenAiCompatibleProvider implements AiProvider {
     targetLanguage?: "zh" | "en";
   }): Promise<SummaryTakeaway[]> {
     const lang = input.targetLanguage ?? "zh";
+    const t0 = Date.now();
     const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
+    console.log("[AI:Summary] prompt 长度: %d 字符", prompt.length);
     const content = await this.chatJson(prompt);
+    console.log("[AI:Summary] AI 原始响应长度: %d 字符", content.length);
+    console.log("[AI:Summary] AI 原始响应(前500字): %s", content.slice(0, 500));
     const takeaways = parseSummaryTakeaways(content);
-    return validateSummaryTakeaways(takeaways, input.transcript);
+    console.log("[AI:Summary] parseSummaryTakeaways 解析出 %d 条", takeaways.length);
+    if (takeaways.length > 0) {
+      console.log("[AI:Summary] 解析结果:", takeaways.map(t => ({ label: t.label, insightLen: t.insight.length, timestamps: t.timestamps })));
+    } else {
+      console.warn("[AI:Summary] parseSummaryTakeaways 返回空数组! 原始响应可能是无效 JSON 或不满足 schema");
+    }
+    const validated = validateSummaryTakeaways(takeaways, input.transcript);
+    console.log("[AI:Summary] validateSummaryTakeaways: %d 条 → %d 条, 耗时 %dms", takeaways.length, validated.length, Date.now() - t0);
+    return validated;
   }
 
   private async chatJson(prompt: string) {
+    const t0 = Date.now();
+
     const body = {
       model: this.model,
       messages: [
@@ -145,16 +181,26 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
     // 先尝试带 response_format（支持结构化输出的模型）
     const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
-    if (withFormat) return withFormat;
+    if (withFormat) {
+      console.log("[AI:Chat] response_format 成功, 耗时 %dms, 响应长度 %d", Date.now() - t0, withFormat.length);
+      return withFormat;
+    }
 
-    // 400 等错误时回退，不带 response_format（parseJsonContent 会兜底提取 JSON）
+    // 400 等错误时回退，不带 response_format
+    console.log("[AI:Chat] response_format 失败, 回退到无 format 模式");
     const withoutFormat = await this.tryChat(body);
-    if (withoutFormat) return withoutFormat;
+    if (withoutFormat) {
+      console.log("[AI:Chat] 无 format 模式成功, 总耗时 %dms, 响应长度 %d", Date.now() - t0, withoutFormat.length);
+      return withoutFormat;
+    }
 
+    console.error("[AI:Chat] 两次尝试均失败! model=%s, baseUrl=%s, promptLen=%d", this.model, this.baseUrl, prompt.length);
     throw new Error("AI provider returned no response — check model name, API key, and network connectivity.");
   }
 
   private async tryChat(body: Record<string, unknown>): Promise<string | null> {
+    const t0 = Date.now();
+    const model = body.model ?? this.model;
     try {
       const response = OpenAiChatResponseSchema.parse(
         await fetchJsonWithTimeout<unknown>(`${this.baseUrl.replace(/\/$/, "")}/chat/completions`, {
@@ -168,13 +214,15 @@ export class OpenAiCompatibleProvider implements AiProvider {
           body: JSON.stringify(body)
         })
       );
+      console.log("[AI:Chat] API 调用成功, model=%s, 耗时 %dms", model, Date.now() - t0);
       return response.choices[0]?.message.content ?? null;
     } catch (error) {
-      // 400 可能是 response_format 不被支持，也可能是模型名/API key 无效
+      console.error("[AI:Chat] API 调用失败, model=%s, 耗时 %dms", model, Date.now() - t0);
       if (error instanceof ExternalServiceError && error.status === 400) {
-        console.warn("AI provider returned 400:", error.message);
+        console.warn("[AI:Chat] 400 错误详情:", error.message);
         return null;
       }
+      console.error("[AI:Chat] 非400错误:", error instanceof Error ? error.message : error);
       throw error;
     }
   }

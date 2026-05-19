@@ -103,7 +103,10 @@ function fuzzyMatch(normalizedQuote: string, texts: string[]): boolean {
 export function parseKeyMoments(raw: string): KeyMoment[] {
   try {
     const value = parseJsonSafe(raw);
-    if (!value) return [];
+    if (!value) {
+      console.warn("[Parse:Moments] parseJsonSafe 返回 null/undefined, 原始文本前200字: %s", raw.slice(0, 200));
+      return [];
+    }
 
     // 支持 { moments: [...] } 或直接数组
     const items = isRecord(value) && Array.isArray(value.moments)
@@ -112,11 +115,37 @@ export function parseKeyMoments(raw: string): KeyMoment[] {
         ? value
         : [];
 
-    return items
-      .filter(isRecord)
-      .map(normalizeKeyMoment)
-      .filter((m): m is KeyMoment => m !== null);
-  } catch {
+    console.log("[Parse:Moments] JSON 解析成功, items 数量: %d, 来源: %s",
+      items.length,
+      isRecord(value) && Array.isArray(value.moments) ? "object.moments" : Array.isArray(value) ? "array" : "unknown"
+    );
+
+    const recordItems = items.filter(isRecord);
+    console.log("[Parse:Moments] isRecord 过滤后: %d 条", recordItems.length);
+
+    const normalized = recordItems.map(normalizeKeyMoment);
+    const results = normalized.filter((m): m is KeyMoment => m !== null);
+
+    if (results.length < recordItems.length) {
+      console.warn("[Parse:Moments] normalizeKeyMoment 过滤掉 %d 条不合格条目", recordItems.length - results.length);
+      // 打印被过滤的条目信息
+      recordItems.forEach((item, i) => {
+        if (!normalized[i]) {
+          console.warn("[Parse:Moments] 不合格条目 #%d:", i, {
+            hasTitle: !!getString(item, ["title", "heading", "name"]),
+            hasQuote: !!getString(item, ["quote", "text", "excerpt"]),
+            hasReason: !!getString(item, ["reason", "explanation", "description", "note"]),
+            hasTimestamp: !!getString(item, ["timestamp", "time", "range"]),
+            hasStartEnd: !!(getNumber(item, ["startTime", "start", "start_time"]) && getNumber(item, ["endTime", "end", "end_time"])),
+            keys: Object.keys(item)
+          });
+        }
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.error("[Parse:Moments] 解析异常:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -152,7 +181,10 @@ function normalizeKeyMoment(raw: Record<string, unknown>): KeyMoment | null {
 export function parseSummaryTakeaways(raw: string): SummaryTakeaway[] {
   try {
     const value = parseJsonSafe(raw);
-    if (!value) return [];
+    if (!value) {
+      console.warn("[Parse:Summary] parseJsonSafe 返回 null/undefined, 原始文本前200字: %s", raw.slice(0, 200));
+      return [];
+    }
 
     const items = isRecord(value) && Array.isArray(value.takeaways)
       ? value.takeaways
@@ -160,11 +192,38 @@ export function parseSummaryTakeaways(raw: string): SummaryTakeaway[] {
         ? value
         : [];
 
-    return items
-      .filter(isRecord)
-      .map(normalizeTakeaway)
-      .filter((t): t is SummaryTakeaway => t !== null);
-  } catch {
+    console.log("[Parse:Summary] JSON 解析成功, items 数量: %d, 来源: %s",
+      items.length,
+      isRecord(value) && Array.isArray(value.takeaways) ? "object.takeaways" : Array.isArray(value) ? "array" : "unknown"
+    );
+
+    const recordItems = items.filter(isRecord);
+    console.log("[Parse:Summary] isRecord 过滤后: %d 条", recordItems.length);
+
+    const normalized = recordItems.map(normalizeTakeaway);
+    const results = normalized.filter((t): t is SummaryTakeaway => t !== null);
+
+    if (results.length < recordItems.length) {
+      console.warn("[Parse:Summary] normalizeTakeaway 过滤掉 %d 条不合格条目", recordItems.length - results.length);
+      recordItems.forEach((item, i) => {
+        if (!normalized[i]) {
+          const rawTs = item.timestamps;
+          const hasValidTs = Array.isArray(rawTs)
+            ? rawTs.some((t: unknown) => typeof t === "string" && /^\d{1,2}:\d{2}$/.test(t))
+            : typeof item.timestamp === "string" && /^\d{1,2}:\d{2}$/.test(item.timestamp);
+          console.warn("[Parse:Summary] 不合格条目 #%d:", i, {
+            hasLabel: !!getString(item, ["label", "title", "heading"]),
+            hasInsight: !!getString(item, ["insight", "description", "detail", "body"]),
+            hasTimestamps: hasValidTs,
+            keys: Object.keys(item)
+          });
+        }
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.error("[Parse:Summary] 解析异常:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -200,12 +259,23 @@ export function validateAndDedupMoments(
   moments: KeyMoment[],
   transcript: TranscriptSegment[]
 ): KeyMoment[] {
+  console.log("[Validate:Moments] 输入 %d 条, 字幕段数 %d", moments.length, transcript.length);
+
   // 1. 引文验证
   const withValidQuotes = moments.filter((m) => {
     const range = parseTimestampRange(m.timestamp);
-    if (!range) return false;
-    return verifyQuoteInTranscript(m.quote, range[0], range[1], transcript);
+    if (!range) {
+      console.warn("[Validate:Moments] 时间戳解析失败, 丢弃: %s", m.timestamp);
+      return false;
+    }
+    const valid = verifyQuoteInTranscript(m.quote, range[0], range[1], transcript);
+    if (!valid) {
+      console.warn("[Validate:Moments] 引文验证失败, 丢弃: title=%s, quote前50字=%s", m.title.slice(0, 30), m.quote.slice(0, 50));
+    }
+    return valid;
   });
+
+  console.log("[Validate:Moments] 引文验证后: %d 条 (丢弃 %d)", withValidQuotes.length, moments.length - withValidQuotes.length);
 
   // 2. 时间段重叠去重
   const deduped: KeyMoment[] = [];
@@ -221,33 +291,36 @@ export function validateAndDedupMoments(
     if (overlaps === -1) {
       deduped.push(m);
     } else {
-      // 保留 quote 更长的
       const existing = deduped[overlaps];
       if (m.quote.length > existing.quote.length) {
+        console.log("[Validate:Moments] 时间段重叠, 替换: %s → %s", existing.title.slice(0, 30), m.title.slice(0, 30));
         deduped[overlaps] = m;
       }
     }
   }
 
-  // 3. 相似引文去重（保守：>85% 相似度才合并）
+  console.log("[Validate:Moments] 重叠去重后: %d 条 (丢弃 %d)", deduped.length, withValidQuotes.length - deduped.length);
+
+  // 3. 相似引文去重
   const final: KeyMoment[] = [];
   for (const m of deduped) {
     const similar = final.findIndex((f) => {
       const n1 = normalizeText(m.quote);
       const n2 = normalizeText(f.quote);
-      // Jaccard 相似度（基于 3-gram）
       return ngramSimilarity(n1, n2, 3) > 0.85;
     });
 
     if (similar === -1) {
       final.push(m);
     } else {
-      // 保留 title 更具体的
       if (m.title.length > final[similar].title.length) {
+        console.log("[Validate:Moments] 相似引文, 替换: %s → %s", final[similar].title.slice(0, 30), m.title.slice(0, 30));
         final[similar] = m;
       }
     }
   }
+
+  console.log("[Validate:Moments] 相似去重后: %d 条 (丢弃 %d)", final.length, deduped.length - final.length);
 
   // 4. 按开始时间排序
   final.sort((a, b) => {
@@ -267,19 +340,31 @@ export function validateSummaryTakeaways(
   transcript: TranscriptSegment[],
   toleranceSeconds = 5
 ): SummaryTakeaway[] {
-  return takeaways
-    .map((t) => ({
-      ...t,
-      timestamps: t.timestamps.filter((ts) => {
+  console.log("[Validate:Summary] 输入 %d 条, 字幕段数 %d", takeaways.length, transcript.length);
+
+  const validated = takeaways
+    .map((t) => {
+      const filteredTs = t.timestamps.filter((ts) => {
         const seconds = parseTimestampToSeconds(ts);
         return transcript.some(
           (s) =>
             Math.abs(s.startTime - seconds) <= toleranceSeconds ||
             (seconds >= s.startTime && seconds <= s.endTime)
         );
-      })
-    }))
+      });
+
+      if (filteredTs.length < t.timestamps.length) {
+        console.warn("[Validate:Summary] 时间戳验证丢弃: label=%s, 原始ts=%s, 验证后ts=%s",
+          t.label.slice(0, 30), t.timestamps, filteredTs);
+      }
+
+      return { ...t, timestamps: filteredTs };
+    })
     .filter((t) => t.timestamps.length > 0);
+
+  console.log("[Validate:Summary] 验证后: %d 条 (丢弃 %d)", validated.length, takeaways.length - validated.length);
+
+  return validated;
 }
 
 // ====== 工具函数 ======
@@ -302,15 +387,25 @@ function getNgrams(text: string, n: number): Set<string> {
 }
 
 function parseJsonSafe(raw: string): unknown {
+  // 尝试 1: 直接 JSON.parse
   try { return JSON.parse(raw); } catch { /* continue */ }
+
+  // 尝试 2: 括号计数法提取
   const extracted = extractBalancedJson(raw);
   if (extracted) {
-    try { return JSON.parse(extracted); } catch { /* continue */ }
-    const repaired = repairBrokenJson(extracted);
-    if (repaired) {
-      try { return JSON.parse(repaired); } catch { /* continue */ }
+    try { return JSON.parse(extracted); } catch {
+      // 尝试 3: 修复后解析
+      const repaired = repairBrokenJson(extracted);
+      if (repaired) {
+        try { return JSON.parse(repaired); } catch { /* continue */ }
+      }
     }
   }
+
+  console.warn("[Parse:JSON] 所有解析方式均失败! extracted=%s, raw前200字=%s",
+    extracted ? "有(但parse/repair失败)" : "无",
+    raw.slice(0, 200)
+  );
   return null;
 }
 
