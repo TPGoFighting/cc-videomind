@@ -106,3 +106,10 @@ export interface GenerationDebug {
   validateCount: number;
   finalCount: number;
 }
+
+export function createEmptyDebug(): GenerationDebug {
+  return {
+    model: "", promptLength: 0, rawResponseLength: 0,
+    rawResponsePreview: "", parseCount: 0, validateCount: 0, finalCount: 0
+  };
+}

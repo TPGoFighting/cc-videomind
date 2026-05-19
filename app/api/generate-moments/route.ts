@@ -7,7 +7,7 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
-import { GenerateMomentsRequestSchema, type GenerationDebug } from "@/lib/types";
+import { createEmptyDebug, GenerateMomentsRequestSchema } from "@/lib/types";
 
 export async function POST(request: Request) {
   const tStart = Date.now();
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const cached = await getCachedMoments(videoId, lang, mode, theme);
     if (cached) {
       console.log("[API:Moments] 命中缓存, 返回 %d 条", cached.length);
-      return successResponse({ moments: cached, mode, cached: true });
+      return successResponse({ moments: cached, mode, cached: true, _debug: { cached: true } });
     }
 
     // 2. 取字幕
@@ -54,10 +54,7 @@ export async function POST(request: Request) {
 
     // 3. AI 生成
     const tAiStart = Date.now();
-    const debug: GenerationDebug = {
-      model: "", promptLength: 0, rawResponseLength: 0,
-      rawResponsePreview: "", parseCount: 0, validateCount: 0, finalCount: 0
-    };
+    const debug = createEmptyDebug();
     const moments = await getAiProvider().generateKeyMoments({
       title,
       transcript,

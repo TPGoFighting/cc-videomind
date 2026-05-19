@@ -10,6 +10,7 @@ import { SummaryPanel } from "@/components/summary-panel";
 import { TranscriptViewer } from "@/components/transcript-viewer";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import type {
+  GenerationDebug,
   JsonResponse,
   KeyMoment,
   SummaryTakeaway,
@@ -120,7 +121,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         try {
           const payload = (await momentsRes.value.json()) as JsonResponse<{
             moments: KeyMoment[];
-            _debug?: Record<string, unknown>;
+            _debug?: GenerationDebug;
           }>;
           console.log("[Frontend:Moments] 收到响应:", {
             ok: payload.ok,
@@ -132,7 +133,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               timestamp: m.timestamp,
               quoteLen: m.quote?.length ?? 0
             })) : null,
-            debug: payload.ok ? (payload.data as Record<string, unknown>)._debug : null
+            debug: payload.ok ? payload.data._debug : null
           });
           if (payload.ok) {
             setMoments(payload.data.moments);
@@ -149,7 +150,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         try {
           const payload = (await summaryRes.value.json()) as JsonResponse<{
             takeaways: SummaryTakeaway[];
-            _debug?: Record<string, unknown>;
+            _debug?: GenerationDebug;
           }>;
           console.log("[Frontend:Summary] 收到响应:", {
             ok: payload.ok,
@@ -161,7 +162,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               insightLen: t.insight?.length ?? 0,
               timestamps: t.timestamps
             })) : null,
-            debug: payload.ok ? (payload.data as Record<string, unknown>)._debug : null
+            debug: payload.ok ? payload.data._debug : null
           });
           if (payload.ok) {
             setTakeaways(payload.data.takeaways);

@@ -422,7 +422,7 @@ export function getAiProvider(): AiProvider {
   throw new Error(`AI_PROVIDER "${provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", or "gemini".`);
 }
 
-function fillDebug(debug: GenerationDebug, data: Omit<GenerationDebug, "model" | "promptLength" | "rawResponseLength" | "rawResponsePreview" | "parseCount" | "validateCount" | "finalCount"> & Partial<GenerationDebug>) {
+function fillDebug(debug: GenerationDebug, data: Partial<GenerationDebug>) {
   debug.model = data.model ?? "unknown";
   debug.promptLength = data.promptLength ?? 0;
   debug.rawResponseLength = data.rawResponseLength ?? 0;
