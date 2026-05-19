@@ -44,11 +44,12 @@ export async function getCachedMoments(
       .eq("language", lang)
       .eq("mode", mode)
       .eq("theme", theme ?? null)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (error || !data) return null;
+    if (error || !data || data.length === 0) return null;
 
-    const parsed = CachedMomentsSchema.safeParse(data);
+    const parsed = CachedMomentsSchema.safeParse(data[0]);
     if (!parsed.success) return null;
 
     const age = Date.now() - new Date(parsed.data.created_at).getTime();
@@ -77,20 +78,26 @@ export async function upsertMomentsCache(input: {
   const supabase = createSupabaseServiceClient();
   if (!supabase) return;
 
-  await supabase.from("ai_results_cache").upsert(
-    {
-      video_id: input.videoId,
-      result_type: "moments",
-      language: input.lang,
-      mode: input.mode,
-      theme: input.theme ?? null,
-      result: input.moments,
-      updated_at: new Date().toISOString()
-    },
-    {
-      onConflict: "video_id, result_type, language, mode, theme"
-    }
-  );
+  // 先删旧记录，避免 NULL 不等问题导致多行共存
+  await supabase
+    .from("ai_results_cache")
+    .delete()
+    .eq("video_id", input.videoId)
+    .eq("result_type", "moments")
+    .eq("language", input.lang)
+    .eq("mode", input.mode)
+    .eq("theme", input.theme ?? null);
+
+  await supabase.from("ai_results_cache").insert({
+    video_id: input.videoId,
+    result_type: "moments",
+    language: input.lang,
+    mode: input.mode,
+    theme: input.theme ?? null,
+    result: input.moments,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
 }
 
 // ─── Summary 缓存 ──────────────────────────────────────────────────────────────
@@ -109,11 +116,12 @@ export async function getCachedSummary(
       .eq("video_id", videoId)
       .eq("result_type", "structured_summary")
       .eq("language", lang)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (error || !data) return null;
+    if (error || !data || data.length === 0) return null;
 
-    const parsed = CachedSummarySchema.safeParse(data);
+    const parsed = CachedSummarySchema.safeParse(data[0]);
     if (!parsed.success) return null;
 
     const age = Date.now() - new Date(parsed.data.created_at).getTime();
@@ -140,16 +148,20 @@ export async function upsertSummaryCache(input: {
   const supabase = createSupabaseServiceClient();
   if (!supabase) return;
 
-  await supabase.from("ai_results_cache").upsert(
-    {
-      video_id: input.videoId,
-      result_type: "structured_summary",
-      language: input.lang,
-      result: input.takeaways,
-      updated_at: new Date().toISOString()
-    },
-    {
-      onConflict: "video_id, result_type, language, mode, theme"
-    }
-  );
+  // 先删旧记录，避免 NULL 不等问题导致多行共存
+  await supabase
+    .from("ai_results_cache")
+    .delete()
+    .eq("video_id", input.videoId)
+    .eq("result_type", "structured_summary")
+    .eq("language", input.lang);
+
+  await supabase.from("ai_results_cache").insert({
+    video_id: input.videoId,
+    result_type: "structured_summary",
+    language: input.lang,
+    result: input.takeaways,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
 }
