@@ -35,7 +35,7 @@ export function HighlightsPanel({
             </div>
           ))
         ) : moments.length === 0 ? (
-          <p className="text-[14px] text-[#a6a6a6]">分析完成后要点时刻将显示在这里。</p>
+          <p className="text-[14px] text-[#a6a6a6]">暂未找到可跳转的要点时刻。</p>
         ) : (
           moments.map((m) => {
             const [start, end] = m.timestamp.split("-");

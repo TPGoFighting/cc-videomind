@@ -35,7 +35,7 @@ export function SummaryPanel({
             </div>
           </div>
         ) : takeaways.length === 0 ? (
-          <p className="text-[14px] text-[#a6a6a6]">分析完成后摘要将显示在这里。</p>
+          <p className="text-[14px] text-[#a6a6a6]">AI 未能从此视频提取到摘要要点，请检查字幕质量。</p>
         ) : (
           <div className="space-y-4">
             {takeaways.map((t) => (
