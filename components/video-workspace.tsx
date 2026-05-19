@@ -41,10 +41,20 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   const [momentsLoading, setMomentsLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
 
+  const [currentTime, setCurrentTime] = useState(0);
+
   const playerRef = useRef<VideoPlayerHandle>(null);
 
   const handleSeekTo = useCallback((seconds: number) => {
     playerRef.current?.seekTo(seconds);
+  }, []);
+
+  // 每秒轮询播放器当前时间，用于转录文本自动跟随
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(playerRef.current?.getCurrentTime() ?? 0);
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   // 渲染状态日志
@@ -220,7 +230,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               loading={summaryLoading}
               onSeekTo={handleSeekTo}
             />
-            <TranscriptViewer transcript={transcript} loading={loading} />
+            <TranscriptViewer transcript={transcript} loading={loading} currentTime={currentTime} />
           </div>
 
           {/* 右侧：要点时刻 + 问答 + 笔记 */}

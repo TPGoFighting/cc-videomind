@@ -6,6 +6,7 @@ import type { VideoMetadata } from "@/lib/types";
 
 export type VideoPlayerHandle = {
   seekTo: (seconds: number) => void;
+  getCurrentTime: () => number;
 };
 
 type VideoPlayerProps = {
@@ -60,6 +61,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       () => ({
         seekTo(seconds: number) {
           playerRef.current?.seekTo(seconds, true);
+        },
+        getCurrentTime() {
+          return playerRef.current?.getCurrentTime() ?? 0;
         },
       }),
       []
