@@ -13,8 +13,15 @@ interface CaptionTrack {
   kind?: "asr";
 }
 
+// 页面抓取结果 — visitorData 是关键，它让 InnerTube 请求看起来是合法的后续请求
+interface PageData {
+  apiKey: string;
+  visitorData: string;
+  clientVersion: string;
+}
+
 // === 三层客户端回退 ===
-// 关键：Android/iOS 使用硬编码 API key，完全不需要提前抓取 HTML 页面
+// 关键：Android/iOS 使用硬编码 API key，所有客户端共享页面抓取的 visitorData
 // 每个客户端有不同的反爬阈值，多层回退大幅提高成功率
 
 interface ClientIdentity {
@@ -31,16 +38,15 @@ const CLIENTS: ClientIdentity[] = [
     clientName: "ANDROID",
     clientVersion: "20.10.38",
     userAgent:
-      "com.google.android.youtube/20.10.38 (Linux; U; Android 14; en_US) gzip",
+      "com.google.android.youtube/20.10.38 (Linux; U; Android 14; en_US; Pixel 8 Pro Build/UD1A.231105.004) gzip",
     apiKey: "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
   },
   {
     name: "Web",
     clientName: "WEB",
-    clientVersion: "2.20250518.01.00",
+    clientVersion: "2.20250326.00.00",
     userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    // Web 客户端先用占位符，运行时从页面抓取
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
     apiKey: ""
   },
   {
@@ -48,7 +54,7 @@ const CLIENTS: ClientIdentity[] = [
     clientName: "IOS",
     clientVersion: "20.10.4",
     userAgent:
-      "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_1 like Mac OS X; en_US)",
+      "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X)",
     apiKey: "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc"
   }
 ];
@@ -57,41 +63,57 @@ const CLIENTS: ClientIdentity[] = [
 const FALLBACK_WEB_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
 
 export class YouTubeTranscriptProvider implements TranscriptProvider {
-  private webApiKey: string | null = null;
+  private pageDataCache: PageData | null = null;
 
   async getTranscript(videoId: string) {
-    // 逐层尝试 Android → Web → iOS
+    // 第1步：抓取页面获取 visitorData（只抓一次，所有客户端共享）
+    // visitorData 是关键 — 它让 InnerTube 请求看起来是合法页面加载的后续请求
+    let pageData: PageData | null = null;
+    try {
+      pageData = await this.scrapeWatchPage(videoId);
+    } catch (err) {
+      // 页面抓取失败不致命，Android/iOS 有硬编码 key 仍可尝试
+      if (err instanceof TranscriptError && !shouldRetry(err)) {
+        throw err; // 终端错误（视频不可用/年龄限制）直接抛出
+      }
+    }
+
+    // 第2步：逐层尝试 Android → Web → iOS
+    let lastError: Error | null = null;
     for (const client of CLIENTS) {
+      // Web 客户端必须有抓取到的 API key
+      if (client.clientName === "WEB" && !pageData?.apiKey) {
+        continue;
+      }
+
       try {
-        const result = await this.tryWithClient(videoId, client);
+        const result = await this.tryWithClient(videoId, client, pageData);
         if (result.length > 0) {
           return result;
         }
       } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
         if (!shouldRetry(error)) {
           throw error;
         }
-        // 重试下一个客户端
       }
     }
 
-    throw new Error("所有 YouTube 客户端提取方式均失败，此视频可能没有可用的字幕。");
+    throw lastError ?? new Error("所有 YouTube 客户端提取方式均失败，此视频可能没有可用的字幕。");
   }
 
   private async tryWithClient(
     videoId: string,
-    client: ClientIdentity
+    client: ClientIdentity,
+    pageData: PageData | null
   ) {
-    let apiKey = client.apiKey;
-
-    // Web 客户端需要从页面抓取 API key
-    if (client.clientName === "WEB" && !apiKey) {
-      const pageData = await this.scrapeWatchPage(videoId);
-      apiKey = pageData.apiKey;
-      this.webApiKey = apiKey;
+    // 优先使用客户端硬编码 key，回退到页面抓取的 key
+    const apiKey = client.apiKey || pageData?.apiKey;
+    if (!apiKey) {
+      throw new TranscriptError("INNERTUBE_REJECTED", `${client.name} 客户端缺少 API key`);
     }
 
-    const tracks = await this.fetchCaptionTracks(videoId, apiKey, client);
+    const tracks = await this.fetchCaptionTracks(videoId, apiKey, client, pageData?.visitorData);
     const track = this.selectTrack(tracks);
 
     if (!track) {
@@ -108,18 +130,18 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
     return segments;
   }
 
-  // 抓取页面获取 Web API key 和 consent cookie
-  private async scrapeWatchPage(videoId: string) {
+  // 抓取页面获取 API key、visitorData 和 client version
+  private async scrapeWatchPage(videoId: string): Promise<PageData> {
     // 如果已缓存，直接返回
-    if (this.webApiKey) {
-      return { apiKey: this.webApiKey };
+    if (this.pageDataCache) {
+      return this.pageDataCache;
     }
 
     const url = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
     let response = await fetchWithTimeout(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9"
       },
       timeoutMs: 12000,
@@ -131,13 +153,13 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
     // 检测 EU 同意页面并绕过
     if (html.includes('action="https://consent.youtube.com/s"')) {
       const consentMatch = html.match(
-        /<input[^>]*name="v"[^>]*value="([^"]*)"/
+        /name="v" value="([^"]*)"/
       );
       if (consentMatch?.[1]) {
         response = await fetchWithTimeout(url, {
           headers: {
             "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
             Cookie: `CONSENT=YES+${consentMatch[1]}`
           },
@@ -148,28 +170,36 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
       }
     }
 
-    // 检查视频可用性
+    // 检查视频可用性（页面级别，还没调 InnerTube）
     if (html.includes('"playabilityStatus":{"status":"ERROR"')) {
       if (html.includes("Sign in to confirm your age")) {
         throw new TranscriptError("AGE_RESTRICTED", "此视频需要年龄验证。");
       }
-      throw new TranscriptError("VIDEO_UNAVAILABLE", "此视频不可用。");
+      // 不在此处抛 VIDEO_UNAVAILABLE，因为可能是数据中心 IP 导致的，
+      // InnerTube API 可能仍能返回字幕数据
     }
 
-    // 提取 API key
-    const keyMatch = html.match(
-      /"(?:INNERTUBE_API_KEY|innertubeApiKey)"\s*:\s*"([^"]+)"/
-    );
-    const apiKey = keyMatch?.[1] ?? FALLBACK_WEB_API_KEY;
+    // 提取三个关键字段
+    const keyMatch = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/);
+    const visitorMatch = html.match(/"VISITOR_DATA"\s*:\s*"([^"]+)"/);
+    const versionMatch = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/);
 
-    return { apiKey };
+    const pageData: PageData = {
+      apiKey: keyMatch?.[1] ?? FALLBACK_WEB_API_KEY,
+      visitorData: visitorMatch?.[1] ?? "",
+      clientVersion: versionMatch?.[1] ?? "2.20250326.00.00"
+    };
+
+    this.pageDataCache = pageData;
+    return pageData;
   }
 
   // 调用 InnerTube Player API 获取字幕轨道列表
   private async fetchCaptionTracks(
     videoId: string,
     apiKey: string,
-    client: ClientIdentity
+    client: ClientIdentity,
+    visitorData?: string
   ) {
     const body: Record<string, unknown> = {
       videoId,
@@ -179,7 +209,9 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
           clientVersion: client.clientVersion,
           userAgent: client.userAgent,
           hl: "en",
-          gl: "US"
+          gl: "US",
+          // visitorData 是关键：让请求看起来是先加载了页面再调 API 的合法用户
+          ...(visitorData ? { visitorData } : {})
         }
       }
     };
