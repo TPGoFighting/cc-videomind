@@ -50,7 +50,8 @@ export async function POST(request: Request) {
     } catch { /* 缓存写入失败不影响正常响应 */ }
 
     return successResponse({ moments, mode, cached: false });
-  } catch {
+  } catch (err) {
+    console.error("generate-moments failed:", err instanceof Error ? err.message : err);
     return errorResponse("moments_failed", "Key moments could not be generated.", 502);
   }
 }

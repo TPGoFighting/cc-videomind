@@ -5,7 +5,7 @@ import {
   type SummaryTakeaway,
   type TranscriptSegment
 } from "@/lib/types";
-import { extractBalancedJson, repairBrokenJson } from "@/lib/ai/provider";
+import { extractBalancedJson, repairBrokenJson } from "@/lib/utils/json";
 
 // ====== 时间戳转换 ======
 

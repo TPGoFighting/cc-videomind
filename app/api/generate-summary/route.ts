@@ -47,7 +47,8 @@ export async function POST(request: Request) {
     } catch { /* 缓存写入失败不影响正常响应 */ }
 
     return successResponse({ takeaways, cached: false });
-  } catch {
+  } catch (err) {
+    console.error("generate-summary failed:", err instanceof Error ? err.message : err);
     return errorResponse("summary_failed", "Summary could not be generated from the transcript.", 502);
   }
 }

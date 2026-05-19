@@ -19,6 +19,7 @@ import {
 } from "@/lib/ai/prompts-v2";
 import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
 import { chunkTranscript } from "@/lib/utils/chunk";
+import { extractBalancedJson, repairBrokenJson } from "@/lib/utils/json";
 import {
   parseKeyMoments,
   parseSummaryTakeaways,
@@ -304,58 +305,6 @@ function parseJsonContent(content: string) {
   }
 
   throw new Error("AI provider did not return valid JSON.");
-}
-
-export function extractBalancedJson(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-
-  for (let i = start; i < text.length; i++) {
-    const char = text[i];
-
-    if (escape) {
-      escape = false;
-      continue;
-    }
-
-    if (char === "\\" && inString) {
-      escape = true;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-
-    if (inString) continue;
-
-    if (char === "{") {
-      depth++;
-    } else if (char === "}") {
-      depth--;
-      if (depth === 0) {
-        return text.slice(start, i + 1);
-      }
-    }
-  }
-
-  return null;
-}
-
-export function repairBrokenJson(json: string): string | null {
-  // 移除尾部逗号（在 } 或 ] 之前）
-  let repaired = json.replace(/,\s*([}\]])/g, "$1");
-  // 单引号替换为双引号（仅在 key/value 位置）
-  // 保守策略：只修复明显的情况
-  if (!repaired.includes('"')) {
-    repaired = repaired.replace(/'/g, '"');
-  }
-  return repaired;
 }
 
 function repairAnalysis(
