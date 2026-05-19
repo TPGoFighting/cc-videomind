@@ -8,7 +8,7 @@ import {
   type VideoAnalysis
 } from "@/lib/types";
 import { buildAnalysisPrompt, buildChatPrompt } from "@/lib/ai/prompts";
-import { fetchJsonWithTimeout } from "@/lib/utils/http";
+import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
 
 export interface AiProvider {
   generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }): Promise<VideoAnalysis>;
@@ -55,27 +55,45 @@ export class OpenAiCompatibleProvider implements AiProvider {
   }
 
   private async chatJson(prompt: string) {
-    const response = OpenAiChatResponseSchema.parse(
-      await fetchJsonWithTimeout<unknown>(`${this.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-        method: "POST",
-        timeoutMs: 30000,
-        service: "AI provider",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify({
-          model: this.model,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: "Return only valid JSON. Ground every output in the provided transcript." },
-            { role: "user", content: prompt }
-          ]
-        })
-      })
-    );
+    const body = {
+      model: this.model,
+      messages: [
+        { role: "system" as const, content: "Return only valid JSON. Ground every output in the provided transcript." },
+        { role: "user" as const, content: prompt }
+      ]
+    };
 
-    return response.choices[0]?.message.content ?? "{}";
+    // 先尝试带 response_format（支持结构化输出的模型）
+    const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
+    if (withFormat) return withFormat;
+
+    // 400 等错误时回退，不带 response_format（parseJsonContent 会兜底提取 JSON）
+    const withoutFormat = await this.tryChat(body);
+    if (withoutFormat) return withoutFormat;
+
+    return "{}";
+  }
+
+  private async tryChat(body: Record<string, unknown>): Promise<string | null> {
+    try {
+      const response = OpenAiChatResponseSchema.parse(
+        await fetchJsonWithTimeout<unknown>(`${this.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+          method: "POST",
+          timeoutMs: 30000,
+          service: "AI provider",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`
+          },
+          body: JSON.stringify(body)
+        })
+      );
+      return response.choices[0]?.message.content ?? null;
+    } catch (error) {
+      // 400 错误 → 可能是 response_format 不被支持，回退重试
+      if (error instanceof ExternalServiceError && error.status === 400) return null;
+      throw error;
+    }
   }
 }
 
