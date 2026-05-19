@@ -7,7 +7,6 @@
  * 用法：node scripts/run-migration.mjs <sql文件路径>
  */
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
 import { config } from "dotenv";
 
 config({ path: ".env.production.local" });

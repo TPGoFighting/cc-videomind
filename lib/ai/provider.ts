@@ -66,11 +66,11 @@ const GeminiResponseSchema = z.object({
 
 export class OpenAiCompatibleProvider implements AiProvider {
   constructor(
-    private readonly apiKey = requiredEnv("AI_API_KEY"),
+    private readonly apiKey = requiredEnv("AI_API_KEY").trim(),
     private readonly baseUrl = normalizeOpenAiCompatibleBaseUrl(
-      process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1"
+      (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim()
     ),
-    private readonly model = process.env.AI_MODEL ?? "gpt-4o-mini"
+    private readonly model = (process.env.AI_MODEL ?? "gpt-4o-mini").trim()
   ) {}
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
@@ -151,7 +151,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const withoutFormat = await this.tryChat(body);
     if (withoutFormat) return withoutFormat;
 
-    return "{}";
+    throw new Error("AI provider returned no response — check model name, API key, and network connectivity.");
   }
 
   private async tryChat(body: Record<string, unknown>): Promise<string | null> {
@@ -170,8 +170,11 @@ export class OpenAiCompatibleProvider implements AiProvider {
       );
       return response.choices[0]?.message.content ?? null;
     } catch (error) {
-      // 400 错误 → 可能是 response_format 不被支持，回退重试
-      if (error instanceof ExternalServiceError && error.status === 400) return null;
+      // 400 可能是 response_format 不被支持，也可能是模型名/API key 无效
+      if (error instanceof ExternalServiceError && error.status === 400) {
+        console.warn("AI provider returned 400:", error.message);
+        return null;
+      }
       throw error;
     }
   }
@@ -179,8 +182,8 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
 export class GeminiProvider implements AiProvider {
   constructor(
-    private readonly apiKey = requiredEnv("GEMINI_API_KEY"),
-    private readonly model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash"
+    private readonly apiKey = requiredEnv("GEMINI_API_KEY").trim(),
+    private readonly model = (process.env.GEMINI_MODEL ?? "gemini-1.5-flash").trim()
   ) {}
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
@@ -527,11 +530,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function requiredEnv(name: string) {
-  const value = process.env[name];
-  if (!value) {
+  const raw = process.env[name];
+  if (!raw) {
     throw new Error(`${name} is not configured.`);
   }
-  return value;
+  return raw.trim();
 }
 
 function normalizeOpenAiCompatibleBaseUrl(value: string) {
