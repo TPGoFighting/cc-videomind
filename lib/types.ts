@@ -49,3 +49,48 @@ export type ChatAnswer = z.infer<typeof ChatAnswerSchema>;
 export type JsonResponse<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: string; message: string; details?: unknown } };
+
+// ─── 要点时刻 (LongCut 风格) ─────────────────────────────────────────────────
+
+export const KeyMomentSchema = z.object({
+  title: z.string().min(1).max(120),
+  timestamp: z.string().regex(
+    /^(?:\d{1,2}:)?\d{1,2}:\d{2}-(?:\d{1,2}:)?\d{1,2}:\d{2}$/,
+    "timestamp 格式必须为 [MM:SS-MM:SS] 或 [HH:MM:SS-HH:MM:SS]"
+  ),
+  quote: z.string().min(1).max(500),
+  reason: z.string().min(1).max(400)
+});
+
+export type KeyMoment = z.infer<typeof KeyMomentSchema>;
+
+// ─── 结构化摘要 Takeaway ──────────────────────────────────────────────────────
+
+export const SummaryTakeawaySchema = z.object({
+  label: z.string().min(1).max(120),
+  insight: z.string().min(1).max(600),
+  timestamps: z.array(
+    z.string().regex(/^\d{1,2}:\d{2}$/, "timestamp 格式必须为 M:SS 或 MM:SS")
+  ).min(1).max(2)
+});
+
+export type SummaryTakeaway = z.infer<typeof SummaryTakeawaySchema>;
+
+// ─── 生成模式 ─────────────────────────────────────────────────────────────────
+
+export const MomentsModeSchema = z.enum(["smart", "fast"]);
+export type MomentsMode = z.infer<typeof MomentsModeSchema>;
+
+// ─── 请求 schema ──────────────────────────────────────────────────────────────
+
+export const GenerateMomentsRequestSchema = z.object({
+  videoId: z.string().min(6).max(20),
+  mode: MomentsModeSchema.default("smart"),
+  theme: z.string().max(200).optional(),
+  targetLanguage: z.enum(["zh", "en"]).default("zh")
+});
+
+export const GenerateSummaryRequestSchema = z.object({
+  videoId: z.string().min(6).max(20),
+  targetLanguage: z.enum(["zh", "en"]).default("zh")
+});

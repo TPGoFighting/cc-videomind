@@ -4,15 +4,43 @@ import {
   CitationSchema,
   VideoAnalysisSchema,
   type ChatAnswer,
+  type KeyMoment,
+  type MomentsMode,
+  type SummaryTakeaway,
   type TranscriptSegment,
   type VideoAnalysis
 } from "@/lib/types";
 import { buildAnalysisPrompt, buildChatPrompt } from "@/lib/ai/prompts";
+import {
+  buildKeyMomentsPrompt,
+  buildKeyMomentsChunkPrompt,
+  buildKeyMomentsReducePrompt,
+  buildStructuredSummaryPrompt
+} from "@/lib/ai/prompts-v2";
 import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
+import { chunkTranscript } from "@/lib/utils/chunk";
+import {
+  parseKeyMoments,
+  parseSummaryTakeaways,
+  validateAndDedupMoments,
+  validateSummaryTakeaways
+} from "@/lib/utils/moments-validator";
 
 export interface AiProvider {
   generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }): Promise<VideoAnalysis>;
   answerQuestion(input: { question: string; transcript: TranscriptSegment[] }): Promise<ChatAnswer>;
+  generateKeyMoments(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    mode: MomentsMode;
+    theme?: string;
+    targetLanguage?: "zh" | "en";
+  }): Promise<KeyMoment[]>;
+  generateStructuredSummary(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    targetLanguage?: "zh" | "en";
+  }): Promise<SummaryTakeaway[]>;
 }
 
 const OpenAiChatResponseSchema = z.object({
@@ -55,6 +83,54 @@ export class OpenAiCompatibleProvider implements AiProvider {
   async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
     const content = await this.chatJson(buildChatPrompt(input.question, input.transcript));
     return parseChatAnswer(content, input.transcript);
+  }
+
+  async generateKeyMoments(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    mode: MomentsMode;
+    theme?: string;
+    targetLanguage?: "zh" | "en";
+  }): Promise<KeyMoment[]> {
+    const lang = input.targetLanguage ?? "zh";
+
+    // Fast 模式：切片 → 多次 AI → 归并
+    if (input.mode === "fast") {
+      const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
+      const allCandidates: KeyMoment[] = [];
+
+      for (const chunk of chunks) {
+        const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
+        const content = await this.chatJson(prompt);
+        const candidates = parseKeyMoments(content).slice(0, 2);
+        allCandidates.push(...candidates);
+      }
+
+      if (allCandidates.length === 0) return [];
+
+      const reducePrompt = buildKeyMomentsReducePrompt(input.title, allCandidates, input.transcript, lang);
+      const reduceContent = await this.chatJson(reducePrompt);
+      const final = parseKeyMoments(reduceContent);
+      return validateAndDedupMoments(final, input.transcript).slice(0, 5);
+    }
+
+    // Smart 模式：全文单次分析
+    const prompt = buildKeyMomentsPrompt(input.title, input.transcript, lang, input.theme);
+    const content = await this.chatJson(prompt);
+    const moments = parseKeyMoments(content);
+    return validateAndDedupMoments(moments, input.transcript).slice(0, 5);
+  }
+
+  async generateStructuredSummary(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    targetLanguage?: "zh" | "en";
+  }): Promise<SummaryTakeaway[]> {
+    const lang = input.targetLanguage ?? "zh";
+    const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
+    const content = await this.chatJson(prompt);
+    const takeaways = parseSummaryTakeaways(content);
+    return validateSummaryTakeaways(takeaways, input.transcript);
   }
 
   private async chatJson(prompt: string) {
@@ -117,6 +193,52 @@ export class GeminiProvider implements AiProvider {
   async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
     const content = await this.generateJson(buildChatPrompt(input.question, input.transcript));
     return parseChatAnswer(content, input.transcript);
+  }
+
+  async generateKeyMoments(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    mode: MomentsMode;
+    theme?: string;
+    targetLanguage?: "zh" | "en";
+  }): Promise<KeyMoment[]> {
+    const lang = input.targetLanguage ?? "zh";
+
+    if (input.mode === "fast") {
+      const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
+      const allCandidates: KeyMoment[] = [];
+
+      for (const chunk of chunks) {
+        const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
+        const content = await this.generateJson(prompt);
+        const candidates = parseKeyMoments(content).slice(0, 2);
+        allCandidates.push(...candidates);
+      }
+
+      if (allCandidates.length === 0) return [];
+
+      const reducePrompt = buildKeyMomentsReducePrompt(input.title, allCandidates, input.transcript, lang);
+      const reduceContent = await this.generateJson(reducePrompt);
+      const final = parseKeyMoments(reduceContent);
+      return validateAndDedupMoments(final, input.transcript).slice(0, 5);
+    }
+
+    const prompt = buildKeyMomentsPrompt(input.title, input.transcript, lang, input.theme);
+    const content = await this.generateJson(prompt);
+    const moments = parseKeyMoments(content);
+    return validateAndDedupMoments(moments, input.transcript).slice(0, 5);
+  }
+
+  async generateStructuredSummary(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    targetLanguage?: "zh" | "en";
+  }): Promise<SummaryTakeaway[]> {
+    const lang = input.targetLanguage ?? "zh";
+    const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
+    const content = await this.generateJson(prompt);
+    const takeaways = parseSummaryTakeaways(content);
+    return validateSummaryTakeaways(takeaways, input.transcript);
   }
 
   private async generateJson(prompt: string) {
@@ -184,7 +306,7 @@ function parseJsonContent(content: string) {
   throw new Error("AI provider did not return valid JSON.");
 }
 
-function extractBalancedJson(text: string): string | null {
+export function extractBalancedJson(text: string): string | null {
   const start = text.indexOf("{");
   if (start === -1) return null;
 
@@ -225,7 +347,7 @@ function extractBalancedJson(text: string): string | null {
   return null;
 }
 
-function repairBrokenJson(json: string): string | null {
+export function repairBrokenJson(json: string): string | null {
   // 移除尾部逗号（在 } 或 ] 之前）
   let repaired = json.replace(/,\s*([}\]])/g, "$1");
   // 单引号替换为双引号（仅在 key/value 位置）
