@@ -209,9 +209,9 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
       {/* 主内容 */}
       <main className="mx-auto max-w-7xl px-5 py-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
           {/* 左侧：视频 + 摘要 + 转录 */}
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <VideoPlayer
               ref={playerRef}
               videoId={videoId}
@@ -234,7 +234,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
           </div>
 
           {/* 右侧：要点时刻 + 问答 + 笔记 */}
-          <aside className="space-y-6 lg:sticky lg:top-[4.5rem] lg:self-start">
+          <aside className="w-full space-y-6 lg:sticky lg:top-[4.5rem] lg:w-[20rem] lg:self-start xl:w-[26rem]">
             <HighlightsPanel
               moments={moments}
               loading={momentsLoading}

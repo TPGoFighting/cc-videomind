@@ -34,7 +34,7 @@ export default function HomePage() {
       </nav>
 
       {/* ── 主布局 ── */}
-      <main className="mx-auto max-w-6xl px-5 pt-32 pb-24">
+      <main className="mx-auto max-w-6xl px-4 pt-24 pb-16 sm:px-5 sm:pt-32 sm:pb-24">
         <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
           {/* ── 左侧：标题 + 输入 + 特性 ── */}
           <div className="flex flex-col justify-center space-y-10">
@@ -45,7 +45,7 @@ export default function HomePage() {
                 YouTube AI 学习工作区
               </div>
 
-              <h1 className="heading-compressed max-w-2xl text-[56px] font-bold leading-[1.08] sm:text-[64px]">
+              <h1 className="heading-compressed max-w-2xl text-[34px] font-bold leading-[1.12] sm:text-[48px] lg:text-[64px] lg:leading-[1.08]">
                 把任何公开的 YouTube 课程
                 <br />
                 <span className="text-[#0099ff]">变成你的学习笔记</span>

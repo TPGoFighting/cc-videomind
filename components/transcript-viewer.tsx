@@ -86,7 +86,7 @@ export function TranscriptViewer({
         ) : (
           <div
             ref={containerRef}
-            className="max-h-[32rem] space-y-3 overflow-auto pr-1"
+            className="max-h-[50vh] space-y-3 overflow-auto pr-1 lg:max-h-[32rem]"
           >
             {transcript.map((segment, i) => (
               <div
