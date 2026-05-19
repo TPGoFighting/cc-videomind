@@ -70,7 +70,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     private readonly baseUrl = normalizeOpenAiCompatibleBaseUrl(
       (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim()
     ),
-    private readonly model = (process.env.AI_MODEL ?? "gpt-4o-mini").trim()
+    private readonly model = (process.env.AI_MODEL ?? "deepseek-v4-flash").trim()
   ) {}
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
@@ -179,7 +179,18 @@ export class OpenAiCompatibleProvider implements AiProvider {
       ]
     };
 
-    // 先尝试带 response_format（支持结构化输出的模型）
+    // DeepSeek 不支持 response_format，跳过以节省一次重试往返
+    if (this.isDeepSeek) {
+      const content = await this.tryChat(body);
+      if (content) {
+        console.log("[AI:Chat] DeepSeek 直连成功, 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
+        return content;
+      }
+      console.error("[AI:Chat] 调用失败! model=%s, baseUrl=%s, promptLen=%d", this.model, this.baseUrl, prompt.length);
+      throw new Error("AI provider returned no response — check model name, API key, and network connectivity.");
+    }
+
+    // OpenAI 兼容模型：先尝试带 response_format（支持结构化输出）
     const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
     if (withFormat) {
       console.log("[AI:Chat] response_format 成功, 耗时 %dms, 响应长度 %d", Date.now() - t0, withFormat.length);
@@ -198,6 +209,10 @@ export class OpenAiCompatibleProvider implements AiProvider {
     throw new Error("AI provider returned no response — check model name, API key, and network connectivity.");
   }
 
+  private get isDeepSeek(): boolean {
+    return this.baseUrl.includes("deepseek");
+  }
+
   private async tryChat(body: Record<string, unknown>): Promise<string | null> {
     const t0 = Date.now();
     const model = body.model ?? this.model;
@@ -205,7 +220,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       const response = OpenAiChatResponseSchema.parse(
         await fetchJsonWithTimeout<unknown>(`${this.baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          timeoutMs: 30000,
+          timeoutMs: 60000,
           service: "AI provider",
           headers: {
             "Content-Type": "application/json",
@@ -298,7 +313,7 @@ export class GeminiProvider implements AiProvider {
     const response = GeminiResponseSchema.parse(
       await fetchJsonWithTimeout<unknown>(endpoint, {
         method: "POST",
-        timeoutMs: 30000,
+        timeoutMs: 60000,
         service: "Gemini",
         headers: {
           "Content-Type": "application/json",

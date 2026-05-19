@@ -235,15 +235,40 @@ function normalizeTakeaway(raw: Record<string, unknown>): SummaryTakeaway | null
   let timestamps: string[] = [];
   const rawTs = raw.timestamps;
   if (Array.isArray(rawTs)) {
-    timestamps = rawTs.filter((t): t is string => typeof t === "string" && /^\d{1,2}:\d{2}$/.test(t));
-  } else if (typeof raw.timestamp === "string") {
-    timestamps = [raw.timestamp].filter((t) => /^\d{1,2}:\d{2}$/.test(t));
+    timestamps = rawTs
+      .filter((t): t is string => typeof t === "string")
+      .map(normalizeTimestampString)
+      .filter((t): t is string => t !== null);
+  } else if (typeof raw.timestamp === "string" && raw.timestamp.trim()) {
+    const normalized = normalizeTimestampString(raw.timestamp);
+    if (normalized) timestamps = [normalized];
   }
 
   if (!label || !insight || timestamps.length === 0) return null;
 
   const parsed = SummaryTakeawaySchema.safeParse({ label, insight, timestamps: timestamps.slice(0, 2) });
   return parsed.success ? parsed.data : null;
+}
+
+/** 将各种时间戳格式统一为 "M:SS" */
+function normalizeTimestampString(ts: string): string | null {
+  const trimmed = ts.trim();
+  if (!trimmed) return null;
+
+  // 已经是 M:SS 或 MM:SS 格式
+  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return trimmed;
+
+  // HH:MM:SS 格式 → 转为秒数再转回 M:SS
+  if (/^\d{1,2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return secondsToTimestamp(parseTimestampToSeconds(trimmed));
+  }
+
+  // 纯数字（秒数）→ 转为 M:SS
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return secondsToTimestamp(Number(trimmed));
+  }
+
+  return null;
 }
 
 // ====== 去重与验证 ======

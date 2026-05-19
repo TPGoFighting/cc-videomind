@@ -1,3 +1,5 @@
+export const maxDuration = 120;
+
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { getCachedMoments, upsertMomentsCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
