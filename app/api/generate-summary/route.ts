@@ -7,7 +7,7 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
-import { GenerateSummaryRequestSchema } from "@/lib/types";
+import { GenerateSummaryRequestSchema, type GenerationDebug } from "@/lib/types";
 
 export async function POST(request: Request) {
   const tStart = Date.now();
@@ -50,11 +50,16 @@ export async function POST(request: Request) {
 
     // 3. AI 生成
     const tAiStart = Date.now();
+    const debug: GenerationDebug = {
+      model: "", promptLength: 0, rawResponseLength: 0,
+      rawResponsePreview: "", parseCount: 0, validateCount: 0, finalCount: 0
+    };
     const aiProvider = getAiProvider();
     const takeaways = await aiProvider.generateStructuredSummary({
       title,
       transcript,
-      targetLanguage: lang
+      targetLanguage: lang,
+      debug
     });
     const tAiEnd = Date.now();
 
@@ -74,7 +79,7 @@ export async function POST(request: Request) {
     } catch { /* 缓存写入失败不影响正常响应 */ }
 
     console.log("[API:Summary] ====== 请求完成, 总耗时 %dms ======", Date.now() - tStart);
-    return successResponse({ takeaways, cached: false });
+    return successResponse({ takeaways, cached: false, _debug: debug });
   } catch (err) {
     console.error("[API:Summary] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Summary] 总耗时(失败): %dms", Date.now() - tStart);

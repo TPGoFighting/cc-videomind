@@ -4,6 +4,7 @@ import {
   CitationSchema,
   VideoAnalysisSchema,
   type ChatAnswer,
+  type GenerationDebug,
   type KeyMoment,
   type MomentsMode,
   type SummaryTakeaway,
@@ -36,11 +37,13 @@ export interface AiProvider {
     mode: MomentsMode;
     theme?: string;
     targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
   }): Promise<KeyMoment[]>;
   generateStructuredSummary(input: {
     title: string;
     transcript: TranscriptSegment[];
     targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
   }): Promise<SummaryTakeaway[]>;
 }
 
@@ -92,6 +95,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     mode: MomentsMode;
     theme?: string;
     targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
   }): Promise<KeyMoment[]> {
     const lang = input.targetLanguage ?? "zh";
     const t0 = Date.now();
@@ -113,6 +117,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       console.log("[AI:Moments] 全部候选: %d 条", allCandidates.length);
       if (allCandidates.length === 0) {
         console.warn("[AI:Moments] 无候选, 提前返回");
+        if (input.debug) fillDebug(input.debug, { model: this.model, finalCount: 0 });
         return [];
       }
 
@@ -123,6 +128,17 @@ export class OpenAiCompatibleProvider implements AiProvider {
       console.log("[AI:Moments] Reduce 解析出 %d 条", final.length);
       const validated = validateAndDedupMoments(final, input.transcript).slice(0, 5);
       console.log("[AI:Moments] 校验去重后: %d 条, 耗时 %dms", validated.length, Date.now() - t0);
+      if (input.debug) {
+        fillDebug(input.debug, {
+          model: this.model,
+          promptLength: reducePrompt.length,
+          rawResponseLength: reduceContent.length,
+          rawResponsePreview: reduceContent.slice(0, 300),
+          parseCount: final.length,
+          validateCount: validated.length,
+          finalCount: validated.length
+        });
+      }
       return validated;
     }
 
@@ -141,6 +157,17 @@ export class OpenAiCompatibleProvider implements AiProvider {
     }
     const validated = validateAndDedupMoments(moments, input.transcript).slice(0, 5);
     console.log("[AI:Moments] validateAndDedupMoments: %d 条 → %d 条, 耗时 %dms", moments.length, validated.length, Date.now() - t0);
+    if (input.debug) {
+      fillDebug(input.debug, {
+        model: this.model,
+        promptLength: prompt.length,
+        rawResponseLength: content.length,
+        rawResponsePreview: content.slice(0, 300),
+        parseCount: moments.length,
+        validateCount: validated.length,
+        finalCount: validated.length
+      });
+    }
     return validated;
   }
 
@@ -148,6 +175,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
     targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
   }): Promise<SummaryTakeaway[]> {
     const lang = input.targetLanguage ?? "zh";
     const t0 = Date.now();
@@ -165,6 +193,17 @@ export class OpenAiCompatibleProvider implements AiProvider {
     }
     const validated = validateSummaryTakeaways(takeaways, input.transcript);
     console.log("[AI:Summary] validateSummaryTakeaways: %d 条 → %d 条, 耗时 %dms", takeaways.length, validated.length, Date.now() - t0);
+    if (input.debug) {
+      fillDebug(input.debug, {
+        model: this.model,
+        promptLength: prompt.length,
+        rawResponseLength: content.length,
+        rawResponsePreview: content.slice(0, 300),
+        parseCount: takeaways.length,
+        validateCount: validated.length,
+        finalCount: validated.length
+      });
+    }
     return validated;
   }
 
@@ -268,6 +307,7 @@ export class GeminiProvider implements AiProvider {
     mode: MomentsMode;
     theme?: string;
     targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
   }): Promise<KeyMoment[]> {
     const lang = input.targetLanguage ?? "zh";
 
@@ -282,30 +322,70 @@ export class GeminiProvider implements AiProvider {
         allCandidates.push(...candidates);
       }
 
-      if (allCandidates.length === 0) return [];
+      if (allCandidates.length === 0) {
+        if (input.debug) fillDebug(input.debug, { model: this.model, finalCount: 0 });
+        return [];
+      }
 
       const reducePrompt = buildKeyMomentsReducePrompt(input.title, allCandidates, input.transcript, lang);
       const reduceContent = await this.generateJson(reducePrompt);
       const final = parseKeyMoments(reduceContent);
-      return validateAndDedupMoments(final, input.transcript).slice(0, 5);
+      const validated = validateAndDedupMoments(final, input.transcript).slice(0, 5);
+      if (input.debug) {
+        fillDebug(input.debug, {
+          model: this.model,
+          promptLength: reducePrompt.length,
+          rawResponseLength: reduceContent.length,
+          rawResponsePreview: reduceContent.slice(0, 300),
+          parseCount: final.length,
+          validateCount: validated.length,
+          finalCount: validated.length
+        });
+      }
+      return validated;
     }
 
     const prompt = buildKeyMomentsPrompt(input.title, input.transcript, lang, input.theme);
     const content = await this.generateJson(prompt);
     const moments = parseKeyMoments(content);
-    return validateAndDedupMoments(moments, input.transcript).slice(0, 5);
+    const validated = validateAndDedupMoments(moments, input.transcript).slice(0, 5);
+    if (input.debug) {
+      fillDebug(input.debug, {
+        model: this.model,
+        promptLength: prompt.length,
+        rawResponseLength: content.length,
+        rawResponsePreview: content.slice(0, 300),
+        parseCount: moments.length,
+        validateCount: validated.length,
+        finalCount: validated.length
+      });
+    }
+    return validated;
   }
 
   async generateStructuredSummary(input: {
     title: string;
     transcript: TranscriptSegment[];
     targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
   }): Promise<SummaryTakeaway[]> {
     const lang = input.targetLanguage ?? "zh";
     const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
     const content = await this.generateJson(prompt);
     const takeaways = parseSummaryTakeaways(content);
-    return validateSummaryTakeaways(takeaways, input.transcript);
+    const validated = validateSummaryTakeaways(takeaways, input.transcript);
+    if (input.debug) {
+      fillDebug(input.debug, {
+        model: this.model,
+        promptLength: prompt.length,
+        rawResponseLength: content.length,
+        rawResponsePreview: content.slice(0, 300),
+        parseCount: takeaways.length,
+        validateCount: validated.length,
+        finalCount: validated.length
+      });
+    }
+    return validated;
   }
 
   private async generateJson(prompt: string) {
@@ -340,6 +420,16 @@ export function getAiProvider(): AiProvider {
   }
 
   throw new Error(`AI_PROVIDER "${provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", or "gemini".`);
+}
+
+function fillDebug(debug: GenerationDebug, data: Omit<GenerationDebug, "model" | "promptLength" | "rawResponseLength" | "rawResponsePreview" | "parseCount" | "validateCount" | "finalCount"> & Partial<GenerationDebug>) {
+  debug.model = data.model ?? "unknown";
+  debug.promptLength = data.promptLength ?? 0;
+  debug.rawResponseLength = data.rawResponseLength ?? 0;
+  debug.rawResponsePreview = data.rawResponsePreview ?? "";
+  debug.parseCount = data.parseCount ?? 0;
+  debug.validateCount = data.validateCount ?? 0;
+  debug.finalCount = data.finalCount ?? 0;
 }
 
 function parseJsonContent(content: string) {

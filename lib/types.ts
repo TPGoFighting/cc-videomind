@@ -94,3 +94,15 @@ export const GenerateSummaryRequestSchema = z.object({
   videoId: z.string().min(6).max(20),
   targetLanguage: z.enum(["zh", "en"]).default("zh")
 });
+
+// ─── 调试信息（附加在 API 响应中，方便前端诊断） ──────────────────────────────
+
+export interface GenerationDebug {
+  model: string;
+  promptLength: number;
+  rawResponseLength: number;
+  rawResponsePreview: string;
+  parseCount: number;
+  validateCount: number;
+  finalCount: number;
+}
