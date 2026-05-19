@@ -63,80 +63,44 @@ const CLIENTS: ClientIdentity[] = [
 const FALLBACK_WEB_API_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
 
 export class YouTubeTranscriptProvider implements TranscriptProvider {
-  private pageDataCache: PageData | null = null;
-
   async getTranscript(videoId: string) {
-    // 第1步：抓取页面获取 visitorData（只抓一次，所有客户端共享）
-    // visitorData 是关键 — 它让 InnerTube 请求看起来是合法页面加载的后续请求
-    let pageData: PageData | null = null;
-    try {
-      pageData = await this.scrapeWatchPage(videoId);
-    } catch (err) {
-      // 页面抓取失败不致命，Android/iOS 有硬编码 key 仍可尝试
-      if (err instanceof TranscriptError && !shouldRetry(err)) {
-        throw err; // 终端错误（视频不可用/年龄限制）直接抛出
-      }
-    }
+    // 第1步：抓取页面HTML — YouTube 不会封页面加载（否则真实用户也看不了）
+    const html = await this.fetchPageHtml(videoId);
 
-    // 第2步：逐层尝试 Android → Web → iOS
-    let lastError: Error | null = null;
-    for (const client of CLIENTS) {
-      // Web 客户端必须有抓取到的 API key
-      if (client.clientName === "WEB" && !pageData?.apiKey) {
-        continue;
-      }
-
-      try {
-        const result = await this.tryWithClient(videoId, client, pageData);
-        if (result.length > 0) {
-          return result;
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (!shouldRetry(error)) {
-          throw error;
+    // 第2步：从页面嵌入的 ytInitialPlayerResponse 提取字幕（与 InnerTube 返回结构相同）
+    // 这是核心策略 — 数据直接在 HTML 里，不需要额外调 API，绑过 IP 检测
+    const embeddedTracks = this.extractCaptionTracksFromHtml(html);
+    if (embeddedTracks.length > 0) {
+      const track = this.selectTrack(embeddedTracks);
+      if (track) {
+        try {
+          const xml = await this.downloadCaptionXml(track.baseUrl);
+          const segments = this.parseCaptionXml(xml);
+          if (segments.length > 0) {
+            return segments;
+          }
+        } catch {
+          // 下载/解析失败，尝试下一个轨道
+          for (const fallbackTrack of embeddedTracks.slice(1)) {
+            try {
+              const xml = await this.downloadCaptionXml(fallbackTrack.baseUrl);
+              const segments = this.parseCaptionXml(xml);
+              if (segments.length > 0) return segments;
+            } catch {
+              // 继续尝试
+            }
+          }
         }
       }
     }
 
-    throw lastError ?? new Error("所有 YouTube 客户端提取方式均失败，此视频可能没有可用的字幕。");
+    // 第3步：页面内嵌数据没有字幕，尝试 InnerTube API 回退
+    const pageData = this.extractPageCredentials(html);
+    return await this.tryInnerTubeClients(videoId, pageData);
   }
 
-  private async tryWithClient(
-    videoId: string,
-    client: ClientIdentity,
-    pageData: PageData | null
-  ) {
-    // 优先使用客户端硬编码 key，回退到页面抓取的 key
-    const apiKey = client.apiKey || pageData?.apiKey;
-    if (!apiKey) {
-      throw new TranscriptError("INNERTUBE_REJECTED", `${client.name} 客户端缺少 API key`);
-    }
-
-    const tracks = await this.fetchCaptionTracks(videoId, apiKey, client, pageData?.visitorData);
-    const track = this.selectTrack(tracks);
-
-    if (!track) {
-      throw new TranscriptError("NO_TRANSCRIPT", "此视频没有字幕轨道。");
-    }
-
-    const xml = await this.downloadCaptionXml(track.baseUrl);
-    const segments = this.parseCaptionXml(xml);
-
-    if (segments.length === 0) {
-      throw new TranscriptError("NO_TRANSCRIPT", "字幕内容为空。");
-    }
-
-    return segments;
-  }
-
-  // 抓取页面获取 API key、visitorData 和 client version
-  private async scrapeWatchPage(videoId: string): Promise<PageData> {
-    // 如果已缓存，直接返回
-    if (this.pageDataCache) {
-      return this.pageDataCache;
-    }
-
+  // 抓取 YouTube 页面 HTML，处理 EU consent
+  private async fetchPageHtml(videoId: string): Promise<string> {
     const url = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
     let response = await fetchWithTimeout(url, {
       headers: {
@@ -152,9 +116,7 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
 
     // 检测 EU 同意页面并绕过
     if (html.includes('action="https://consent.youtube.com/s"')) {
-      const consentMatch = html.match(
-        /name="v" value="([^"]*)"/
-      );
+      const consentMatch = html.match(/name="v" value="([^"]*)"/);
       if (consentMatch?.[1]) {
         response = await fetchWithTimeout(url, {
           headers: {
@@ -170,36 +132,161 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
       }
     }
 
-    // 检查视频可用性（页面级别，还没调 InnerTube）
-    if (html.includes('"playabilityStatus":{"status":"ERROR"')) {
-      if (html.includes("Sign in to confirm your age")) {
-        throw new TranscriptError("AGE_RESTRICTED", "此视频需要年龄验证。");
-      }
-      // 不在此处抛 VIDEO_UNAVAILABLE，因为可能是数据中心 IP 导致的，
-      // InnerTube API 可能仍能返回字幕数据
+    // 检查年龄限制（终端错误）
+    if (html.includes("Sign in to confirm your age")) {
+      throw new TranscriptError("AGE_RESTRICTED", "此视频需要年龄验证。");
     }
 
-    // 提取三个关键字段
+    return html;
+  }
+
+  // 从页面 HTML 提取 ytInitialPlayerResponse 中的字幕轨道
+  private extractCaptionTracksFromHtml(html: string): CaptionTrack[] {
+    try {
+      const playerResponse = this.extractYtInitialPlayerResponse(html);
+      if (!playerResponse) return [];
+
+      const tracks = get(
+        playerResponse,
+        "captions",
+        "playerCaptionsTracklistRenderer",
+        "captionTracks"
+      );
+
+      if (!Array.isArray(tracks) || tracks.length === 0) return [];
+
+      return tracks.map((track: unknown) => ({
+        baseUrl: String(get(track, "baseUrl") ?? ""),
+        languageCode: String(get(track, "languageCode") ?? ""),
+        name: String(
+          get(track, "name", "simpleText") ??
+            get(track, "name", "runs", 0, "text") ??
+            ""
+        ),
+        kind: get(track, "kind") === "asr" ? ("asr" as const) : undefined
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  // 从页面 HTML 提取 ytInitialPlayerResponse JSON 对象
+  // YouTube 将其嵌入为 JavaScript 变量，格式：var ytInitialPlayerResponse = {...};
+  private extractYtInitialPlayerResponse(html: string): unknown {
+    // 查找变量声明位置
+    const patterns = [
+      /var\s+ytInitialPlayerResponse\s*=\s*/,
+      /ytInitialPlayerResponse\s*=\s*/,
+      /window\["ytInitialPlayerResponse"\]\s*=\s*/
+    ];
+
+    let startIndex = -1;
+    for (const pattern of patterns) {
+      const match = pattern.exec(html);
+      if (match) {
+        startIndex = match.index + match[0].length;
+        break;
+      }
+    }
+
+    if (startIndex === -1) return null;
+
+    // 大括号计数法提取完整 JSON（处理嵌套和多行）
+    const slice = html.slice(startIndex);
+    let braceCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    let jsonEnd = -1;
+
+    for (let i = 0; i < slice.length; i++) {
+      const char = slice[i];
+
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escapeNext = true;
+        continue;
+      }
+
+      if (char === '"' && !escapeNext) {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) continue;
+
+      if (char === "{") {
+        braceCount++;
+      } else if (char === "}") {
+        braceCount--;
+        if (braceCount === 0) {
+          jsonEnd = i + 1;
+          break;
+        }
+      }
+    }
+
+    if (jsonEnd === -1) return null;
+
+    try {
+      return JSON.parse(slice.slice(0, jsonEnd)) as unknown;
+    } catch {
+      return null;
+    }
+  }
+
+  // 从页面 HTML 提取 InnerTube 凭证
+  private extractPageCredentials(html: string): PageData {
     const keyMatch = html.match(/"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"/);
     const visitorMatch = html.match(/"VISITOR_DATA"\s*:\s*"([^"]+)"/);
     const versionMatch = html.match(/"INNERTUBE_CLIENT_VERSION"\s*:\s*"([^"]+)"/);
 
-    const pageData: PageData = {
+    return {
       apiKey: keyMatch?.[1] ?? FALLBACK_WEB_API_KEY,
       visitorData: visitorMatch?.[1] ?? "",
       clientVersion: versionMatch?.[1] ?? "2.20250326.00.00"
     };
-
-    this.pageDataCache = pageData;
-    return pageData;
   }
 
-  // 调用 InnerTube Player API 获取字幕轨道列表
-  private async fetchCaptionTracks(
+  // InnerTube API 回退：当页面内嵌数据没有字幕时尝试
+  private async tryInnerTubeClients(
+    videoId: string,
+    pageData: PageData
+  ) {
+    let lastError: Error | null = null;
+
+    for (const client of CLIENTS) {
+      if (client.clientName === "WEB" && !pageData.apiKey) continue;
+
+      try {
+        const apiKey = client.apiKey || pageData.apiKey;
+        if (!apiKey) continue;
+
+        const tracks = await this.fetchInnerTubeTracks(videoId, apiKey, client, pageData.visitorData);
+        const track = this.selectTrack(tracks);
+        if (!track) continue;
+
+        const xml = await this.downloadCaptionXml(track.baseUrl);
+        const segments = this.parseCaptionXml(xml);
+        if (segments.length > 0) return segments;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (!shouldRetry(error)) throw error;
+      }
+    }
+
+    throw lastError ?? new Error("所有 YouTube 提取方式均失败，此视频可能没有可用的字幕。");
+  }
+
+  // 调用 InnerTube Player API
+  private async fetchInnerTubeTracks(
     videoId: string,
     apiKey: string,
     client: ClientIdentity,
-    visitorData?: string
+    visitorData: string
   ) {
     const body: Record<string, unknown> = {
       videoId,
@@ -210,13 +297,11 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
           userAgent: client.userAgent,
           hl: "en",
           gl: "US",
-          // visitorData 是关键：让请求看起来是先加载了页面再调 API 的合法用户
           ...(visitorData ? { visitorData } : {})
         }
       }
     };
 
-    // Android/iOS 需要这些额外标志
     if (client.clientName !== "WEB") {
       body.contentCheckOk = true;
       body.racyCheckOk = true;
@@ -239,7 +324,6 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
 
     const data = await response.json();
 
-    // 先提取字幕 — 即使视频受限，字幕数据通常仍在响应中
     const tracks = get(
       data,
       "captions",
@@ -248,30 +332,26 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
     );
 
     if (Array.isArray(tracks) && tracks.length > 0) {
-      return tracks.map((track) => ({
+      return tracks.map((track: unknown) => ({
         baseUrl: String(get(track, "baseUrl") ?? ""),
         languageCode: String(get(track, "languageCode") ?? ""),
-        name:
-          String(get(track, "name", "simpleText") ?? get(track, "name", "runs", 0, "text") ?? ""),
+        name: String(
+          get(track, "name", "simpleText") ??
+            get(track, "name", "runs", 0, "text") ??
+            ""
+        ),
         kind: get(track, "kind") === "asr" ? ("asr" as const) : undefined
       }));
     }
 
-    // 没有字幕时才检查错误原因
+    // 没有字幕时检查错误
     if (isRecord(data)) {
       if (data.error || data.errorMessage) {
-        throw new TranscriptError(
-          "INNERTUBE_REJECTED",
-          "YouTube API 拒绝请求，正在尝试其他方式。"
-        );
+        throw new TranscriptError("INNERTUBE_REJECTED", "YouTube API 拒绝请求。");
       }
-
       const status = get(data, "playabilityStatus", "status");
       if (status === "ERROR" || status === "LOGIN_REQUIRED") {
-        throw new TranscriptError(
-          "VIDEO_UNAVAILABLE",
-          "视频播放受限且无字幕数据。"
-        );
+        throw new TranscriptError("VIDEO_UNAVAILABLE", "视频播放受限且无字幕数据。");
       }
     }
 
@@ -282,32 +362,23 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
   private selectTrack(tracks: CaptionTrack[]) {
     if (tracks.length === 0) return null;
 
-    const isEnglish = (t: CaptionTrack) =>
-      t.languageCode?.startsWith("en");
+    const isEnglish = (t: CaptionTrack) => t.languageCode?.startsWith("en");
 
-    // 1. 手动英文字幕
-    const manualEnglish = tracks.find(
-      (t) => t.kind !== "asr" && isEnglish(t)
-    );
+    const manualEnglish = tracks.find((t) => t.kind !== "asr" && isEnglish(t));
     if (manualEnglish) return manualEnglish;
 
-    // 2. 自动生成英文字幕
     const autoEnglish = tracks.find((t) => isEnglish(t));
     if (autoEnglish) return autoEnglish;
 
-    // 3. 任意手动字幕
     const manualAny = tracks.find((t) => t.kind !== "asr");
     if (manualAny) return manualAny;
 
-    // 4. 第一个可用
     return tracks[0];
   }
 
   // 下载字幕 XML
   private async downloadCaptionXml(baseUrl: string) {
-    const url = baseUrl.includes("?")
-      ? `${baseUrl}&fmt=3`
-      : `${baseUrl}?fmt=3`;
+    const url = baseUrl.includes("?") ? `${baseUrl}&fmt=3` : `${baseUrl}?fmt=3`;
 
     const response = await fetchWithTimeout(url, {
       timeoutMs: 10000,
@@ -321,16 +392,13 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
   private parseCaptionXml(xml: string) {
     const segments: TranscriptSegment[] = [];
 
-    // 格式1：新格式 <p t="毫秒" d="毫秒">文本</p>
-    const newFormat = xml.matchAll(
+    // 格式1：<p t="毫秒" d="毫秒">文本</p>
+    for (const match of xml.matchAll(
       /<p\s+t="([^"]*)"(?:\s+d="([^"]*)")?[^>]*>([\s\S]*?)<\/p>/g
-    );
-
-    for (const match of newFormat) {
+    )) {
       const startTime = Number(match[1]) / 1000;
       const duration = Number(match[2]) / 1000;
       const text = cleanCaptionText(match[3]);
-
       if (Number.isFinite(startTime) && Number.isFinite(duration) && text) {
         segments.push(
           TranscriptSegmentSchema.parse({ startTime, endTime: startTime + duration, text })
@@ -340,16 +408,13 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
 
     if (segments.length > 0) return segments;
 
-    // 格式2：旧格式 <text start="秒" dur="秒">文本</text>
-    const oldFormat = xml.matchAll(
+    // 格式2：<text start="秒" dur="秒">文本</text>
+    for (const match of xml.matchAll(
       /<text\s+start="([^"]*)"(?:\s+dur="([^"]*)")?[^>]*>([\s\S]*?)<\/text>/g
-    );
-
-    for (const match of oldFormat) {
+    )) {
       const startTime = Number(match[1]);
       const duration = Number(match[2]);
       const text = cleanCaptionText(match[3]);
-
       if (Number.isFinite(startTime) && Number.isFinite(duration) && text) {
         segments.push(
           TranscriptSegmentSchema.parse({ startTime, endTime: startTime + duration, text })
