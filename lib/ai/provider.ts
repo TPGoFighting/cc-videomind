@@ -46,7 +46,10 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
     const content = await this.chatJson(buildAnalysisPrompt(input.title, input.transcript));
-    return VideoAnalysisSchema.parse(parseJsonContent(content));
+    const value = parseJsonContent(content);
+    const direct = VideoAnalysisSchema.safeParse(value);
+    if (direct.success) return direct.data;
+    return repairAnalysis(value, input.transcript, direct.error);
   }
 
   async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
@@ -105,7 +108,10 @@ export class GeminiProvider implements AiProvider {
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
     const content = await this.generateJson(buildAnalysisPrompt(input.title, input.transcript));
-    return VideoAnalysisSchema.parse(parseJsonContent(content));
+    const value = parseJsonContent(content);
+    const direct = VideoAnalysisSchema.safeParse(value);
+    if (direct.success) return direct.data;
+    return repairAnalysis(value, input.transcript, direct.error);
   }
 
   async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
@@ -148,15 +154,170 @@ export function getAiProvider(): AiProvider {
 }
 
 function parseJsonContent(content: string) {
+  // 先尝试直接解析
   try {
     return JSON.parse(content) as unknown;
   } catch {
-    const match = content.match(/\{[\s\S]*\}/);
-    if (!match) {
-      throw new Error("AI provider did not return JSON.");
-    }
-    return JSON.parse(match[0]) as unknown;
+    // 继续
   }
+
+  // 括号计数法提取 —— 比贪心正则更可靠，正确处理嵌套和字符串
+  const extracted = extractBalancedJson(content);
+  if (extracted) {
+    try {
+      return JSON.parse(extracted) as unknown;
+    } catch {
+      // 继续尝试修复
+    }
+
+    // JSON 解析失败时尝试修复常见问题：尾部逗号、单引号等
+    const repaired = repairBrokenJson(extracted);
+    if (repaired) {
+      try {
+        return JSON.parse(repaired) as unknown;
+      } catch {
+        // 最终失败
+      }
+    }
+  }
+
+  throw new Error("AI provider did not return valid JSON.");
+}
+
+function extractBalancedJson(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (char === "\\" && inString) {
+      escape = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === "{") {
+      depth++;
+    } else if (char === "}") {
+      depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function repairBrokenJson(json: string): string | null {
+  // 移除尾部逗号（在 } 或 ] 之前）
+  let repaired = json.replace(/,\s*([}\]])/g, "$1");
+  // 单引号替换为双引号（仅在 key/value 位置）
+  // 保守策略：只修复明显的情况
+  if (!repaired.includes('"')) {
+    repaired = repaired.replace(/'/g, '"');
+  }
+  return repaired;
+}
+
+function repairAnalysis(
+  value: unknown,
+  transcript: TranscriptSegment[],
+  zodError: z.ZodError
+): VideoAnalysis {
+  if (!isRecord(value)) throw zodError;
+
+  const summary = getString(value, ["summary", "description", "overview"]) ?? "";
+  const takeaways = getStringArray(value, ["takeaways", "keyPoints", "key_points", "points"]) ?? [];
+  const suggestedQuestions = getStringArray(value, ["suggestedQuestions", "questions", "suggested_questions"]) ?? [];
+  const highlights = getHighlights(value);
+
+  const repaired = VideoAnalysisSchema.safeParse({
+    summary: summary || `关于 "${transcript.slice(0, 3).map((s) => s.text).join(" ")}" 的视频分析`,
+    takeaways: takeaways.length >= 3 ? takeaways : generateDefaultTakeaways(transcript),
+    suggestedQuestions: suggestedQuestions.length >= 3 ? suggestedQuestions : generateDefaultQuestions(transcript),
+    highlights: highlights.length >= 5 ? highlights : generateDefaultHighlights(transcript)
+  });
+
+  if (repaired.success) return repaired.data;
+  throw zodError;
+}
+
+function getStringArray(record: Record<string, unknown>, keys: string[]): string[] | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      const strings = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+      if (strings.length > 0) return strings;
+    }
+  }
+  return null;
+}
+
+function getHighlights(value: Record<string, unknown>): Array<Record<string, unknown>> {
+  const raw = value.highlights ?? value.keyMoments ?? value.key_moments ?? [];
+  if (!Array.isArray(raw)) return [];
+
+  return raw.filter(isRecord).map((h) => ({
+    startTime: getNumber(h, ["startTime", "start", "start_time", "startSeconds"]),
+    endTime: getNumber(h, ["endTime", "end", "end_time", "endSeconds"]),
+    title: getString(h, ["title", "heading", "name"]) ?? "",
+    quote: getString(h, ["quote", "text", "excerpt", "evidence"]) ?? "",
+    reason: getString(h, ["reason", "explanation", "description", "note"]) ?? ""
+  }));
+}
+
+function generateDefaultTakeaways(transcript: TranscriptSegment[]): string[] {
+  if (transcript.length === 0) return ["无法生成要点：字幕为空"];
+  const mid = Math.floor(transcript.length / 2);
+  return [
+    transcript.slice(0, 10).map((s) => s.text).join(" ").slice(0, 200),
+    transcript.slice(mid, mid + 10).map((s) => s.text).join(" ").slice(0, 200),
+    transcript.slice(-10).map((s) => s.text).join(" ").slice(0, 200)
+  ];
+}
+
+function generateDefaultQuestions(transcript: TranscriptSegment[]): string[] {
+  if (transcript.length === 0) return ["无法生成问题：字幕为空"];
+  return [
+    "视频的主要内容是什么？",
+    "有哪些关键观点或发现？",
+    "作者得出了什么结论？"
+  ];
+}
+
+function generateDefaultHighlights(transcript: TranscriptSegment[]): Array<Record<string, unknown>> {
+  if (transcript.length < 5) return [];
+  const step = Math.max(1, Math.floor(transcript.length / 6));
+  const highlights: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < 6; i++) {
+    const idx = Math.min(i * step, transcript.length - 1);
+    const seg = transcript[idx];
+    highlights.push({
+      startTime: seg.startTime,
+      endTime: Math.min(seg.endTime, seg.startTime + 30),
+      title: `第 ${i + 1} 段`,
+      quote: seg.text.slice(0, 220),
+      reason: "从字幕中自动提取"
+    });
+  }
+  return highlights;
 }
 
 function parseChatAnswer(content: string, transcript: TranscriptSegment[]) {
