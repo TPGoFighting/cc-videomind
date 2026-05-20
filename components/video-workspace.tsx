@@ -3,12 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { Navbar } from "@/components/navbar";
-import { ChatPanel } from "@/components/chat-panel";
 import { HighlightsPanel } from "@/components/highlights-panel";
-import { NotesPanel } from "@/components/notes-panel";
+import { MobileVideoTabs } from "@/components/mobile-video-tabs";
 import { SidebarTabs } from "@/components/sidebar-tabs";
 import { SummaryPanel } from "@/components/summary-panel";
-import { TranscriptViewer } from "@/components/transcript-viewer";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
@@ -51,10 +49,8 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
   const playerRef = useRef<VideoPlayerHandle>(null);
 
-  // 各面板独立显示模式
+  // 转录文本显示模式
   const transcriptMode = useDisplayMode("en");
-  const highlightsMode = useDisplayMode("en");
-  const summaryMode = useDisplayMode("en");
 
   // 词义定义
   const wordDefinitions = useWordDefinitions(transcript);
@@ -63,11 +59,11 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     playerRef.current?.seekTo(seconds);
   }, []);
 
-  // 每秒轮询播放器当前时间
+  // 每 100ms 轮询播放器当前时间，确保转录文本跟随精准对齐
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(playerRef.current?.getCurrentTime() ?? 0);
-    }, 1000);
+    }, 100);
     return () => clearInterval(interval);
   }, []);
 
@@ -86,10 +82,8 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
+    async function load(): Promise<boolean> {
       setLoading(true);
-      setMomentsLoading(true);
-      setSummaryLoading(true);
       setError(null);
 
       try {
@@ -100,31 +94,32 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         });
         const payload = (await response.json()) as JsonResponse<AnalysisPayload>;
 
-        if (cancelled) return;
+        if (cancelled) return false;
 
         if (!payload.ok) {
           setError(payload.error.message);
           setLoading(false);
-          setMomentsLoading(false);
-          setSummaryLoading(false);
-          return;
+          return false;
         }
 
         setMetadata(payload.data.metadata);
         setTranscript(payload.data.transcript);
         setAnalysis(payload.data.analysis);
         setLoading(false);
+        return true;
       } catch {
         if (!cancelled) {
           setError("无法解析此视频，请确认链接有效后重试。");
           setLoading(false);
-          setMomentsLoading(false);
-          setSummaryLoading(false);
         }
+        return false;
       }
     }
 
     async function loadMomentsAndSummary() {
+      setMomentsLoading(true);
+      setSummaryLoading(true);
+
       const [momentsRes, summaryRes] = await Promise.allSettled([
         fetch("/api/generate-moments", {
           method: "POST",
@@ -187,14 +182,24 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       setSummaryLoading(false);
     }
 
-    void load();
-    void loadMomentsAndSummary();
+    // 先加载主分析（含字幕缓存写入），成功后再加载要点/摘要
+    async function loadAll() {
+      const ok = await load();
+      if (cancelled || !ok) {
+        setMomentsLoading(false);
+        setSummaryLoading(false);
+        return;
+      }
+      await loadMomentsAndSummary();
+    }
+
+    void loadAll();
     return () => {
       cancelled = true;
     };
   }, [videoId]);
 
-  // 切换到中英/中文模式时，懒加载翻译
+  // 切换到中英/中文模式时，懒加载翻译（SSE 流式，逐句返回）
   const ensureTranslation = useCallback(async (mode: string) => {
     if (mode === "en") return;
     // 检查是否已有翻译
@@ -208,13 +213,60 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ videoId }),
       });
-      const payload = await res.json();
-      if (payload.ok && payload.data?.transcript) {
-        setTranscript(payload.data.transcript);
+
+      // 快速路径：非流式（已全部翻译完成）
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream")) {
+        const payload = await res.json();
+        if (payload.ok && payload.data?.transcript) {
+          setTranscript(payload.data.transcript);
+        }
+        setTranslating(false);
+        return;
+      }
+
+      // 流式读取 SSE
+      const reader = res.body?.getReader();
+      if (!reader) {
+        setTranslating(false);
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "segment" && event.data?.text_zh) {
+              const { startTime, text_zh } = event.data;
+              setTranscript((prev) =>
+                prev.map((s) =>
+                  s.startTime === startTime ? { ...s, text_zh } : s
+                )
+              );
+            } else if (event.type === "done") {
+              setTranslating(false);
+            } else if (event.type === "error") {
+              console.error("[Translate] 服务端错误:", event.data?.message);
+              setTranslating(false);
+            }
+          } catch {
+            // 忽略解析失败的行
+          }
+        }
       }
     } catch (err) {
       console.error("[Translate] 翻译请求失败:", err);
-    } finally {
       setTranslating(false);
     }
   }, [transcript, videoId]);
@@ -224,14 +276,6 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     transcriptMode.setDisplayMode(mode);
     ensureTranslation(mode);
   }, [transcriptMode, ensureTranslation]);
-
-  const highlightsModeChange = useCallback((mode: typeof highlightsMode.displayMode) => {
-    highlightsMode.setDisplayMode(mode);
-  }, [highlightsMode]);
-
-  const summaryModeChange = useCallback((mode: typeof summaryMode.displayMode) => {
-    summaryMode.setDisplayMode(mode);
-  }, [summaryMode]);
 
   // 收藏单词
   const handleSaveWord = useCallback(async (lemma: string): Promise<boolean> => {
@@ -274,8 +318,8 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       <Navbar />
 
       {/* 主内容 */}
-      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-6 sm:px-5 sm:pt-20 lg:max-w-[80%]">
-        <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
+      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16 page-enter">
+        <div className="grid gap-4 md:gap-6 md:grid-cols-[1fr_auto]">
           {/* 左侧：视频 + 章节列表 + 核心摘要 */}
           <div className="min-w-0 space-y-6">
             {/* 视频播放器 */}
@@ -292,12 +336,14 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               </div>
             ) : null}
 
-            {/* 移动端：转录文本 + Chat + 笔记依次排列 */}
-            <div className="lg:hidden space-y-4">
-              <TranscriptViewer
+            {/* 移动端：标签页切换（转录文本 / Chat / 笔记） */}
+            <div className="md:hidden mt-6">
+              <MobileVideoTabs
+                videoId={videoId}
                 transcript={transcript}
-                loading={loading}
+                transcriptLoading={loading}
                 currentTime={currentTime}
+                analysis={analysis}
                 displayMode={transcriptMode.displayMode}
                 onDisplayModeChange={transcriptModeChange}
                 wordDefinitions={wordDefinitions}
@@ -306,24 +352,12 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
                 onSeekTo={handleSeekTo}
                 translating={translating}
               />
-              {translating && (
-                <p className="text-[12px] text-white/30">翻译中...</p>
-              )}
-              <ChatPanel
-                videoId={videoId}
-                suggestedQuestions={analysis?.suggestedQuestions ?? []}
-                compact
-                onSeekTo={handleSeekTo}
-              />
-              <NotesPanel videoId={videoId} compact />
             </div>
 
             {/* 要点时刻（章节列表） */}
             <HighlightsPanel
               moments={moments}
               loading={momentsLoading}
-              displayMode={highlightsMode.displayMode}
-              onDisplayModeChange={highlightsModeChange}
               onSeekTo={handleSeekTo}
             />
 
@@ -331,14 +365,12 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             <SummaryPanel
               takeaways={takeaways}
               loading={summaryLoading}
-              displayMode={summaryMode.displayMode}
-              onDisplayModeChange={summaryModeChange}
               onSeekTo={handleSeekTo}
             />
           </div>
 
           {/* 右侧：标签页（转录文本 / Chat / 笔记） */}
-          <aside className="hidden lg:block lg:sticky lg:top-20 lg:w-[20rem] lg:self-start xl:w-[26rem]">
+          <aside className="hidden md:block md:sticky md:top-20 md:w-[18rem] md:self-start lg:w-[20rem] xl:w-[26rem]">
             <div className="h-[calc(100vh-6rem)]">
               <SidebarTabs
                 videoId={videoId}

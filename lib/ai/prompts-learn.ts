@@ -54,29 +54,76 @@ export function buildWordDefinitionsPrompt(lemmas: string[]): string {
 }
 
 /**
- * 翻译转录文本为中文的 prompt。
+ * 翻译转录文本为中文的 prompt（索引格式，解析更可靠）。
+ * 参考 Longcut：使用 [INPUT_N]/[OUTPUT_N] 显式标记，
+ * 避免 JSON 解析失败导致整批丢失。
  */
-export function buildTranscriptTranslationPrompt(segments: TranscriptSegment[]): string {
-  const items = segments.map((s) =>
-    `[${formatTimestamp(s.startTime)}] ${s.text}`
-  ).join("\n");
+export function buildTranscriptTranslationPrompt(
+  segments: TranscriptSegment[],
+  targetLanguage: string = "zh-CN",
+  videoTitle?: string
+): string {
+  const textsList = segments
+    .map((_s, i) => `[INPUT_${i}]\n${_s.text}\n[/INPUT_${i}]`)
+    .join("\n\n");
 
-  return [
-    "你是一位专业翻译。请将以下英语视频字幕翻译为中文。",
-    "每条字幕输出：startTime（数字）、text（英文原文）、text_zh（中文翻译）。",
-    "翻译要求：简洁自然、符合中文口语习惯、保留原文语气。",
-    "",
-    "输出纯 JSON（不要 markdown）：",
-    JSON.stringify({
-      segments: [
-        { startTime: 0.0, text: "Hello world", text_zh: "你好世界" }
-      ]
-    }),
-    "",
-    "<subtitles>",
-    items,
-    "</subtitles>"
-  ].join("\n");
+  const baseInstructions = `你是一位专业的字幕翻译专家。请将以下视频字幕翻译为${targetLanguage === "zh-CN" ? "简体中文" : targetLanguage}。
+
+核心原则：
+- 翻译意思和意图，而非逐字直译
+- 使用自然、流畅、地道的目标语言
+- 删除填充词（um, uh, like, you know 等）和口误
+- 对明显的语音识别错误，根据上下文修正
+- 保留代码片段、URL、专有名词
+- 保持口语化的自然节奏`;
+
+  const contextLine = videoTitle
+    ? `\n视频标题：${videoTitle}\n根据标题理解视频主题，确保翻译术语准确。`
+    : "";
+
+  return `${baseInstructions}${contextLine}
+
+翻译下面 ${segments.length} 条字幕。
+
+${textsList}
+
+输出格式要求：
+1. 每条翻译用 [OUTPUT_N]...[/OUTPUT_N] 包裹
+2. N 必须对应输入索引（0 到 ${segments.length - 1}）
+3. 按数字顺序输出所有 ${segments.length} 条翻译
+4. 不要加任何解释、标签或额外内容
+5. 空输入对应空输出
+
+示例输出格式：
+[OUTPUT_0]
+第一条翻译文本
+[/OUTPUT_0]
+[OUTPUT_1]
+第二条翻译文本
+[/OUTPUT_1]
+
+现在输出全部 ${segments.length} 条翻译：`;
+}
+
+/**
+ * 解析索引格式的翻译响应。
+ * 格式：[OUTPUT_N]...[/OUTPUT_N]
+ * 返回 Map<索引, 翻译文本>，解析失败返回空 Map。
+ */
+export function parseIndexedTranslation(response: string, expectedCount: number): Map<number, string> {
+  const map = new Map<number, string>();
+  const pattern = /\[OUTPUT_(\d+)\]([\s\S]*?)\[\/OUTPUT_\1\]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(response)) !== null) {
+    const index = parseInt(match[1], 10);
+    const content = match[2].trim();
+    if (index >= 0 && index < expectedCount && content.length > 0) {
+      map.set(index, content);
+    }
+  }
+
+  return map;
 }
 
 /**

@@ -104,7 +104,7 @@ export function WordCard({
                 setSaving(false);
               }}
               className={cn(
-                "shrink-0 rounded-md p-1.5 transition-colors min-h-[32px] min-w-[32px]",
+                "shrink-0 rounded-md p-2 transition-colors min-h-[40px] min-w-[40px]",
                 saved
                   ? "text-[#0099ff]"
                   : "text-white/30 hover:bg-[#0099ff]/15 hover:text-[#0099ff]"

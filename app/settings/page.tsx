@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, LogIn, Save, Shield } from "lucide-react";
+import { ArrowLeft, Bookmark, Loader2, LogIn, LogOut, Save, Shield } from "lucide-react";
 import Link from "next/link";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
@@ -19,7 +19,7 @@ const AI_PROVIDER_OPTIONS = [
 type AiConfigData = Record<string, string | null>;
 
 export default function SettingsPage() {
-  const { user, loading: authLoading, isAdmin, refreshProfile } = useAuth();
+  const { user, loading: authLoading, isAdmin, refreshProfile, signOut } = useAuth();
   const router = useRouter();
 
   const [config, setConfig] = useState<AiConfigData>({});
@@ -76,7 +76,7 @@ export default function SettingsPage() {
     return (
       <div className="min-h-screen bg-black text-white">
         <Navbar />
-        <div className="flex min-h-[60vh] items-center justify-center px-4 pt-14">
+        <div className="flex min-h-[60vh] items-center justify-center px-4 pt-14 pb-20 md:pb-16">
           <div className="text-center space-y-4">
             <p className="text-[15px] text-white/50">请登录后访问设置页面</p>
             <Button onClick={() => router.push("/login")}>
@@ -92,7 +92,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-black text-white">
       <Navbar />
-      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-16 space-y-8 sm:max-w-[90%] sm:px-5 sm:pt-20 lg:max-w-[80%]">
+      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 space-y-8 sm:max-w-[90%] sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
         {/* 返回 */}
         <Link
           href="/"
@@ -123,6 +123,40 @@ export default function SettingsPage() {
                 {isAdmin ? "管理员" : "用户"}
               </span>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* 快捷入口 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-white text-base">快捷入口</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Link
+              href="/quotes"
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-white/60 transition-colors hover:bg-white/6 hover:text-white min-h-[44px]"
+            >
+              <Bookmark className="h-4 w-4" />
+              句子本
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* 退出登录 */}
+        <Card>
+          <CardContent className="pt-6">
+            <button
+              type="button"
+              onClick={async () => {
+                await signOut();
+                router.push("/");
+                router.refresh();
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/20 bg-red-500/8 px-4 py-3 text-[14px] font-medium text-red-400 transition-colors hover:bg-red-500/15 min-h-[48px]"
+            >
+              <LogOut className="h-4 w-4" />
+              退出登录
+            </button>
           </CardContent>
         </Card>
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bookmark, Clock, LogIn, LogOut, Settings, User } from "lucide-react";
+import { BookOpen, Bookmark, Clock, LogIn, LogOut, Settings, Settings2, User } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 
 export function Navbar() {
@@ -26,7 +26,7 @@ export function Navbar() {
 
   return (
     <nav className="fixed inset-x-0 top-0 z-50 border-b border-white/8 bg-black/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 w-full max-w-full items-center justify-between px-3 sm:max-w-[90%] sm:px-5 lg:max-w-[80%]">
+      <div className="mx-auto flex h-14 w-full max-w-full items-center justify-between px-3 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%]">
         <Link
           href="/"
           className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-white/80 transition-colors hover:text-white"
@@ -43,17 +43,25 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
+                className="hidden md:inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
               >
                 <User className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">{user.email}</span>
               </button>
+              {/* 移动端：设置入口 */}
+              <Link
+                href="/settings"
+                className="md:hidden inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
+                aria-label="设置"
+              >
+                <Settings2 className="h-4 w-4 shrink-0" />
+              </Link>
               {open && (
-                <div className="absolute right-0 top-full mt-2 w-44 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl">
+                <div className="absolute right-0 top-full mt-2 w-44 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl scale-in">
                   <Link
                     href="/history"
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
+                    className="hidden md:flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
                     <Clock className="h-3.5 w-3.5" />
                     历史记录
@@ -61,7 +69,7 @@ export function Navbar() {
                   <Link
                     href="/vocabulary"
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
+                    className="hidden md:flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
                     <BookOpen className="h-3.5 w-3.5" />
                     单词本
@@ -69,7 +77,7 @@ export function Navbar() {
                   <Link
                     href="/quotes"
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
+                    className="hidden md:flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
                     <Bookmark className="h-3.5 w-3.5" />
                     句子本
@@ -77,7 +85,7 @@ export function Navbar() {
                   <Link
                     href="/settings"
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
+                    className="hidden md:flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
                     <Settings className="h-3.5 w-3.5" />
                     设置

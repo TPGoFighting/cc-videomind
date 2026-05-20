@@ -3,32 +3,20 @@ import { getAiProvider } from "@/lib/ai/provider";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { errorResponse, readJson } from "@/lib/utils/api";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
-/** 翻译单批字幕 */
+function sse(data: unknown): string {
+  return `data: ${JSON.stringify(data)}\n\n`;
+}
+
+/** 翻译单批（25 句），内部已带索引解析 + 原文回退 */
 async function translateBatch(
   provider: Awaited<ReturnType<typeof getAiProvider>>,
   segments: TranscriptSegment[]
 ): Promise<TranscriptSegment[]> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      return await provider.translateTranscript({ segments });
-    } catch (err) {
-      if (attempt === 0) {
-        // 失败时缩小批次重试
-        const half = Math.ceil(segments.length / 2);
-        const [a, b] = [
-          await translateBatch(provider, segments.slice(0, half)),
-          await translateBatch(provider, segments.slice(half)),
-        ];
-        return [...a, ...b];
-      }
-      throw err;
-    }
-  }
-  return segments;
+  return provider.translateTranscript({ segments });
 }
 
 export async function POST(request: Request) {
@@ -46,7 +34,6 @@ export async function POST(request: Request) {
 
   const { videoId } = parsed.data;
 
-  // 加载缓存的 transcript
   const cached = await getCachedAnalysis(videoId);
   if (!cached?.transcript) {
     return errorResponse("no_transcript", "该视频没有字幕数据。", 404);
@@ -54,45 +41,114 @@ export async function POST(request: Request) {
 
   const segments = TranscriptSegmentSchema.array().parse(cached.transcript);
 
-  // 如果已全部翻译过，直接返回
+  // 快速路径：已全部翻译
   const allTranslated = segments.every((s) => s.text_zh);
   if (allTranslated) {
-    return successResponse({ transcript: segments });
+    return Response.json({ ok: true, data: { transcript: segments } });
   }
 
-  // 分批 AI 翻译（每批最多 40 条，避免超时）
-  const BATCH_SIZE = 40;
-  try {
-    const provider = await getAiProvider();
-    const batches: TranscriptSegment[][] = [];
-    for (let i = 0; i < segments.length; i += BATCH_SIZE) {
-      batches.push(segments.slice(i, i + BATCH_SIZE));
-    }
+  // 过滤未翻译的句子
+  const untranslated = segments.filter((s) => !s.text_zh);
 
-    const translatedBatches = await Promise.all(
-      batches.map((batch) => translateBatch(provider, batch))
-    );
-    const translated = translatedBatches.flat();
+  const BATCH_SIZE = 25;
+  const CONCURRENCY = 3;
 
-    // 回写到 video_analyses.transcript
-    const supabase = createSupabaseServiceClient();
-    if (supabase) {
-      supabase
-        .from("video_analyses")
-        .update({ transcript: translated })
-        .eq("video_id", videoId)
-        .then(({ error }) => {
-          if (error) console.error("[Translate] 回写翻译失败:", error.message);
-        });
-    }
-
-    return successResponse({ transcript: translated });
-  } catch (err) {
-    console.error("[Translate] AI 翻译失败:", err);
-    return errorResponse(
-      "translation_failed",
-      err instanceof Error ? err.message : "翻译失败，请稍后重试。",
-      502
-    );
+  const chunks: TranscriptSegment[][] = [];
+  for (let i = 0; i < untranslated.length; i += BATCH_SIZE) {
+    chunks.push(untranslated.slice(i, i + BATCH_SIZE));
   }
+
+  const encoder = new TextEncoder();
+  let translatedCount = 0;
+  let aborted = false;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const provider = await getAiProvider();
+
+        // 并发 worker 处理
+        let chunkIndex = 0;
+        async function worker() {
+          while (chunkIndex < chunks.length && !aborted) {
+            const myIndex = chunkIndex++;
+            const batch = chunks[myIndex];
+
+            try {
+              const translated = await translateBatch(provider, batch);
+
+              for (const seg of translated) {
+                if (aborted) return;
+                const original = segments.find((s) => s.startTime === seg.startTime);
+                if (original) {
+                  // text_zh 在 translateTranscript 中已回退为原文，不会是 undefined
+                  original.text_zh = seg.text_zh;
+                  if (seg.text_zh && seg.text_zh !== seg.text) translatedCount++;
+                }
+                controller.enqueue(encoder.encode(sse({
+                  type: "segment",
+                  data: { startTime: seg.startTime, text_zh: seg.text_zh ?? seg.text }
+                })));
+              }
+            } catch {
+              // 整批失败：逐条用原文回退
+              for (const seg of batch) {
+                const original = segments.find((s) => s.startTime === seg.startTime);
+                if (original) original.text_zh = seg.text;
+                controller.enqueue(encoder.encode(sse({
+                  type: "segment",
+                  data: { startTime: seg.startTime, text_zh: seg.text }
+                })));
+              }
+            }
+          }
+        }
+
+        const workers = Array.from(
+          { length: Math.min(CONCURRENCY, chunks.length) },
+          () => worker()
+        );
+        await Promise.all(workers);
+
+        // 保存到数据库
+        if (translatedCount > 0) {
+          const supabase = createSupabaseServiceClient();
+          if (supabase) {
+            supabase
+              .from("video_analyses")
+              .update({ transcript: segments })
+              .eq("video_id", videoId)
+              .then(({ error }) => {
+                if (error) console.error("[Translate] 回写翻译失败:", error.message);
+              });
+          }
+        }
+
+        controller.enqueue(encoder.encode(sse({
+          type: "done",
+          data: { translatedCount }
+        })));
+        controller.close();
+      } catch (err) {
+        console.error("[Translate] 流式翻译失败:", err);
+        controller.enqueue(encoder.encode(sse({
+          type: "error",
+          data: { message: err instanceof Error ? err.message : "翻译失败" }
+        })));
+        controller.close();
+      }
+    },
+    cancel() {
+      aborted = true;
+    }
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no"
+    }
+  });
 }

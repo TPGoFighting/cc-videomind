@@ -129,6 +129,15 @@ button, input, textarea, select {
     text-wrap: balance;
   }
 
+  /* 隐藏滚动条但保留滚动能力 */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   /* 中文大标题压缩 */
   .heading-compressed {
     letter-spacing: -0.03em;
@@ -202,4 +211,250 @@ button, input, textarea, select {
   background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2.5s ease-in-out infinite;
+}
+
+/* 触屏友好操作按钮：移动端始终可见，桌面端 hover 显示 */
+.touch-reveal {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .touch-reveal {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .group:hover .touch-reveal,
+  .touch-reveal:hover {
+    opacity: 1;
+  }
+}
+
+/* ══════════════════════════════════════════
+   增强 UI 动效
+   ══════════════════════════════════════════ */
+
+/* ── 交错入场：子元素逐个飞入 ── */
+@keyframes stagger-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-children > * {
+  opacity: 0;
+  animation: stagger-fade-up 0.5s ease-out forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.3s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.35s; }
+.stagger-children > *:nth-child(8) { animation-delay: 0.4s; }
+.stagger-children > *:nth-child(9) { animation-delay: 0.45s; }
+.stagger-children > *:nth-child(10) { animation-delay: 0.5s; }
+
+/* ── 卡片悬浮提升 + 光晕 ── */
+.card-lift {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.3s ease,
+              border-color 0.3s ease;
+}
+
+.card-lift:hover {
+  transform: translateY(-2px);
+}
+
+.card-lift:active {
+  transform: scale(0.985);
+  transition: transform 0.1s ease;
+}
+
+/* ── 按钮按压反馈 ── */
+.btn-press {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.15s ease;
+}
+
+.btn-press:active {
+  transform: scale(0.95);
+}
+
+/* ── 输入框聚焦光晕 ── */
+.input-glow {
+  transition: border-color 0.2s ease,
+              box-shadow 0.3s ease,
+              background-color 0.2s ease;
+}
+
+.input-glow:focus {
+  box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.2),
+              0 0 20px rgba(0, 153, 255, 0.08);
+}
+
+/* ── Tab 内容切换动画 ── */
+@keyframes tab-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-enter {
+  animation: tab-enter 0.25s ease-out;
+}
+
+/* ── 骨架屏波浪 ── */
+@keyframes skeleton-wave {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-wave {
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.04) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-wave 2s ease-in-out infinite;
+}
+
+/* ── 成功勾动画 ── */
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.check-animated {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-draw 0.4s ease-out 0.2s forwards;
+}
+
+/* ── 放大淡入（用于弹窗/词卡） ── */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.scale-in {
+  animation: scale-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── 半透明淡入（用于 Navbar 背景） ── */
+@keyframes slide-down-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-down-fade {
+  animation: slide-down-fade 0.3s ease-out;
+}
+
+/* ── 页面入场 ── */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: page-enter 0.35s ease-out;
+}
+
+/* ── 环形进度旋转 ── */
+@keyframes spin-progress {
+  to { transform: rotate(360deg); }
+}
+
+.spin-progress {
+  animation: spin-progress 0.8s linear infinite;
+}
+
+/* ── 移动端底部导航栏弹出 ── */
+@keyframes slide-up-fade {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up-fade {
+  animation: slide-up-fade 0.35s cubic-bezier(0.34, 1.16, 0.64, 1);
+}
+
+/* ── 高亮闪烁（用于通知徽标） ── */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(0, 153, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(0, 153, 255, 0);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ── 几何图形浮动 ── */
+@keyframes float-shape {
+  0%, 100% {
+    transform: translateY(0) rotate(var(--tw-rotate, 0deg));
+  }
+  33% {
+    transform: translateY(-20px) rotate(calc(var(--tw-rotate, 0deg) + 3deg));
+  }
+  66% {
+    transform: translateY(10px) rotate(calc(var(--tw-rotate, 0deg) - 2deg));
+  }
+}
+
+/* ── 光束横扫 ── */
+@keyframes beam-sweep {
+  0% { background-position: 200% 0; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { background-position: -200% 0; opacity: 0; }
+}
+
+/* ── 减少动画偏好 ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

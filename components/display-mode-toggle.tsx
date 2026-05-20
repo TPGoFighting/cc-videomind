@@ -24,7 +24,7 @@ export function DisplayModeToggle({
           type="button"
           onClick={() => onChange(m.value)}
           className={cn(
-            "rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors",
+            "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors min-h-[36px]",
             value === m.value
               ? "bg-[#0099ff]/20 text-[#0099ff]"
               : "text-white/40 hover:text-white/70"

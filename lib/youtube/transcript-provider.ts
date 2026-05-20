@@ -811,42 +811,272 @@ export function decodeHtml(value: string): string {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 句子合并器 — 将字幕片段按句子粒度重新划分
+// 参考 Longcut：增加缩写/小数/TLD 检测、安全上限、智能拆分
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** 句子结束标点（中英文） */
-const SENTENCE_END = /[.!?。！？]$/;
+/** 句子结束标点正则（全局匹配用） */
+const SENTENCE_END_RE = /[.!?。！？]/g;
 
 /** 两段之间允许的最大时间间隙（秒），超过则不合并 */
 const MAX_MERGE_GAP = 0.5;
+
+/** 单个句子的安全上限 */
+const MAX_SENTENCE_DURATION_SECONDS = 24;
+const MAX_SENTENCE_WORDS = 40;
+const MIN_SENTENCE_WORDS = 8;
+
+/** 常见缩写（后面的 . 不是句尾） */
+const ABBREVIATIONS = new Set([
+  "dr", "mr", "mrs", "ms", "vs", "etc", "inc", "ltd", "jr", "sr",
+  "prof", "dept", "est", "gov", "st", "ave", "blvd", "rd",
+]);
+
+/** 常见 TLD 和文件扩展名（前面的 . 不是句尾） */
+const TLD_AND_EXTENSIONS = new Set([
+  "com", "org", "net", "edu", "gov", "io", "ai", "co", "uk",
+  "txt", "pdf", "js", "ts", "jsx", "tsx", "html", "css", "json",
+  "png", "jpg", "jpeg", "gif", "svg", "mp4", "mp3", "wav",
+]);
+
+/** 判断给定位置的 . 是否真的是句子结束（排除小数、缩写、TLD） */
+function isSentenceEndingPeriod(text: string, periodIndex: number): boolean {
+  const charBefore = periodIndex > 0 ? text[periodIndex - 1] : "";
+  const charAfter = periodIndex < text.length - 1 ? text[periodIndex + 1] : "";
+
+  // 小数：前后都是数字
+  if (/\d/.test(charBefore) && /\d/.test(charAfter)) return false;
+
+  // 检查前面是否为缩写词
+  const beforeText = text.slice(0, periodIndex).trimEnd();
+  const lastWord = beforeText.split(/\s+/).pop()?.toLowerCase() ?? "";
+  if (ABBREVIATIONS.has(lastWord)) return false;
+
+  // 检查后面是否为 TLD 或文件扩展名
+  const afterWord = text.slice(periodIndex + 1).trimStart().split(/\s+/)[0]?.toLowerCase() ?? "";
+  const cleanAfter = afterWord.replace(/^[^a-z0-9]+/, "").replace(/[^a-z0-9]+$/, "");
+  if (TLD_AND_EXTENSIONS.has(cleanAfter)) return false;
+
+  return true;
+}
+
+/** 判断文本是否以句子结束标点结尾 */
+function endsWithSentence(text: string): boolean {
+  const trimmed = text.trimEnd();
+  if (trimmed.length === 0) return false;
+  const lastChar = trimmed[trimmed.length - 1];
+
+  // ! ? 。 ！ ？ 直接算句子结束
+  if (/[!?。！？]/.test(lastChar)) return true;
+
+  // . 需要进一步判断（排除小数、缩写等）
+  if (lastChar === ".") {
+    return isSentenceEndingPeriod(trimmed, trimmed.length - 1);
+  }
+
+  return false;
+}
 
 /**
  * 将字幕片段按句子粒度合并。
  *
  * YouTube 字幕以屏幕行为单位分割，一句话经常被拆成多个 <p> 标签。
- * 这里把连续且时间上紧密相连的片段合并，直到遇到句子结束标点。
+ * 三阶段处理：
+ * 1. 按时间间隙 + 句子标点合并相邻片段
+ * 2. 在合并后的文本内部按标点边界切分
+ * 3. 安全网：对超长句子（>40词 / >24秒）强制拆分，最短不低於8词
  */
 export function mergeIntoSentences(segments: TranscriptSegment[]): TranscriptSegment[] {
   if (segments.length === 0) return [];
 
-  const result: TranscriptSegment[] = [];
-  let current = { ...segments[0] };
+  // ═══ 第一步：按间隙合并 ═══
+  const merged: { text: string; startTime: number; endTime: number }[] = [];
+  let current = {
+    text: segments[0].text,
+    startTime: segments[0].startTime,
+    endTime: segments[0].endTime,
+  };
 
   for (let i = 1; i < segments.length; i++) {
     const next = segments[i];
     const gap = next.startTime - current.endTime;
 
-    if (gap <= MAX_MERGE_GAP && !SENTENCE_END.test(current.text)) {
-      // 合并：延长时间范围，拼接文本
+    if (gap <= MAX_MERGE_GAP && !endsWithSentence(current.text.trimEnd())) {
       current.endTime = next.endTime;
       current.text = current.text + " " + next.text;
     } else {
-      result.push(current);
-      current = { ...next };
+      merged.push(current);
+      current = {
+        text: next.text,
+        startTime: next.startTime,
+        endTime: next.endTime,
+      };
+    }
+  }
+  merged.push(current);
+
+  // ═══ 第二步：按内部标点 + 大小写边界切分 ═══
+  const split: TranscriptSegment[] = [];
+  for (const seg of merged) {
+    const parts = splitByBoundary(seg.text);
+    if (parts.length <= 1) {
+      split.push({ startTime: seg.startTime, endTime: seg.endTime, text: seg.text });
+      continue;
+    }
+    // 按文本长度比例分配时间戳
+    const totalLen = seg.text.length || 1;
+    const duration = Math.max(seg.endTime - seg.startTime, 0.1);
+    let offset = 0;
+    for (const part of parts) {
+      const ratio = part.length / totalLen;
+      split.push({
+        text: part.trim(),
+        startTime: seg.startTime + offset,
+        endTime: seg.startTime + offset + duration * ratio,
+      });
+      offset += duration * ratio;
     }
   }
 
-  result.push(current);
+  // ═══ 第三步：安全网 — 限制超长句子 ═══
+  const result: TranscriptSegment[] = [];
+  for (const seg of split) {
+    const words = seg.text.split(/\s+/);
+    const segDuration = seg.endTime - seg.startTime;
+    const needsSplit =
+      words.length > MAX_SENTENCE_WORDS ||
+      segDuration > MAX_SENTENCE_DURATION_SECONDS;
+
+    if (!needsSplit) {
+      result.push(seg);
+      continue;
+    }
+
+    const subChunks = splitLongSentence(seg.text);
+    const totalLen = seg.text.length || 1;
+    const totalDuration = Math.max(segDuration, 0.1);
+    let offset = 0;
+    for (const chunk of subChunks) {
+      const ratio = chunk.length / totalLen;
+      result.push({
+        text: chunk.trim(),
+        startTime: seg.startTime + offset,
+        endTime: seg.startTime + offset + totalDuration * ratio,
+      });
+      offset += totalDuration * ratio;
+    }
+  }
+
   return result;
+}
+
+/** 在标点和大写字母处切分文本（对 . 做缩写/小数/TLD 排除） */
+function splitByBoundary(text: string): string[] {
+  const splits: number[] = [];
+
+  // 找到所有句子结束标点位置
+  SENTENCE_END_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = SENTENCE_END_RE.exec(text)) !== null) {
+    const idx = match.index;
+    const punct = match[0];
+
+    // 对 . 做额外检查，排除小数、缩写、TLD
+    if (punct === "." && !isSentenceEndingPeriod(text, idx)) continue;
+
+    const after = text.slice(idx + 1);
+    if (after.length === 0 || /^[\s]/.test(after) || /^[A-Z一-鿿]/.test(after)) {
+      splits.push(idx + 1);
+    }
+  }
+
+  // 找到可作为句子开头的大写字母位置
+  const CAP_START_RE = /(?:[a-z]\s+|[.!?。！？]\s+)([A-Z])/g;
+  CAP_START_RE.lastIndex = 0;
+  while ((match = CAP_START_RE.exec(text)) !== null) {
+    const capIdx = match.index + match[0].length - 1;
+    splits.push(capIdx);
+  }
+
+  splits.sort((a, b) => a - b);
+
+  // 去重（相邻太近的合并，< 3 字符间距视为同一位置）
+  const unique: number[] = [];
+  for (const s of splits) {
+    if (unique.length === 0 || s - unique[unique.length - 1] > 3) {
+      unique.push(s);
+    }
+  }
+
+  if (unique.length === 0) return [text];
+
+  // 过滤掉会产生过短句子的切分点（前一部分或后一部分不足 MIN_SENTENCE_WORDS 个词）
+  const filtered: number[] = [];
+  for (const idx of unique) {
+    const beforeText = text.slice(0, idx).trim();
+    const afterText = text.slice(idx).trim();
+    const beforeWords = beforeText ? beforeText.split(/\s+/).length : 0;
+    const afterWords = afterText ? afterText.split(/\s+/).length : 0;
+    if (beforeWords >= MIN_SENTENCE_WORDS && afterWords >= MIN_SENTENCE_WORDS) {
+      filtered.push(idx);
+    }
+  }
+
+  if (filtered.length === 0) return [text];
+
+  const parts: string[] = [];
+  let last = 0;
+  for (const idx of filtered) {
+    const part = text.slice(last, idx).trim();
+    if (part) parts.push(part);
+    last = idx;
+  }
+  const tail = text.slice(last).trim();
+  if (tail) parts.push(tail);
+
+  return parts.length > 1 ? parts : [text];
+}
+
+/** 将超长句子在单词边界智能拆分 */
+function splitLongSentence(text: string): string[] {
+  const words = text.split(/\s+/);
+  if (words.length <= MAX_SENTENCE_WORDS) {
+    // 词数不超标（但时长超标了），按词数均分
+    const mid = Math.floor(words.length / 2);
+    if (mid === 0) return [text];
+    return [
+      words.slice(0, mid).join(" "),
+      words.slice(mid).join(" "),
+    ];
+  }
+
+  // 在大写单词处找到切分点
+  const capIndices: number[] = [];
+  for (let i = 1; i < words.length; i++) {
+    if (/^[A-Z]/.test(words[i])) {
+      capIndices.push(i);
+    }
+  }
+
+  const chunks: string[] = [];
+  let start = 0;
+
+  for (const idx of capIndices) {
+    const chunkLen = idx - start;
+    if (chunkLen >= MIN_SENTENCE_WORDS && chunkLen <= MAX_SENTENCE_WORDS) {
+      chunks.push(words.slice(start, idx).join(" "));
+      start = idx;
+    }
+  }
+
+  // 剩余部分按 MAX_SENTENCE_WORDS 均分
+  const rest = words.slice(start);
+  if (rest.length > 0) {
+    for (let i = 0; i < rest.length; i += MAX_SENTENCE_WORDS) {
+      chunks.push(rest.slice(i, i + MAX_SENTENCE_WORDS).join(" "));
+    }
+  }
+
+  return chunks.length > 1 ? chunks : [text];
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

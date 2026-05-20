@@ -45,7 +45,7 @@ export default function HistoryPage() {
     return (
       <div className="min-h-screen bg-black text-white">
         <Navbar />
-        <main className="mx-auto w-full max-w-full px-3 pt-16 pb-16 sm:max-w-[90%] sm:px-5 sm:pt-20 lg:max-w-[80%]">
+        <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:max-w-[90%] sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-20 rounded-xl bg-white/6 animate-breathe" />
@@ -59,7 +59,7 @@ export default function HistoryPage() {
   return (
     <div className="min-h-screen bg-black text-white">
       <Navbar />
-      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-16 sm:max-w-[90%] sm:px-5 sm:pt-20 lg:max-w-[80%]">
+      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:max-w-[90%] sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
         <h1 className="text-[24px] font-bold">历史记录</h1>
         <p className="mt-1 text-[14px] text-white/40">
           你解析过的所有视频

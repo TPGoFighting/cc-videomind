@@ -22,7 +22,8 @@ import {
 } from "@/lib/ai/prompts-v2";
 import {
   buildWordDefinitionsPrompt,
-  buildTranscriptTranslationPrompt
+  buildTranscriptTranslationPrompt,
+  parseIndexedTranslation
 } from "@/lib/ai/prompts-learn";
 import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
 import { chunkTranscript } from "@/lib/utils/chunk";
@@ -257,24 +258,36 @@ export class OpenAiCompatibleProvider implements AiProvider {
     if (input.segments.length === 0) return [];
 
     const prompt = buildTranscriptTranslationPrompt(input.segments);
-    const content = await this.chatJson(prompt);
-    const value = parseJsonContent(content);
+    const content = await this.chatTranslation(prompt);
+    const parsed = parseIndexedTranslation(content, input.segments.length);
 
-    if (isRecord(value) && Array.isArray(value.segments)) {
-      const translated = new Map<number, string>();
-      for (const s of value.segments) {
-        if (isRecord(s) && typeof s.startTime === "number" && typeof s.text_zh === "string") {
-          translated.set(s.startTime, s.text_zh);
-        }
-      }
+    // 回退：未翻译到的句子保留英文原文，不会空白
+    return input.segments.map((seg, i) => ({
+      ...seg,
+      text_zh: parsed.get(i) ?? seg.text
+    }));
+  }
 
-      return input.segments.map((seg) => ({
-        ...seg,
-        text_zh: translated.get(seg.startTime) ?? undefined
-      }));
+  /** 翻译专用聊天（不使用 JSON mode，解析索引格式） */
+  private async chatTranslation(prompt: string): Promise<string> {
+    const t0 = Date.now();
+    const body = {
+      model: this.model,
+      messages: [
+        { role: "system" as const, content: "你是一位专业翻译。只输出要求的格式，不要加任何解释。" },
+        { role: "user" as const, content: prompt }
+      ]
+    };
+
+    // 直接调 tryChat，不强制 JSON mode
+    const content = await this.tryChat(body);
+    if (content) {
+      console.log("[AI:Translation] 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
+      return content;
     }
 
-    return input.segments;
+    console.error("[AI:Translation] 调用失败! model=%s", this.model);
+    throw new Error("AI 翻译返回空响应");
   }
 
   private async chatJson(prompt: string) {
@@ -497,24 +510,34 @@ export class GeminiProvider implements AiProvider {
     if (input.segments.length === 0) return [];
 
     const prompt = buildTranscriptTranslationPrompt(input.segments);
-    const content = await this.generateJson(prompt);
-    const value = parseJsonContent(content);
+    const content = await this.generateTranslation(prompt);
+    const parsed = parseIndexedTranslation(content, input.segments.length);
 
-    if (isRecord(value) && Array.isArray(value.segments)) {
-      const translated = new Map<number, string>();
-      for (const s of value.segments) {
-        if (isRecord(s) && typeof s.startTime === "number" && typeof s.text_zh === "string") {
-          translated.set(s.startTime, s.text_zh);
-        }
-      }
+    return input.segments.map((seg, i) => ({
+      ...seg,
+      text_zh: parsed.get(i) ?? seg.text
+    }));
+  }
 
-      return input.segments.map((seg) => ({
-        ...seg,
-        text_zh: translated.get(seg.startTime) ?? undefined
-      }));
-    }
+  /** Gemini 翻译（不用 JSON mode） */
+  private async generateTranslation(prompt: string): Promise<string> {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`;
+    const response = GeminiResponseSchema.parse(
+      await fetchJsonWithTimeout<unknown>(endpoint, {
+        method: "POST",
+        timeoutMs: 60000,
+        service: "Gemini",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": this.apiKey
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      })
+    );
 
-    return input.segments;
+    return response.candidates[0]?.content.parts.map((part) => part.text ?? "").join("") ?? "";
   }
 
   private async generateJson(prompt: string) {

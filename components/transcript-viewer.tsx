@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck, ListVideo, Pin, PinOff } from "lucide-react";
+import { Bookmark, BookmarkCheck, ListVideo, Navigation, Pin, PinOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DisplayMode, TranscriptSegment, WordDefinition } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils/time";
@@ -45,6 +45,7 @@ export function TranscriptViewer({
   translating?: boolean;
 }) {
   const [autoScroll, setAutoScroll] = useState(true);
+  const [showJumpButton, setShowJumpButton] = useState(false);
   const [activeWord, setActiveWord] = useState<{
     lemma: string;
     position: { top: number; left: number };
@@ -52,6 +53,8 @@ export function TranscriptViewer({
   const [savingQuote, setSavingQuote] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
+  const lastUserScrollTime = useRef(0);
+  const manualModeRef = useRef(false);
 
   // 找到当前播放时间对应的段落索引
   const activeIndex = (() => {
@@ -71,20 +74,83 @@ export function TranscriptViewer({
     return best;
   })();
 
-  // 自动滚动到当前段落
+  // 自动滚动到当前段落（舒适区：视口顶部 25%-40%，提前滚动）
   useEffect(() => {
-    if (!autoScroll || !activeRef.current || !containerRef.current) return;
+    if (!autoScroll || !activeRef.current || !containerRef.current || currentTime === undefined || currentTime <= 0) return;
+
     const container = containerRef.current;
     const active = activeRef.current;
     const containerRect = container.getBoundingClientRect();
     const activeRect = active.getBoundingClientRect();
-    if (
-      activeRect.top < containerRect.top ||
-      activeRect.bottom > containerRect.bottom
-    ) {
-      active.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    // 舒适区：视口顶部 25% 到 40%
+    const topThreshold = containerRect.top + containerRect.height * 0.25;
+    const bottomThreshold = containerRect.top + containerRect.height * 0.40;
+
+    const isOutOfView = activeRect.bottom < containerRect.top || activeRect.top > containerRect.bottom;
+    const needsScroll = isOutOfView || activeRect.top < topThreshold || activeRect.bottom > bottomThreshold;
+
+    if (needsScroll) {
+      // 定位到视口顶部 1/3 处
+      const relativeTop = activeRect.top - containerRect.top + container.scrollTop;
+      const scrollTarget = relativeTop - containerRect.height / 3;
+
+      lastUserScrollTime.current = Date.now() + 500;
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          top: Math.max(0, scrollTarget),
+          behavior: "smooth",
+        });
+      });
     }
-  }, [autoScroll, activeIndex]);
+  }, [currentTime, autoScroll]);
+
+  // 用户手动滚动时暂停自动跟随
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const now = Date.now();
+      if (manualModeRef.current) {
+        lastUserScrollTime.current = now;
+        return;
+      }
+      // 300ms 阈值：超过此时间说明不是程序触发的滚动
+      if (now - lastUserScrollTime.current > 300) {
+        if (autoScroll) {
+          setAutoScroll(false);
+          setShowJumpButton(true);
+        }
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [autoScroll]);
+
+  // 跳转到当前播放位置
+  const jumpToCurrent = useCallback(() => {
+    manualModeRef.current = false;
+    setAutoScroll(true);
+    setShowJumpButton(false);
+    if (activeRef.current && containerRef.current) {
+      const container = containerRef.current;
+      const active = activeRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const relativeTop = activeRect.top - containerRect.top + container.scrollTop;
+      const scrollTarget = relativeTop - containerRect.height / 3;
+
+      lastUserScrollTime.current = Date.now() + 500;
+      requestAnimationFrame(() => {
+        container.scrollTo({
+          top: Math.max(0, scrollTarget),
+          behavior: "smooth",
+        });
+      });
+    }
+  }, []);
 
   // 词卡关闭
   const closeWordCard = useCallback(() => setActiveWord(null), []);
@@ -152,7 +218,7 @@ export function TranscriptViewer({
   );
 
   return (
-    <Card className={cn("lg:flex lg:h-full lg:flex-col", hideHeader && "border-0 bg-transparent")}>
+    <Card className={cn("md:flex md:h-full md:flex-col", hideHeader && "border-0 bg-transparent")}>
       {!hideHeader && (
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -173,7 +239,17 @@ export function TranscriptViewer({
               {!loading && transcript.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setAutoScroll((v) => !v)}
+                  onClick={() => {
+                    const next = !autoScroll;
+                    setAutoScroll(next);
+                    if (!next) {
+                      manualModeRef.current = true;
+                      setShowJumpButton(true);
+                    } else {
+                      manualModeRef.current = false;
+                      setShowJumpButton(false);
+                    }
+                  }}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
                     autoScroll
@@ -193,7 +269,42 @@ export function TranscriptViewer({
           </div>
         </CardHeader>
       )}
-      <CardContent className="lg:flex-1 lg:min-h-0">
+      {/* hideHeader 模式下的控制栏 */}
+      {hideHeader && (
+        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+          <div className="flex items-center gap-2">
+            {onDisplayModeChange && (
+              <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
+            )}
+            {needsTranslation && translating && (
+              <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
+            )}
+            {needsTranslation && !translating && (
+              <span className="text-[11px] text-white/20">切换模式以翻译</span>
+            )}
+          </div>
+          {!loading && transcript.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setAutoScroll((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                autoScroll
+                  ? "bg-[#0099ff]/15 text-[#0099ff] hover:bg-[#0099ff]/25"
+                  : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
+              )}
+            >
+              {autoScroll ? (
+                <Pin className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <PinOff className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {autoScroll ? "跟随中" : "自动跟随"}
+            </button>
+          )}
+        </div>
+      )}
+      <CardContent className="md:flex-1 md:min-h-0 relative">
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -209,7 +320,7 @@ export function TranscriptViewer({
         ) : (
           <div
             ref={containerRef}
-            className="max-h-[50vh] space-y-3 overflow-auto pr-1 lg:max-h-none lg:h-full"
+            className="max-h-[50vh] space-y-3 overflow-auto pr-1 md:max-h-none md:h-full"
           >
             {transcript.map((segment, i) => {
               const segKey = `${segment.startTime}-${segment.endTime}`;
@@ -277,8 +388,7 @@ export function TranscriptViewer({
                           handleSaveQuote(segment);
                         }}
                         className={cn(
-                          "mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-opacity min-h-[28px]",
-                          "opacity-100 sm:opacity-0 sm:group-hover:opacity-100",
+                          "mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] touch-reveal min-h-[36px]",
                           isSaving
                             ? "text-[#0099ff]"
                             : "text-white/30 hover:text-[#0099ff]"
@@ -296,6 +406,20 @@ export function TranscriptViewer({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* 跳转到当前播放位置 */}
+        {showJumpButton && activeIndex >= 0 && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10">
+            <button
+              type="button"
+              onClick={jumpToCurrent}
+              className="btn-press inline-flex items-center gap-1.5 rounded-full border border-[#0099ff]/30 bg-[#0099ff]/15 px-4 py-2 text-[12px] font-medium text-[#0099ff] backdrop-blur-sm transition-colors hover:bg-[#0099ff]/25 hover:border-[#0099ff]/50 shadow-lg shadow-[#0099ff]/10"
+            >
+              <Navigation className="h-3.5 w-3.5" />
+              跳转到当前
+            </button>
           </div>
         )}
       </CardContent>

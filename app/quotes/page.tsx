@@ -72,7 +72,7 @@ export default function QuotesPage() {
     return (
       <div className="min-h-screen bg-black text-white">
         <Navbar />
-        <main className="mx-auto w-full max-w-full px-3 pt-16 pb-16 sm:max-w-[90%] sm:px-5 sm:pt-20 lg:max-w-[80%]">
+        <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:max-w-[90%] sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-20 rounded-xl bg-white/6 animate-breathe" />
@@ -86,7 +86,7 @@ export default function QuotesPage() {
   return (
     <div className="min-h-screen bg-black text-white">
       <Navbar />
-      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-16 sm:max-w-[90%] sm:px-5 sm:pt-20 lg:max-w-[80%]">
+      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:max-w-[90%] sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
         <h1 className="text-[24px] font-bold">句子本</h1>
         <p className="mt-1 text-[14px] text-white/40">
           收藏的英语句子
@@ -174,24 +174,24 @@ export default function QuotesPage() {
                     {new Date(item.createdAt).toLocaleDateString("zh-CN")}
                   </span>
 
-                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="flex items-center gap-1 touch-reveal">
                     {!item.videoTitle && (
                       <Link
                         href={`/video/${item.videoId}`}
-                        className="rounded-md p-1.5 text-white/20 transition-colors hover:bg-white/8 hover:text-white/60"
+                        className="rounded-md p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center text-white/20 transition-colors hover:bg-white/8 hover:text-white/60"
                         title="查看视频"
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
+                        <ExternalLink className="h-4 w-4" />
                       </Link>
                     )}
                     <button
                       type="button"
                       disabled={deleting.has(item.id)}
                       onClick={() => handleDelete(item.id)}
-                      className="rounded-md p-1.5 text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                      className="rounded-md p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
                       title="删除"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth-context";
+import { MobileTabBarClient } from "@/components/mobile-tab-bar-client";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +16,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="dark">
       <body className="antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <MobileTabBarClient />
+        </AuthProvider>
       </body>
     </html>
   );

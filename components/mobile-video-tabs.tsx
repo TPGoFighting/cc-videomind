@@ -5,9 +5,10 @@ import { FileText, MessageSquare, NotebookPen } from "lucide-react";
 import { TranscriptViewer } from "./transcript-viewer";
 import { ChatPanel } from "./chat-panel";
 import { NotesPanel } from "./notes-panel";
+import { cn } from "@/lib/utils/cn";
 import type { DisplayMode, TranscriptSegment, VideoAnalysis, WordDefinition } from "@/lib/types";
 
-interface SidebarTabsProps {
+interface MobileVideoTabsProps {
   videoId: string;
   transcript: TranscriptSegment[];
   transcriptLoading: boolean;
@@ -30,7 +31,7 @@ const TABS = [
   { id: "notes" as TabId, label: "笔记", icon: NotebookPen },
 ] as const;
 
-export function SidebarTabs({
+export function MobileVideoTabs({
   videoId,
   transcript,
   transcriptLoading,
@@ -43,13 +44,13 @@ export function SidebarTabs({
   onSaveQuote,
   onSeekTo,
   translating,
-}: SidebarTabsProps) {
+}: MobileVideoTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-white/8 bg-[#0d0d0d]">
+    <div className="rounded-xl border border-white/8 bg-[#0d0d0d] overflow-hidden">
       {/* 标签页头部 */}
-      <div className="flex items-center gap-1 border-b border-white/8 px-2 py-2">
+      <div className="flex border-b border-white/8 bg-[#0d0d0d]">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -58,41 +59,42 @@ export function SidebarTabs({
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+              className={cn(
+                "flex-1 flex items-center justify-center gap-1.5 px-3 py-3",
+                "text-[13px] font-medium transition-all duration-200 min-h-[44px]",
+                "border-b-2",
                 isActive
-                  ? "bg-white/10 text-white"
-                  : "text-white/50 hover:bg-white/5 hover:text-white/70"
-              }`}
+                  ? "border-[#0099ff] text-[#0099ff]"
+                  : "border-transparent text-white/50 hover:text-white/70"
+              )}
             >
-              <Icon className="h-3.5 w-3.5" />
-              {tab.label}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="hidden xs:inline">{tab.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* 标签页内容 */}
-      <div className="flex-1 min-h-0 overflow-hidden" key={activeTab}>
-        <div className="tab-enter h-full">
+      {/* 内容区 */}
+      <div className="min-h-[300px]" key={activeTab}>
+        <div className="tab-enter">
         {activeTab === "transcript" && (
-          <div className="h-full">
-            <TranscriptViewer
-              transcript={transcript}
-              loading={transcriptLoading}
-              currentTime={currentTime}
-              hideHeader
-              displayMode={displayMode}
-              onDisplayModeChange={onDisplayModeChange}
-              wordDefinitions={wordDefinitions}
-              onSaveWord={onSaveWord}
-              onSaveQuote={onSaveQuote}
-              onSeekTo={onSeekTo}
-              translating={translating}
-            />
-          </div>
+          <TranscriptViewer
+            transcript={transcript}
+            loading={transcriptLoading}
+            currentTime={currentTime}
+            hideHeader
+            displayMode={displayMode}
+            onDisplayModeChange={onDisplayModeChange}
+            wordDefinitions={wordDefinitions}
+            onSaveWord={onSaveWord}
+            onSaveQuote={onSaveQuote}
+            onSeekTo={onSeekTo}
+            translating={translating}
+          />
         )}
         {activeTab === "chat" && (
-          <div className="h-full overflow-auto p-4">
+          <div className="p-4">
             <ChatPanel
               videoId={videoId}
               suggestedQuestions={analysis?.suggestedQuestions ?? []}
@@ -102,7 +104,7 @@ export function SidebarTabs({
           </div>
         )}
         {activeTab === "notes" && (
-          <div className="h-full overflow-auto p-4">
+          <div className="p-4">
             <NotesPanel videoId={videoId} compact />
           </div>
         )}
