@@ -1,7 +1,7 @@
-# VideoMind Agent Instructions
+# Teach Player Agent Instructions
 
 ## Product
-VideoMind is an original YouTube AI learning workspace. Users paste a YouTube URL and receive transcript, summary, highlights, timestamped chat answers, and personal notes.
+Teach Player is an original YouTube AI learning workspace. Users paste a YouTube URL and receive transcript, summary, highlights, timestamped chat answers, and personal notes.
 
 Do not copy LongCut source code, UI, branding, product text, or assets. Implement clean-room equivalents.
 

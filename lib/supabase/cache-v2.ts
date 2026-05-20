@@ -43,7 +43,7 @@ export async function getCachedMoments(
       .eq("result_type", "moments")
       .eq("language", lang)
       .eq("mode", mode)
-      .eq("theme", theme ?? null)
+      .eq("theme", theme || "")
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -86,14 +86,14 @@ export async function upsertMomentsCache(input: {
     .eq("result_type", "moments")
     .eq("language", input.lang)
     .eq("mode", input.mode)
-    .eq("theme", input.theme ?? null);
+    .eq("theme", input.theme || "");
 
   await supabase.from("ai_results_cache").insert({
     video_id: input.videoId,
     result_type: "moments",
     language: input.lang,
     mode: input.mode,
-    theme: input.theme ?? null,
+    theme: input.theme || "",
     result: input.moments,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()

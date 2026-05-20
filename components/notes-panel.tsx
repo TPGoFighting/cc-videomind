@@ -5,9 +5,11 @@ import { NotebookPen, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/components/auth-context";
 import type { JsonResponse } from "@/lib/types";
 
-export function NotesPanel({ videoId }: { videoId: string }) {
+export function NotesPanel({ videoId, compact }: { videoId: string; compact?: boolean }) {
+  const { user, loading: authLoading } = useAuth();
   const [body, setBody] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -39,6 +41,37 @@ export function NotesPanel({ videoId }: { videoId: string }) {
     }
   }
 
+  const loggedIn = !authLoading && user !== null;
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <Textarea
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          placeholder={loggedIn ? "在学习过程中记录你的想法…" : "登录后可保存笔记"}
+          disabled={!loggedIn}
+          aria-label="视频笔记"
+        />
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[12px] text-white/35">
+            {status ?? (loggedIn ? "" : "登录后可保存笔记。")}
+          </p>
+          <Button
+            type="button"
+            onClick={saveNote}
+            disabled={!loggedIn || saving}
+            variant="secondary"
+            size="sm"
+          >
+            <Save className="h-3.5 w-3.5" aria-hidden />
+            保存
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -51,17 +84,22 @@ export function NotesPanel({ videoId }: { videoId: string }) {
         <Textarea
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          placeholder="在学习过程中记录你的想法…"
+          placeholder={
+            loggedIn
+              ? "在学习过程中记录你的想法…"
+              : "登录后可保存笔记"
+          }
+          disabled={!loggedIn}
           aria-label="视频笔记"
         />
         <div className="flex items-center justify-between gap-3">
           <p className="text-[12px] text-white/35">
-            {status ?? "登录后可保存笔记。"}
+            {status ?? (loggedIn ? "" : "登录后可保存笔记。")}
           </p>
           <Button
             type="button"
             onClick={saveNote}
-            disabled={saving}
+            disabled={!loggedIn || saving}
             variant="secondary"
             size="sm"
           >

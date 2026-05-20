@@ -3,7 +3,8 @@ import { z } from "zod";
 export const TranscriptSegmentSchema = z.object({
   startTime: z.number().nonnegative(),
   endTime: z.number().positive(),
-  text: z.string().min(1)
+  text: z.string().min(1),
+  text_zh: z.string().optional()
 });
 
 export const VideoMetadataSchema = z.object({
@@ -54,12 +55,15 @@ export type JsonResponse<T> =
 
 export const KeyMomentSchema = z.object({
   title: z.string().min(1).max(120),
+  title_zh: z.string().max(120).optional(),
   timestamp: z.string().regex(
     /^(?:\d{1,2}:)?\d{1,2}:\d{2}-(?:\d{1,2}:)?\d{1,2}:\d{2}$/,
     "timestamp 格式必须为 [MM:SS-MM:SS] 或 [HH:MM:SS-HH:MM:SS]"
   ),
   quote: z.string().min(1).max(500),
-  reason: z.string().min(1).max(400)
+  quote_zh: z.string().max(500).optional(),
+  reason: z.string().min(1).max(400),
+  reason_zh: z.string().max(400).optional()
 });
 
 export type KeyMoment = z.infer<typeof KeyMomentSchema>;
@@ -68,7 +72,9 @@ export type KeyMoment = z.infer<typeof KeyMomentSchema>;
 
 export const SummaryTakeawaySchema = z.object({
   label: z.string().min(1).max(120),
+  label_zh: z.string().max(120).optional(),
   insight: z.string().min(1).max(600),
+  insight_zh: z.string().max(600).optional(),
   timestamps: z.array(
     z.string().regex(/^\d{1,2}:\d{2}$/, "timestamp 格式必须为 M:SS 或 MM:SS")
   ).min(1).max(2)
@@ -113,3 +119,55 @@ export function createEmptyDebug(): GenerationDebug {
     rawResponsePreview: "", parseCount: 0, validateCount: 0, finalCount: 0
   };
 }
+
+// ─── 英语学习增强 ──────────────────────────────────────────────────────────────
+
+export const WordDefinitionSchema = z.object({
+  lemma: z.string().min(1),
+  phonetic: z.string().optional(),
+  partOfSpeech: z.string().optional(),
+  definitionZh: z.string().min(1),
+  definitionEn: z.string().optional(),
+  exampleEn: z.string().optional(),
+  exampleZh: z.string().optional()
+});
+export type WordDefinition = z.infer<typeof WordDefinitionSchema>;
+
+export const UserQuoteSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  videoId: z.string(),
+  textEn: z.string().min(1),
+  textZh: z.string().optional(),
+  startTime: z.number(),
+  endTime: z.number(),
+  notes: z.string().optional(),
+  createdAt: z.string(),
+  videoTitle: z.string().optional()
+});
+export type UserQuote = z.infer<typeof UserQuoteSchema>;
+
+export const DisplayModeSchema = z.enum(["en", "zh", "bilingual"]);
+export type DisplayMode = z.infer<typeof DisplayModeSchema>;
+
+export const WordDefinitionsRequestSchema = z.object({
+  lemmas: z.array(z.string().min(1)).min(1).max(400)
+});
+
+export const TranslateTranscriptRequestSchema = z.object({
+  videoId: z.string().min(6).max(20)
+});
+
+export const SaveQuoteRequestSchema = z.object({
+  videoId: z.string().min(6),
+  textEn: z.string().min(1).max(2000),
+  textZh: z.string().max(2000).optional(),
+  startTime: z.number().nonnegative(),
+  endTime: z.number().positive(),
+  notes: z.string().max(5000).optional()
+});
+
+export const SaveWordRequestSchema = z.object({
+  lemma: z.string().min(1),
+  videoId: z.string().min(6)
+});

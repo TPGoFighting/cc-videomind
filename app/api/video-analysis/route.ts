@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   try {
     const metadata = cached?.metadata ?? (await fetchYouTubeMetadata(videoId));
     const transcript = cached?.transcript ?? (await getTranscriptProvider().getTranscript(videoId));
-    const analysis = await getAiProvider().generateAnalysis({ title: metadata.title, transcript });
+    const analysis = await (await getAiProvider()).generateAnalysis({ title: metadata.title, transcript });
 
     await upsertAnalysisCache({ videoId, metadata, transcript, analysis });
     await recordAnalysisUsage({ userId, videoId });

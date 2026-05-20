@@ -2,25 +2,38 @@
 
 import { BookOpenCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { SummaryTakeaway } from "@/lib/types";
+import type { DisplayMode, SummaryTakeaway } from "@/lib/types";
 import { parseTimestampToSeconds } from "@/lib/utils/moments-validator";
+import { DisplayModeToggle } from "./display-mode-toggle";
 
 export function SummaryPanel({
   takeaways,
   loading,
+  displayMode = "en",
+  onDisplayModeChange,
   onSeekTo,
 }: {
   takeaways: SummaryTakeaway[];
   loading: boolean;
+  displayMode?: DisplayMode;
+  onDisplayModeChange?: (mode: DisplayMode) => void;
   onSeekTo?: (seconds: number) => void;
 }) {
+  const showZh = displayMode === "zh" || displayMode === "bilingual";
+  const showEn = displayMode === "en" || displayMode === "bilingual";
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-white">
-          <BookOpenCheck className="h-4 w-4 text-[#0099ff]" aria-hidden />
-          核心摘要
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-white">
+            <BookOpenCheck className="h-4 w-4 text-[#0099ff]" aria-hidden />
+            核心摘要
+          </CardTitle>
+          {onDisplayModeChange && (
+            <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         {loading ? (
@@ -44,11 +57,33 @@ export function SummaryPanel({
                 className="rounded-lg border border-white/8 bg-white/4 px-4 py-3 transition-shadow duration-300 hover:border-white/15 hover:shadow-[rgba(0,153,255,0.08)_0px_0px_0px_1px]"
               >
                 <h4 className="text-[14px] font-semibold leading-snug">
-                  {t.label}
+                  {showEn && <span>{t.label}</span>}
+                  {showZh && t.label_zh && (
+                    <span className={showEn ? "ml-2 text-white/60" : ""}>
+                      {t.label_zh}
+                    </span>
+                  )}
+                  {showZh && !t.label_zh && !showEn && (
+                    <span>{t.label}</span>
+                  )}
                 </h4>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-[#a6a6a6]">
-                  {t.insight}
-                </p>
+
+                {showEn && (
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-[#a6a6a6]">
+                    {t.insight}
+                  </p>
+                )}
+                {showZh && t.insight_zh && (
+                  <p className="mt-1 text-[13px] leading-relaxed text-white/50">
+                    {t.insight_zh}
+                  </p>
+                )}
+                {showZh && !t.insight_zh && !showEn && (
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-[#a6a6a6]">
+                    {t.insight}
+                  </p>
+                )}
+
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {t.timestamps.map((ts) => {
                     const seconds = parseTimestampToSeconds(ts);

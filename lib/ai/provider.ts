@@ -3,13 +3,15 @@ import {
   ChatAnswerSchema,
   CitationSchema,
   VideoAnalysisSchema,
+  WordDefinitionSchema,
   type ChatAnswer,
   type GenerationDebug,
   type KeyMoment,
   type MomentsMode,
   type SummaryTakeaway,
   type TranscriptSegment,
-  type VideoAnalysis
+  type VideoAnalysis,
+  type WordDefinition
 } from "@/lib/types";
 import { buildAnalysisPrompt, buildChatPrompt } from "@/lib/ai/prompts";
 import {
@@ -18,6 +20,10 @@ import {
   buildKeyMomentsReducePrompt,
   buildStructuredSummaryPrompt
 } from "@/lib/ai/prompts-v2";
+import {
+  buildWordDefinitionsPrompt,
+  buildTranscriptTranslationPrompt
+} from "@/lib/ai/prompts-learn";
 import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
 import { chunkTranscript } from "@/lib/utils/chunk";
 import { extractBalancedJson, repairBrokenJson } from "@/lib/utils/json";
@@ -45,6 +51,12 @@ export interface AiProvider {
     targetLanguage?: "zh" | "en";
     debug?: GenerationDebug;
   }): Promise<SummaryTakeaway[]>;
+
+  /** 批量生成词义定义 */
+  defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]>;
+
+  /** 翻译转录文本为中文 */
+  translateTranscript(input: { segments: TranscriptSegment[] }): Promise<TranscriptSegment[]>;
 }
 
 const OpenAiChatResponseSchema = z.object({
@@ -69,11 +81,9 @@ const GeminiResponseSchema = z.object({
 
 export class OpenAiCompatibleProvider implements AiProvider {
   constructor(
-    private readonly apiKey = requiredEnv("AI_API_KEY").trim(),
-    private readonly baseUrl = normalizeOpenAiCompatibleBaseUrl(
-      (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim()
-    ),
-    private readonly model = (process.env.AI_MODEL ?? "deepseek-v4-flash").trim()
+    private readonly apiKey: string,
+    private readonly baseUrl: string,
+    private readonly model: string,
   ) {}
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
@@ -207,6 +217,66 @@ export class OpenAiCompatibleProvider implements AiProvider {
     return validated;
   }
 
+  async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
+    if (input.lemmas.length === 0) return [];
+
+    // 分批处理，每批最多 30 个词
+    const BATCH_SIZE = 30;
+    const results: WordDefinition[] = [];
+
+    for (let i = 0; i < input.lemmas.length; i += BATCH_SIZE) {
+      const batch = input.lemmas.slice(i, i + BATCH_SIZE);
+      const prompt = buildWordDefinitionsPrompt(batch);
+      const content = await this.chatJson(prompt);
+      const value = parseJsonContent(content);
+
+      if (isRecord(value) && Array.isArray(value.definitions)) {
+        const parsed = value.definitions
+          .filter(isRecord)
+          .map((d) => {
+            const result = WordDefinitionSchema.safeParse({
+              lemma: d.lemma ?? "",
+              phonetic: d.phonetic,
+              partOfSpeech: d.partOfSpeech,
+              definitionZh: d.definitionZh ?? "",
+              definitionEn: d.definitionEn,
+              exampleEn: d.exampleEn,
+              exampleZh: d.exampleZh,
+            });
+            return result.success ? result.data : null;
+          })
+          .filter((d): d is WordDefinition => d !== null);
+        results.push(...parsed);
+      }
+    }
+
+    return results;
+  }
+
+  async translateTranscript(input: { segments: TranscriptSegment[] }): Promise<TranscriptSegment[]> {
+    if (input.segments.length === 0) return [];
+
+    const prompt = buildTranscriptTranslationPrompt(input.segments);
+    const content = await this.chatJson(prompt);
+    const value = parseJsonContent(content);
+
+    if (isRecord(value) && Array.isArray(value.segments)) {
+      const translated = new Map<number, string>();
+      for (const s of value.segments) {
+        if (isRecord(s) && typeof s.startTime === "number" && typeof s.text_zh === "string") {
+          translated.set(s.startTime, s.text_zh);
+        }
+      }
+
+      return input.segments.map((seg) => ({
+        ...seg,
+        text_zh: translated.get(seg.startTime) ?? undefined
+      }));
+    }
+
+    return input.segments;
+  }
+
   private async chatJson(prompt: string) {
     const t0 = Date.now();
 
@@ -284,8 +354,8 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
 export class GeminiProvider implements AiProvider {
   constructor(
-    private readonly apiKey = requiredEnv("GEMINI_API_KEY").trim(),
-    private readonly model = (process.env.GEMINI_MODEL ?? "gemini-1.5-flash").trim()
+    private readonly apiKey: string,
+    private readonly model: string,
   ) {}
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
@@ -388,6 +458,65 @@ export class GeminiProvider implements AiProvider {
     return validated;
   }
 
+  async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
+    if (input.lemmas.length === 0) return [];
+
+    const BATCH_SIZE = 30;
+    const results: WordDefinition[] = [];
+
+    for (let i = 0; i < input.lemmas.length; i += BATCH_SIZE) {
+      const batch = input.lemmas.slice(i, i + BATCH_SIZE);
+      const prompt = buildWordDefinitionsPrompt(batch);
+      const content = await this.generateJson(prompt);
+      const value = parseJsonContent(content);
+
+      if (isRecord(value) && Array.isArray(value.definitions)) {
+        const parsed = value.definitions
+          .filter(isRecord)
+          .map((d) => {
+            const result = WordDefinitionSchema.safeParse({
+              lemma: d.lemma ?? "",
+              phonetic: d.phonetic,
+              partOfSpeech: d.partOfSpeech,
+              definitionZh: d.definitionZh ?? "",
+              definitionEn: d.definitionEn,
+              exampleEn: d.exampleEn,
+              exampleZh: d.exampleZh,
+            });
+            return result.success ? result.data : null;
+          })
+          .filter((d): d is WordDefinition => d !== null);
+        results.push(...parsed);
+      }
+    }
+
+    return results;
+  }
+
+  async translateTranscript(input: { segments: TranscriptSegment[] }): Promise<TranscriptSegment[]> {
+    if (input.segments.length === 0) return [];
+
+    const prompt = buildTranscriptTranslationPrompt(input.segments);
+    const content = await this.generateJson(prompt);
+    const value = parseJsonContent(content);
+
+    if (isRecord(value) && Array.isArray(value.segments)) {
+      const translated = new Map<number, string>();
+      for (const s of value.segments) {
+        if (isRecord(s) && typeof s.startTime === "number" && typeof s.text_zh === "string") {
+          translated.set(s.startTime, s.text_zh);
+        }
+      }
+
+      return input.segments.map((seg) => ({
+        ...seg,
+        text_zh: translated.get(seg.startTime) ?? undefined
+      }));
+    }
+
+    return input.segments;
+  }
+
   private async generateJson(prompt: string) {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`;
     const response = GeminiResponseSchema.parse(
@@ -410,16 +539,88 @@ export class GeminiProvider implements AiProvider {
   }
 }
 
-export function getAiProvider(): AiProvider {
-  const provider = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
-  if (provider === "openai-compatible" || provider === "deepseek") {
-    return new OpenAiCompatibleProvider();
-  }
-  if (provider === "gemini") {
-    return new GeminiProvider();
+// ── 数据库配置缓存 ──
+
+let cachedDbConfig: Record<string, string> | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 分钟
+
+async function loadDbConfig(): Promise<Record<string, string>> {
+  const now = Date.now();
+  if (cachedDbConfig && now - cacheTimestamp < CACHE_TTL) {
+    return cachedDbConfig;
   }
 
-  throw new Error(`AI_PROVIDER "${provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", or "gemini".`);
+  try {
+    // 动态导入避免在非请求上下文（构建时）触发 cookies() 调用
+    const { getAppSettings } = await import("@/lib/supabase/admin");
+    cachedDbConfig = await getAppSettings();
+    cacheTimestamp = now;
+  } catch {
+    // 数据库不可用时回退到空配置
+    cachedDbConfig = {};
+    cacheTimestamp = now;
+  }
+
+  return cachedDbConfig;
+}
+
+/** 清除数据库配置缓存，下次 AiProvider 调用时重新加载。 */
+export function clearAiProviderCache() {
+  cachedDbConfig = null;
+  cacheTimestamp = 0;
+}
+
+export type AiConfig = {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+};
+
+async function getResolvedConfig(): Promise<AiConfig> {
+  const envProvider = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
+  const envApiKey = (process.env.AI_API_KEY ?? "").trim();
+  const envBaseUrl = (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim();
+  const envModel = (process.env.AI_MODEL ?? "deepseek-v4-flash").trim();
+
+  const db = await loadDbConfig();
+
+  return {
+    provider: db.ai_provider || envProvider,
+    apiKey: db.ai_api_key || envApiKey,
+    baseUrl: db.ai_api_base_url || envBaseUrl,
+    model: db.ai_model || envModel,
+  };
+}
+
+export async function getAiProvider(): Promise<AiProvider> {
+  const config = await getResolvedConfig();
+
+  if (!config.apiKey) {
+    throw new Error(
+      "AI_API_KEY 未配置。请在环境变量或管理后台设置 API Key。",
+    );
+  }
+
+  if (config.provider === "openai-compatible" || config.provider === "deepseek") {
+    return new OpenAiCompatibleProvider(
+      config.apiKey,
+      normalizeOpenAiCompatibleBaseUrl(config.baseUrl),
+      config.model || "deepseek-v4-flash",
+    );
+  }
+
+  if (config.provider === "gemini") {
+    return new GeminiProvider(
+      config.apiKey,
+      config.model || "gemini-1.5-flash",
+    );
+  }
+
+  throw new Error(
+    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", or "gemini".`,
+  );
 }
 
 function fillDebug(debug: GenerationDebug, data: Partial<GenerationDebug>) {
@@ -680,14 +881,6 @@ function getNumber(record: Record<string, unknown>, keys: string[]) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requiredEnv(name: string) {
-  const raw = process.env[name];
-  if (!raw) {
-    throw new Error(`${name} is not configured.`);
-  }
-  return raw.trim();
 }
 
 function normalizeOpenAiCompatibleBaseUrl(value: string) {

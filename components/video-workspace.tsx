@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { AlertCircle } from "lucide-react";
+import { Navbar } from "@/components/navbar";
 import { ChatPanel } from "@/components/chat-panel";
 import { HighlightsPanel } from "@/components/highlights-panel";
 import { NotesPanel } from "@/components/notes-panel";
+import { SidebarTabs } from "@/components/sidebar-tabs";
 import { SummaryPanel } from "@/components/summary-panel";
 import { TranscriptViewer } from "@/components/transcript-viewer";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
+import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
+import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
 import type {
   GenerationDebug,
   JsonResponse,
@@ -41,15 +44,26 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   const [momentsLoading, setMomentsLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
 
+  // 翻译状态
+  const [translating, setTranslating] = useState(false);
+
   const [currentTime, setCurrentTime] = useState(0);
 
   const playerRef = useRef<VideoPlayerHandle>(null);
+
+  // 各面板独立显示模式
+  const transcriptMode = useDisplayMode("en");
+  const highlightsMode = useDisplayMode("en");
+  const summaryMode = useDisplayMode("en");
+
+  // 词义定义
+  const wordDefinitions = useWordDefinitions(transcript);
 
   const handleSeekTo = useCallback((seconds: number) => {
     playerRef.current?.seekTo(seconds);
   }, []);
 
-  // 每秒轮询播放器当前时间，用于转录文本自动跟随
+  // 每秒轮询播放器当前时间
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(playerRef.current?.getCurrentTime() ?? 0);
@@ -111,7 +125,6 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     }
 
     async function loadMomentsAndSummary() {
-      // 并行请求 moments 和 summary，各自错误独立处理
       const [momentsRes, summaryRes] = await Promise.allSettled([
         fetch("/api/generate-moments", {
           method: "POST",
@@ -138,12 +151,6 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             status: momentsRes.value.status,
             momentCount: payload.ok ? payload.data.moments.length : "N/A",
             error: payload.ok ? null : payload.error?.message,
-            momentsPreview: payload.ok ? payload.data.moments.slice(0, 2).map(m => ({
-              title: m.title,
-              timestamp: m.timestamp,
-              quoteLen: m.quote?.length ?? 0
-            })) : null,
-            debug: payload.ok ? payload.data._debug : null
           });
           if (payload.ok) {
             setMoments(payload.data.moments);
@@ -167,12 +174,6 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             status: summaryRes.value.status,
             takeawayCount: payload.ok ? payload.data.takeaways.length : "N/A",
             error: payload.ok ? null : payload.error?.message,
-            takeawaysPreview: payload.ok ? payload.data.takeaways.slice(0, 2).map(t => ({
-              label: t.label,
-              insightLen: t.insight?.length ?? 0,
-              timestamps: t.timestamps
-            })) : null,
-            debug: payload.ok ? payload.data._debug : null
           });
           if (payload.ok) {
             setTakeaways(payload.data.takeaways);
@@ -193,25 +194,91 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     };
   }, [videoId]);
 
+  // 切换到中英/中文模式时，懒加载翻译
+  const ensureTranslation = useCallback(async (mode: string) => {
+    if (mode === "en") return;
+    // 检查是否已有翻译
+    const hasTranslation = transcript.some((s) => s.text_zh);
+    if (hasTranslation) return;
+
+    setTranslating(true);
+    try {
+      const res = await fetch("/api/translate-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId }),
+      });
+      const payload = await res.json();
+      if (payload.ok && payload.data?.transcript) {
+        setTranscript(payload.data.transcript);
+      }
+    } catch (err) {
+      console.error("[Translate] 翻译请求失败:", err);
+    } finally {
+      setTranslating(false);
+    }
+  }, [transcript, videoId]);
+
+  // 切换显示模式（翻译 + 面板）
+  const transcriptModeChange = useCallback((mode: typeof transcriptMode.displayMode) => {
+    transcriptMode.setDisplayMode(mode);
+    ensureTranslation(mode);
+  }, [transcriptMode, ensureTranslation]);
+
+  const highlightsModeChange = useCallback((mode: typeof highlightsMode.displayMode) => {
+    highlightsMode.setDisplayMode(mode);
+  }, [highlightsMode]);
+
+  const summaryModeChange = useCallback((mode: typeof summaryMode.displayMode) => {
+    summaryMode.setDisplayMode(mode);
+  }, [summaryMode]);
+
+  // 收藏单词
+  const handleSaveWord = useCallback(async (lemma: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/user-vocabulary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lemma, videoId }),
+      });
+      const payload = await res.json();
+      return payload.ok === true;
+    } catch {
+      return false;
+    }
+  }, [videoId]);
+
+  // 收藏句子
+  const handleSaveQuote = useCallback(async (segment: TranscriptSegment): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/user-quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoId,
+          textEn: segment.text,
+          textZh: segment.text_zh,
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+        }),
+      });
+      const payload = await res.json();
+      return payload.ok === true;
+    } catch {
+      return false;
+    }
+  }, [videoId]);
+
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* 顶部栏 */}
-      <div className="sticky top-0 z-40 border-b border-white/8 bg-black/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-12 max-w-7xl items-center px-5">
-          <Link
-            href="/"
-            className="text-[14px] font-semibold tracking-[-0.01em] text-white/60 transition-colors hover:text-white"
-          >
-            &larr; VideoMind
-          </Link>
-        </div>
-      </div>
+      <Navbar />
 
       {/* 主内容 */}
-      <main className="mx-auto max-w-7xl px-5 py-6">
+      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-6 sm:px-5 sm:pt-20 lg:max-w-[80%]">
         <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
-          {/* 左侧：视频 + 摘要 + 转录 */}
+          {/* 左侧：视频 + 章节列表 + 核心摘要 */}
           <div className="min-w-0 space-y-6">
+            {/* 视频播放器 */}
             <VideoPlayer
               ref={playerRef}
               videoId={videoId}
@@ -225,26 +292,69 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               </div>
             ) : null}
 
-            <SummaryPanel
-              takeaways={takeaways}
-              loading={summaryLoading}
-              onSeekTo={handleSeekTo}
-            />
-            <TranscriptViewer transcript={transcript} loading={loading} currentTime={currentTime} />
-          </div>
+            {/* 移动端：转录文本 + Chat + 笔记依次排列 */}
+            <div className="lg:hidden space-y-4">
+              <TranscriptViewer
+                transcript={transcript}
+                loading={loading}
+                currentTime={currentTime}
+                displayMode={transcriptMode.displayMode}
+                onDisplayModeChange={transcriptModeChange}
+                wordDefinitions={wordDefinitions}
+                onSaveWord={handleSaveWord}
+                onSaveQuote={handleSaveQuote}
+                onSeekTo={handleSeekTo}
+                translating={translating}
+              />
+              {translating && (
+                <p className="text-[12px] text-white/30">翻译中...</p>
+              )}
+              <ChatPanel
+                videoId={videoId}
+                suggestedQuestions={analysis?.suggestedQuestions ?? []}
+                compact
+                onSeekTo={handleSeekTo}
+              />
+              <NotesPanel videoId={videoId} compact />
+            </div>
 
-          {/* 右侧：要点时刻 + 问答 + 笔记 */}
-          <aside className="w-full space-y-6 lg:sticky lg:top-[4.5rem] lg:w-[20rem] lg:self-start xl:w-[26rem]">
+            {/* 要点时刻（章节列表） */}
             <HighlightsPanel
               moments={moments}
               loading={momentsLoading}
+              displayMode={highlightsMode.displayMode}
+              onDisplayModeChange={highlightsModeChange}
               onSeekTo={handleSeekTo}
             />
-            <ChatPanel
-              videoId={videoId}
-              suggestedQuestions={analysis?.suggestedQuestions ?? []}
+
+            {/* 核心摘要 */}
+            <SummaryPanel
+              takeaways={takeaways}
+              loading={summaryLoading}
+              displayMode={summaryMode.displayMode}
+              onDisplayModeChange={summaryModeChange}
+              onSeekTo={handleSeekTo}
             />
-            <NotesPanel videoId={videoId} />
+          </div>
+
+          {/* 右侧：标签页（转录文本 / Chat / 笔记） */}
+          <aside className="hidden lg:block lg:sticky lg:top-20 lg:w-[20rem] lg:self-start xl:w-[26rem]">
+            <div className="h-[calc(100vh-6rem)]">
+              <SidebarTabs
+                videoId={videoId}
+                transcript={transcript}
+                transcriptLoading={loading}
+                currentTime={currentTime}
+                analysis={analysis}
+                displayMode={transcriptMode.displayMode}
+                onDisplayModeChange={transcriptModeChange}
+                wordDefinitions={wordDefinitions}
+                onSaveWord={handleSaveWord}
+                onSaveQuote={handleSaveQuote}
+                onSeekTo={handleSeekTo}
+                translating={translating}
+              />
+            </div>
           </aside>
         </div>
       </main>

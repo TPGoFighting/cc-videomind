@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     // 3. AI 生成
     const tAiStart = Date.now();
     const debug = createEmptyDebug();
-    const aiProvider = getAiProvider();
+    const aiProvider = await getAiProvider();
     const takeaways = await aiProvider.generateStructuredSummary({
       title,
       transcript,

@@ -1,34 +1,79 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { ListVideo, Pin, PinOff } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Bookmark, BookmarkCheck, ListVideo, Pin, PinOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { TranscriptSegment } from "@/lib/types";
+import type { DisplayMode, TranscriptSegment, WordDefinition } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils/time";
 import { cn } from "@/lib/utils/cn";
+import { lemmatizeWord } from "@/lib/utils/tokenize";
+import { DisplayModeToggle } from "./display-mode-toggle";
+import { WordCard } from "./word-card";
+
+/** 将文本按单词边界拆分，返回片段列表 */
+function tokenizeText(text: string): string[] {
+  return text.split(/\b/);
+}
+
+function isAlpha(token: string): boolean {
+  return /^[a-zA-Z]+$/.test(token);
+}
 
 export function TranscriptViewer({
   transcript,
   loading,
   currentTime,
+  hideHeader,
+  displayMode = "en",
+  onDisplayModeChange,
+  wordDefinitions,
+  onSaveWord,
+  onSaveQuote,
+  onSeekTo,
+  translating = false,
 }: {
   transcript: TranscriptSegment[];
   loading: boolean;
   currentTime?: number;
+  hideHeader?: boolean;
+  displayMode?: DisplayMode;
+  onDisplayModeChange?: (mode: DisplayMode) => void;
+  wordDefinitions?: Map<string, WordDefinition>;
+  onSaveWord?: (lemma: string) => Promise<boolean>;
+  onSaveQuote?: (segment: TranscriptSegment) => Promise<boolean>;
+  onSeekTo?: (seconds: number) => void;
+  translating?: boolean;
 }) {
   const [autoScroll, setAutoScroll] = useState(true);
+  const [activeWord, setActiveWord] = useState<{
+    lemma: string;
+    position: { top: number; left: number };
+  } | null>(null);
+  const [savingQuote, setSavingQuote] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
 
   // 找到当前播放时间对应的段落索引
-  const activeIndex = transcript.findIndex(
-    (s) => currentTime !== undefined && currentTime >= s.startTime && currentTime < s.endTime
-  );
+  const activeIndex = (() => {
+    if (currentTime === undefined) return -1;
+    const exact = transcript.findIndex(
+      (s) => currentTime >= s.startTime && currentTime < s.endTime
+    );
+    if (exact !== -1) return exact;
+    let best = -1;
+    let bestStart = -1;
+    for (let i = 0; i < transcript.length; i++) {
+      if (transcript[i].startTime <= currentTime && transcript[i].startTime > bestStart) {
+        best = i;
+        bestStart = transcript[i].startTime;
+      }
+    }
+    return best;
+  })();
 
   // 自动滚动到当前段落
   useEffect(() => {
     if (!autoScroll || !activeRef.current || !containerRef.current) return;
-    // 只在元素不可见时才滚动，避免打断用户的主动滚动
     const container = containerRef.current;
     const active = activeRef.current;
     const containerRect = container.getBoundingClientRect();
@@ -41,36 +86,114 @@ export function TranscriptViewer({
     }
   }, [autoScroll, activeIndex]);
 
+  // 词卡关闭
+  const closeWordCard = useCallback(() => setActiveWord(null), []);
+
+  // 点击单词
+  const handleWordClick = useCallback(
+    (lemma: string, e: React.MouseEvent) => {
+      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
+    },
+    []
+  );
+
+  // 收藏句子
+  const handleSaveQuote = useCallback(
+    async (segment: TranscriptSegment) => {
+      if (!onSaveQuote) return;
+      const key = `${segment.startTime}-${segment.endTime}`;
+      setSavingQuote((prev) => new Set(prev).add(key));
+      await onSaveQuote(segment);
+      setSavingQuote((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    },
+    [onSaveQuote]
+  );
+
+  const activeDefinition =
+    activeWord ? wordDefinitions?.get(activeWord.lemma) : undefined;
+
+  // 检查是否已有翻译数据
+  const hasTranslation = transcript.some((s) => s.text_zh);
+  const needsTranslation = (displayMode === "zh" || displayMode === "bilingual") && !hasTranslation;
+
+  // 显示规则：中文模式下如果没有翻译，回退显示英文
+  const showZh = (displayMode === "zh" || displayMode === "bilingual") && hasTranslation;
+  const showEn = displayMode === "en" || displayMode === "bilingual" || (displayMode === "zh" && !hasTranslation);
+
+  // 渲染带交互单词的文本
+  const renderText = useCallback(
+    (text: string) => {
+      const tokens = tokenizeText(text);
+      return tokens.map((token, i) => {
+        if (isAlpha(token) && wordDefinitions) {
+          const lemma = lemmatizeWord(token);
+          const def = wordDefinitions.get(lemma);
+          if (def) {
+            return (
+              <span
+                key={i}
+                className="cursor-pointer text-[#0099ff] hover:underline decoration-dotted underline-offset-2 inline-block min-h-[24px] leading-relaxed"
+                onClick={(e) => handleWordClick(lemma, e)}
+              >
+                {token}
+              </span>
+            );
+          }
+        }
+        return <span key={i}>{token}</span>;
+      });
+    },
+    [wordDefinitions, handleWordClick]
+  );
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-white">
-            <ListVideo className="h-4 w-4 text-[#0099ff]" aria-hidden />
-            转录文本
-          </CardTitle>
-          {!loading && transcript.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setAutoScroll((v) => !v)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
-                autoScroll
-                  ? "bg-[#0099ff]/15 text-[#0099ff] hover:bg-[#0099ff]/25"
-                  : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
+    <Card className={cn("lg:flex lg:h-full lg:flex-col", hideHeader && "border-0 bg-transparent")}>
+      {!hideHeader && (
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-white">
+              <ListVideo className="h-4 w-4 text-[#0099ff]" aria-hidden />
+              转录文本
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {onDisplayModeChange && (
+                <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
               )}
-            >
-              {autoScroll ? (
-                <Pin className="h-3.5 w-3.5" aria-hidden />
-              ) : (
-                <PinOff className="h-3.5 w-3.5" aria-hidden />
+              {needsTranslation && translating && (
+                <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
               )}
-              {autoScroll ? "跟随中" : "自动跟随"}
-            </button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
+              {needsTranslation && !translating && (
+                <span className="text-[11px] text-white/20">切换至中英/中文模式以触发翻译</span>
+              )}
+              {!loading && transcript.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAutoScroll((v) => !v)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
+                    autoScroll
+                      ? "bg-[#0099ff]/15 text-[#0099ff] hover:bg-[#0099ff]/25"
+                      : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
+                  )}
+                >
+                  {autoScroll ? (
+                    <Pin className="h-3.5 w-3.5" aria-hidden />
+                  ) : (
+                    <PinOff className="h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {autoScroll ? "跟随中" : "自动跟随"}
+                </button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+      )}
+      <CardContent className="lg:flex-1 lg:min-h-0">
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -86,40 +209,106 @@ export function TranscriptViewer({
         ) : (
           <div
             ref={containerRef}
-            className="max-h-[50vh] space-y-3 overflow-auto pr-1 lg:max-h-[32rem]"
+            className="max-h-[50vh] space-y-3 overflow-auto pr-1 lg:max-h-none lg:h-full"
           >
-            {transcript.map((segment, i) => (
-              <div
-                key={`${segment.startTime}-${segment.endTime}`}
-                ref={i === activeIndex ? activeRef : undefined}
-                className={cn(
-                  "grid grid-cols-[4.5rem_1fr] gap-3 rounded-lg px-2 py-1.5 text-[14px] transition-colors",
-                  i === activeIndex
-                    ? "bg-[#0099ff]/10 ring-1 ring-[#0099ff]/20"
-                    : "hover:bg-white/4"
-                )}
-              >
-                <span
+            {transcript.map((segment, i) => {
+              const segKey = `${segment.startTime}-${segment.endTime}`;
+              const isSaving = savingQuote.has(segKey);
+
+              return (
+                <div
+                  key={segKey}
+                  ref={i === activeIndex ? activeRef : undefined}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // 如果点击了收藏按钮或交互单词，不跳转
+                    const target = e.target as HTMLElement;
+                    if (target.closest("[data-no-seek]")) return;
+                    onSeekTo?.(segment.startTime);
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") onSeekTo?.(segment.startTime); }}
                   className={cn(
-                    "font-mono text-xs font-semibold",
-                    i === activeIndex ? "text-[#0099ff]" : "text-[#0099ff]/60"
+                    "group grid grid-cols-[4.5rem_1fr] gap-3 rounded-lg px-2 py-1.5 text-[14px] transition-colors cursor-pointer",
+                    i === activeIndex
+                      ? "bg-[#0099ff]/10 ring-1 ring-[#0099ff]/20"
+                      : "hover:bg-white/4"
                   )}
                 >
-                  {formatTimestamp(segment.startTime)}
-                </span>
-                <p
-                  className={cn(
-                    "leading-relaxed",
-                    i === activeIndex ? "text-white/90" : "text-[#a6a6a6]"
-                  )}
-                >
-                  {segment.text}
-                </p>
-              </div>
-            ))}
+                  <span
+                    className={cn(
+                      "font-mono text-xs font-semibold",
+                      i === activeIndex ? "text-[#0099ff]" : "text-[#0099ff]/60"
+                    )}
+                  >
+                    {formatTimestamp(segment.startTime)}
+                  </span>
+                  <div className="min-w-0">
+                    {/* 英文原文 */}
+                    {showEn && (
+                      <p
+                        className={cn(
+                          "leading-relaxed",
+                          i === activeIndex ? "text-white/90" : "text-[#a6a6a6]"
+                        )}
+                      >
+                        {renderText(segment.text)}
+                      </p>
+                    )}
+
+                    {/* 中文翻译 */}
+                    {showZh && segment.text_zh && (
+                      <p className={cn(
+                        "leading-relaxed mt-0.5",
+                        i === activeIndex ? "text-white/70" : "text-white/35"
+                      )}>
+                        {segment.text_zh}
+                      </p>
+                    )}
+
+                    {/* 收藏按钮 */}
+                    {onSaveQuote && (
+                      <button
+                        type="button"
+                        data-no-seek
+                        disabled={isSaving}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSaveQuote(segment);
+                        }}
+                        className={cn(
+                          "mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] transition-opacity min-h-[28px]",
+                          "opacity-100 sm:opacity-0 sm:group-hover:opacity-100",
+                          isSaving
+                            ? "text-[#0099ff]"
+                            : "text-white/30 hover:text-[#0099ff]"
+                        )}
+                      >
+                        {isSaving ? (
+                          <BookmarkCheck className="h-3 w-3" />
+                        ) : (
+                          <Bookmark className="h-3 w-3" />
+                        )}
+                        收藏句子
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
+
+      {/* 词义弹窗 */}
+      {activeWord && activeDefinition && (
+        <WordCard
+          definition={activeDefinition}
+          position={activeWord.position}
+          onClose={closeWordCard}
+          onSave={onSaveWord}
+        />
+      )}
     </Card>
   );
 }

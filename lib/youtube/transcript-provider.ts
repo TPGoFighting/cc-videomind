@@ -342,13 +342,15 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
     const content = await this.downloadCaptionContent(track.baseUrl);
     const rawSegments = parseCaptionContent(content);
 
-    return rawSegments
+    const segments = rawSegments
       .filter((s) => s.text.length > 0 && Number.isFinite(s.start) && Number.isFinite(s.duration))
       .map((s) => ({
         startTime: s.start,
         endTime: s.start + s.duration,
         text: s.text
       }));
+
+    return mergeIntoSentences(segments);
   }
 
   /** 下载字幕内容（纯文本） */
@@ -691,7 +693,7 @@ export class ExternalApiTranscriptProvider implements TranscriptProvider {
       throw new TranscriptError("CAPTION_DOWNLOAD_FAILED", "Supadata 未返回字幕。");
     }
 
-    return segments;
+    return mergeIntoSentences(segments);
   }
 
   private parseSupadataResponse(data: unknown): TranscriptSegment[] {
@@ -805,6 +807,46 @@ export function decodeHtml(value: string): string {
     .replace(/&#(\d+);/g, (_, code: string) =>
       String.fromCharCode(Number(code))
     );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 句子合并器 — 将字幕片段按句子粒度重新划分
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 句子结束标点（中英文） */
+const SENTENCE_END = /[.!?。！？]$/;
+
+/** 两段之间允许的最大时间间隙（秒），超过则不合并 */
+const MAX_MERGE_GAP = 0.5;
+
+/**
+ * 将字幕片段按句子粒度合并。
+ *
+ * YouTube 字幕以屏幕行为单位分割，一句话经常被拆成多个 <p> 标签。
+ * 这里把连续且时间上紧密相连的片段合并，直到遇到句子结束标点。
+ */
+export function mergeIntoSentences(segments: TranscriptSegment[]): TranscriptSegment[] {
+  if (segments.length === 0) return [];
+
+  const result: TranscriptSegment[] = [];
+  let current = { ...segments[0] };
+
+  for (let i = 1; i < segments.length; i++) {
+    const next = segments[i];
+    const gap = next.startTime - current.endTime;
+
+    if (gap <= MAX_MERGE_GAP && !SENTENCE_END.test(current.text)) {
+      // 合并：延长时间范围，拼接文本
+      current.endTime = next.endTime;
+      current.text = current.text + " " + next.text;
+    } else {
+      result.push(current);
+      current = { ...next };
+    }
+  }
+
+  result.push(current);
+  return result;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

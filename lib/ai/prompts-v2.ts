@@ -61,25 +61,39 @@ export function buildKeyMomentsPrompt(
   const isZh = lang === "zh";
 
   const schemaExample = isZh
-    ? { moments: [{ title: "标题(≤20字)", timestamp: "00:18-00:25", quote: "字幕原文引用", reason: "为什么值得关注" }] }
-    : { moments: [{ title: "Title (≤10 words)", timestamp: "00:18-00:25", quote: "exact transcript quote", reason: "why this matters" }] };
+    ? {
+        moments: [{
+          title: "标题(≤20字)", title_zh: "中文标题",
+          timestamp: "00:18-00:25",
+          quote: "字幕原文引用", quote_zh: "中文翻译",
+          reason: "为什么值得关注", reason_zh: "中文理由"
+        }]
+      }
+    : {
+        moments: [{
+          title: "Title (≤10 words)", title_zh: "中文标题",
+          timestamp: "00:18-00:25",
+          quote: "exact transcript quote", quote_zh: "中文翻译",
+          reason: "why this matters", reason_zh: "中文理由"
+        }]
+      };
 
   const instructions = isZh
     ? [
-        "从字幕中找出 1-5 个最值得关注的片段。",
-        "每条含 title(≤20字)、timestamp(MM:SS-MM:SS 或 HH:MM:SS-HH:MM:SS)、quote(字幕原文禁止改写)、reason(一句话)。",
+        "从字幕中找出 1-5 个最值得关注的片段。同时输出中英双语内容。",
+        "title/quote/reason 用中文，对应的 title_zh/quote_zh/reason_zh 也输出中文（同上）。",
+        "timestamp 格式 MM:SS-MM:SS 或 HH:MM:SS-HH:MM:SS。quote 必须使用字幕原文。",
         "优先: 反常识观点、核心论点+数据、故事转折、方法论。",
         "避免: 开场寒暄、订阅推广、无上下文短句、重复观点。",
-        "尽量覆盖视频开头(前20%)、中段、结尾(后20%)。",
-        "每条片段建议 45-75 秒。宁缺毋滥。最多 5 条。"
+        "尽量覆盖视频开头(前20%)、中段、结尾(后20%)。宁缺毋滥。最多 5 条。"
       ]
     : [
-        "Identify 1-5 key moments from the transcript.",
-        "Each has: title (≤10 words), timestamp (MM:SS-MM:SS or HH:MM:SS-HH:MM:SS), quote (exact transcript text, do not rewrite), reason (1 sentence).",
+        "Identify 1-5 key moments. Output bilingual (EN + Chinese) content.",
+        "title/quote/reason in English. title_zh/quote_zh/reason_zh in Chinese (faithful translation).",
+        "timestamp format MM:SS-MM:SS or HH:MM:SS-HH:MM:SS. quote must be exact transcript text.",
         "Prioritize: counter-intuitive views, core arguments with data, story turns, methodology.",
         "Avoid: greetings, channel promos, context-free short sentences, repeated points.",
-        "Cover beginning (first 20%), middle, and end (last 20%) of the video.",
-        "Quality over quantity. Max 5."
+        "Cover beginning (first 20%), middle, and end (last 20%). Quality over quantity. Max 5."
       ];
 
   const themeLine = theme
@@ -88,8 +102,8 @@ export function buildKeyMomentsPrompt(
 
   return [
     isZh
-      ? "你是一位视频内容分析师。从字幕中提取最有学习价值的要点时刻。"
-      : "You are a video content analyst. Extract the most valuable key moments from the transcript.",
+      ? "你是一位视频内容分析师。从字幕中提取最有学习价值的要点时刻。输出中英双语。"
+      : "You are a video content analyst. Extract the most valuable key moments. Output bilingual (EN + Chinese).",
     "",
     instructions.join("\n"),
     themeLine,
@@ -167,29 +181,41 @@ export function buildStructuredSummaryPrompt(
   const isZh = lang === "zh";
 
   const schemaExample = isZh
-    ? { takeaways: [{ label: "标签(≤20字)", insight: "1-2句话解释核心观点", timestamps: ["0:12", "0:18"] }] }
-    : { takeaways: [{ label: "Label (≤10 words)", insight: "1-2 sentence insight", timestamps: ["0:12", "0:18"] }] };
+    ? {
+        takeaways: [{
+          label: "标签(≤20字)", label_zh: "中文标签",
+          insight: "1-2句话解释核心观点", insight_zh: "中文解释",
+          timestamps: ["0:12", "0:18"]
+        }]
+      }
+    : {
+        takeaways: [{
+          label: "Label (≤10 words)", label_zh: "中文标签",
+          insight: "1-2 sentence insight", insight_zh: "中文解释",
+          timestamps: ["0:12", "0:18"]
+        }]
+      };
 
   const instructions = isZh
     ? [
-        "从字幕中提取 4-6 条核心摘要。",
-        "每条含 label(≤20字)、insight(1-2句话)、timestamps(1-2个M:SS格式的真实时间戳)。",
+        "从字幕中提取 4-6 条核心摘要。同时输出中英双语内容。",
+        "label/insight 用中文，label_zh/insight_zh 也输出中文（同上）。",
+        "timestamps=1-2个M:SS格式的真实时间戳 (如 0:12, 14:30)。",
         "只使用字幕中明确出现的信息，禁止编造。",
-        "优先选择: 反常识观点、具体案例、关键数据、方法论。",
-        "时间戳格式必须是 M:SS 或 MM:SS (如 0:12, 14:30)，不能是纯数字。"
+        "优先选择: 反常识观点、具体案例、关键数据、方法论。"
       ]
     : [
-        "Extract 4-6 key takeaways from the transcript.",
-        "Each has: label (≤10 words), insight (1-2 sentences), timestamps (1-2 real timestamps in M:SS format).",
+        "Extract 4-6 key takeaways. Output bilingual (EN + Chinese) content.",
+        "label/insight in English. label_zh/insight_zh in Chinese (faithful translation).",
+        "timestamps=1-2 real timestamps in M:SS format (e.g., 0:12, 14:30).",
         "Only use information explicitly stated in the transcript. Do not fabricate.",
-        "Prioritize: counter-intuitive views, concrete cases, key data, methodology.",
-        "Timestamp format must be M:SS or MM:SS (e.g., 0:12, 14:30), NOT raw numbers."
+        "Prioritize: counter-intuitive views, concrete cases, key data, methodology."
       ];
 
   return [
     isZh
-      ? "你是一位学习笔记整理师。从视频字幕中提取结构化核心摘要。"
-      : "You are a study notes organizer. Extract structured key takeaways from the transcript.",
+      ? "你是一位学习笔记整理师。从视频字幕中提取结构化核心摘要。输出中英双语。"
+      : "You are a study notes organizer. Extract structured key takeaways. Output bilingual (EN + Chinese).",
     "",
     instructions.join("\n"),
     "",

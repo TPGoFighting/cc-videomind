@@ -35,7 +35,7 @@ export async function checkAnalysisQuota(userId: string | null) {
 
   const supabase = createSupabaseServiceClient();
   const tier = await getProfileTier(userId);
-  const limit = tier === "pro" ? 100 : 3;
+  const limit = tier === "pro" ? 100 : 10;
 
   if (!supabase) {
     return { allowed: true, anonymous: false, limit, used: 0 };
@@ -67,4 +67,10 @@ export async function recordAnalysisUsage(input: { userId: string | null; videoI
     video_id: input.videoId,
     event_type: "video_analysis"
   });
+
+  // 同时记录到 user_videos 用于历史记录
+  await supabase.from("user_videos").upsert({
+    user_id: input.userId,
+    video_id: input.videoId,
+  }, { onConflict: "user_id,video_id" });
 }

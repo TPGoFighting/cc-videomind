@@ -2,25 +2,38 @@
 
 import { Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { KeyMoment } from "@/lib/types";
+import type { DisplayMode, KeyMoment } from "@/lib/types";
 import { parseTimestampToSeconds } from "@/lib/utils/moments-validator";
+import { DisplayModeToggle } from "./display-mode-toggle";
 
 export function HighlightsPanel({
   moments,
   loading,
+  displayMode = "en",
+  onDisplayModeChange,
   onSeekTo,
 }: {
   moments: KeyMoment[];
   loading: boolean;
+  displayMode?: DisplayMode;
+  onDisplayModeChange?: (mode: DisplayMode) => void;
   onSeekTo?: (seconds: number) => void;
 }) {
+  const showZh = displayMode === "zh" || displayMode === "bilingual";
+  const showEn = displayMode === "en" || displayMode === "bilingual";
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-white">
-          <Sparkles className="h-4 w-4 text-[#0099ff]" aria-hidden />
-          要点时刻
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-white">
+            <Sparkles className="h-4 w-4 text-[#0099ff]" aria-hidden />
+            要点时刻
+          </CardTitle>
+          {onDisplayModeChange && (
+            <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {loading ? (
@@ -48,7 +61,15 @@ export function HighlightsPanel({
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <h3 className="text-[14px] font-semibold leading-snug">
-                    {m.title}
+                    {showEn && <span>{m.title}</span>}
+                    {showZh && m.title_zh && (
+                      <span className={showEn ? "ml-2 text-white/60" : ""}>
+                        {m.title_zh}
+                      </span>
+                    )}
+                    {showZh && !m.title_zh && !showEn && (
+                      <span>{m.title}</span>
+                    )}
                   </h3>
                   <button
                     type="button"
@@ -58,12 +79,40 @@ export function HighlightsPanel({
                     {start}–{end}
                   </button>
                 </div>
-                <p className="text-[13px] leading-relaxed text-[#a6a6a6]">
-                  &ldquo;{m.quote}&rdquo;
-                </p>
-                <p className="mt-2 text-[12px] font-medium leading-relaxed text-white/60">
-                  {m.reason}
-                </p>
+
+                {/* 引用 */}
+                {showEn && (
+                  <p className="text-[13px] leading-relaxed text-[#a6a6a6]">
+                    &ldquo;{m.quote}&rdquo;
+                  </p>
+                )}
+                {showZh && m.quote_zh && (
+                  <p className="text-[13px] leading-relaxed text-white/50">
+                    &ldquo;{m.quote_zh}&rdquo;
+                  </p>
+                )}
+                {showZh && !m.quote_zh && !showEn && (
+                  <p className="text-[13px] leading-relaxed text-[#a6a6a6]">
+                    &ldquo;{m.quote}&rdquo;
+                  </p>
+                )}
+
+                {/* 理由 */}
+                {showEn && (
+                  <p className="mt-2 text-[12px] font-medium leading-relaxed text-white/60">
+                    {m.reason}
+                  </p>
+                )}
+                {showZh && m.reason_zh && (
+                  <p className="mt-1 text-[12px] leading-relaxed text-white/40">
+                    {m.reason_zh}
+                  </p>
+                )}
+                {showZh && !m.reason_zh && !showEn && (
+                  <p className="mt-2 text-[12px] font-medium leading-relaxed text-white/60">
+                    {m.reason}
+                  </p>
+                )}
               </article>
             );
           })

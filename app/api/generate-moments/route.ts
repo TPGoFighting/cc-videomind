@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     // 3. AI 生成
     const tAiStart = Date.now();
     const debug = createEmptyDebug();
-    const moments = await getAiProvider().generateKeyMoments({
+    const moments = await (await getAiProvider()).generateKeyMoments({
       title,
       transcript,
       mode,

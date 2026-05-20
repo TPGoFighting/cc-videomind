@@ -166,3 +166,40 @@ button, input, textarea, select {
 .animate-fade-in-up-delay-2 { animation-delay: 0.2s; opacity: 0; }
 .animate-fade-in-up-delay-3 { animation-delay: 0.3s; opacity: 0; }
 .animate-fade-in-up-delay-4 { animation-delay: 0.4s; opacity: 0; }
+
+/* 背景光晕缓慢浮动 */
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+
+.animate-float-slow {
+  animation: float-slow 12s ease-in-out infinite;
+}
+
+.animate-float-slow-delayed {
+  animation: float-slow 12s ease-in-out 4s infinite;
+}
+
+/* 渐变背景平移 —— 标题文字 */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-gradient-shift {
+  animation: gradient-shift 4s ease-in-out infinite;
+}
+
+/* 微光闪烁 —— 骨架加载 */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer-1 {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.03) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s ease-in-out infinite;
+}

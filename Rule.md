@@ -1,7 +1,7 @@
 Task: Implement the transcript provider interface and mock provider.
 
 Context:
-This is a Next.js App Router TypeScript app named VideoMind. The product lets users paste a YouTube URL and analyze the transcript with AI.
+This is a Next.js App Router TypeScript app named Teach Player. The product lets users paste a YouTube URL and analyze the transcript with AI.
 
 Files to create or update:
 - lib/transcript/types.ts

@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       await upsertTranscriptCache({ videoId: parsed.data.videoId, metadata, transcript });
     }
 
-    const answer = await getAiProvider().answerQuestion({
+    const answer = await (await getAiProvider()).answerQuestion({
       question: parsed.data.question,
       transcript
     });
