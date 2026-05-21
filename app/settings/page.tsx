@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark, Loader2, LogIn, LogOut, Save, Shield } from "lucide-react";
+import { ArrowLeft, Bookmark, ExternalLink, Loader2, LogIn, LogOut, Save, Shield } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
@@ -327,6 +328,9 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* 管理员：所有解析视频 */}
+        {isAdmin && <AdminVideosPanel />}
+
         {/* 非 admin 加载中 */}
         {!isAdmin && loadingConfig && authLoading && (
           <Card>
@@ -340,5 +344,93 @@ export default function SettingsPage() {
         )}
       </main>
     </div>
+  );
+}
+
+// ─── 管理员视频面板 ───
+
+interface AdminVideo {
+  videoId: string;
+  title: string;
+  thumbnail: string | null;
+  channelName: string;
+  parsedAt: string;
+  parsedBy: string;
+}
+
+function AdminVideosPanel() {
+  const [videos, setVideos] = useState<AdminVideo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin/videos")
+      .then((r) => r.json())
+      .then((data: { ok: boolean; data: { videos: AdminVideo[] } }) => {
+        if (data.ok) setVideos(data.data.videos ?? []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white text-base">
+          <Shield className="h-4 w-4 text-[#0099ff]" />
+          所有用户解析视频
+        </CardTitle>
+        <p className="text-[13px] text-white/40">
+          全站用户解析过的视频一览
+        </p>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-16 rounded-xl bg-white/6 animate-breathe" />
+            ))}
+          </div>
+        ) : videos.length === 0 ? (
+          <p className="text-[13px] text-white/30 py-4 text-center">暂无解析记录</p>
+        ) : (
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+            {videos.map((v) => (
+              <Link
+                key={v.videoId}
+                href={`/video/${v.videoId}`}
+                className="flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-3 transition-colors hover:bg-white/[0.05]"
+              >
+                {v.thumbnail ? (
+                  <Image
+                    src={v.thumbnail}
+                    alt={v.title}
+                    width={96}
+                    height={54}
+                    unoptimized
+                    className="h-12 w-20 shrink-0 rounded-md object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-20 shrink-0 items-center justify-center rounded-md bg-white/6">
+                    <ExternalLink className="h-4 w-4 text-white/15" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-[13px] font-medium text-white/80">
+                    {v.title}
+                  </h3>
+                  <p className="mt-0.5 text-[11px] text-white/35">
+                    {v.channelName} · {new Date(v.parsedAt).toLocaleDateString("zh-CN")}
+                  </p>
+                  <p className="text-[11px] text-white/20">
+                    by {v.parsedBy}
+                  </p>
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-white/15" />
+              </Link>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
