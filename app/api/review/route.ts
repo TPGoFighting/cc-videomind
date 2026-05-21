@@ -59,6 +59,70 @@ export async function GET(request: Request) {
     .limit(20);
 
   if (!rows?.length) {
+    // 自动从单词本同步未复习的单词
+    const { data: vocabRows } = await supabase
+      .from("user_vocabulary")
+      .select("lemma")
+      .eq("user_id", userId);
+
+    if (vocabRows?.length) {
+      const lemmas = vocabRows.map((r: Record<string, unknown>) => r.lemma as string);
+      // 批量插入复习记录（next_review_at = now，立即到期）
+      const now = new Date().toISOString();
+      const inserts = lemmas.map((l) => ({
+        user_id: userId,
+        lemma: l,
+        repetitions: 0,
+        ease_factor: 2.5,
+        interval_days: 0,
+        next_review_at: now, // 立即到期
+        status: "learning",
+      }));
+      await supabase.from("user_word_reviews").upsert(inserts, { onConflict: "user_id,lemma" });
+
+      // 重新查询
+      const { data: newRows } = await supabase
+        .from("user_word_reviews")
+        .select("lemma, repetitions, ease_factor, interval_days, status")
+        .eq("user_id", userId)
+        .lte("next_review_at", now)
+        .order("next_review_at", { ascending: true })
+        .limit(20);
+
+      if (!newRows?.length) return successResponse({ words: [] });
+
+      // 查询完整单词定义
+      const { data: fullVocab } = await supabase
+        .from("user_vocabulary")
+        .select("*")
+        .eq("user_id", userId)
+        .in("lemma", newRows.map((r: Record<string, unknown>) => r.lemma as string));
+
+      const defMap = new Map<string, Record<string, unknown>>();
+      for (const d of fullVocab ?? []) {
+        defMap.set(d.lemma as string, d);
+      }
+
+      const words = newRows.map((r: Record<string, unknown>) => {
+        const def = defMap.get(r.lemma as string);
+        return {
+          lemma: r.lemma,
+          phonetic: def?.phonetic as string | undefined,
+          partOfSpeech: def?.part_of_speech as string | undefined,
+          definitionZh: (def?.definition_zh as string) ?? "",
+          definitionEn: def?.definition_en as string | undefined,
+          exampleEn: def?.example_en as string | undefined,
+          exampleZh: def?.example_zh as string | undefined,
+          repetitions: r.repetitions as number,
+          easeFactor: r.ease_factor as number,
+          intervalDays: r.interval_days as number,
+          status: r.status as string,
+        };
+      });
+
+      return successResponse({ words });
+    }
+
     return successResponse({ words: [] });
   }
 
