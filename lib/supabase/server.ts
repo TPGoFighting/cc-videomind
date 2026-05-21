@@ -39,3 +39,17 @@ export function createSupabaseServiceClient() {
     }
   });
 }
+
+export function createSupabaseAuthClient() {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false
+    }
+  });
+}

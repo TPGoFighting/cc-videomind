@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bookmark, Clock, LogIn, LogOut, Settings, Settings2, User } from "lucide-react";
+import { BookOpen, Bookmark, Clock, LogIn, LogOut, NotebookPen, Settings, Settings2, User } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 
 export function Navbar() {
@@ -81,6 +81,14 @@ export function Navbar() {
                   >
                     <Bookmark className="h-3.5 w-3.5" />
                     句子本
+                  </Link>
+                  <Link
+                    href="/notes"
+                    onClick={() => setOpen(false)}
+                    className="hidden md:flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
+                  >
+                    <NotebookPen className="h-3.5 w-3.5" />
+                    笔记本
                   </Link>
                   <Link
                     href="/settings"

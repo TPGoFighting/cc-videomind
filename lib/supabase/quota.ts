@@ -1,16 +1,43 @@
 import { startOfMonth } from "@/lib/utils/month";
-import { createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
+import { createSupabaseAuthClient, createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
+import type { User } from "@supabase/supabase-js";
 
 export type SubscriptionTier = "free" | "pro";
 
-export async function getAuthenticatedUserId() {
+export function getBearerToken(request?: Request) {
+  const authorization = request?.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+export async function getAuthenticatedUser(request?: Request): Promise<User | null> {
+  const bearerToken = getBearerToken(request);
+  if (bearerToken) {
+    const supabase = createSupabaseAuthClient();
+    if (!supabase) {
+      return null;
+    }
+
+    const { data, error } = await supabase.auth.getUser(bearerToken);
+    if (error) {
+      return null;
+    }
+
+    return data.user;
+  }
+
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
     return null;
   }
 
   const { data } = await supabase.auth.getUser();
-  return data.user?.id ?? null;
+  return data.user;
+}
+
+export async function getAuthenticatedUserId(request?: Request) {
+  const user = await getAuthenticatedUser(request);
+  return user?.id ?? null;
 }
 
 export async function getProfileTier(userId: string): Promise<SubscriptionTier> {

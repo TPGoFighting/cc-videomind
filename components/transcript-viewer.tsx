@@ -55,6 +55,7 @@ export function TranscriptViewer({
   const activeRef = useRef<HTMLDivElement>(null);
   const lastUserScrollTime = useRef(0);
   const manualModeRef = useRef(false);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 找到当前播放时间对应的段落索引
   const activeIndex = (() => {
@@ -155,11 +156,35 @@ export function TranscriptViewer({
   // 词卡关闭
   const closeWordCard = useCallback(() => setActiveWord(null), []);
 
-  // 点击单词
+  // hover 单词 0.5s 后显示卡片；点击也支持（移动端）
+  const handleWordEnter = useCallback(
+    (lemma: string, e: React.MouseEvent) => {
+      // 清除之前的 timer
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      hoverTimerRef.current = setTimeout(() => {
+        setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
+      }, 500);
+    },
+    []
+  );
+
+  const handleWordLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setActiveWord(null);
+  }, []);
+
+  // 移动端点击备用
   const handleWordClick = useCallback(
     (lemma: string, e: React.MouseEvent) => {
-      const rect = (e.target as HTMLElement).getBoundingClientRect();
-      setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
+      // 移动端优先用 click
+      if ('ontouchstart' in window || window.innerWidth < 640) {
+        const rect = (e.target as HTMLElement).getBoundingClientRect();
+        setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
+      }
     },
     []
   );
@@ -204,6 +229,8 @@ export function TranscriptViewer({
               <span
                 key={i}
                 className="cursor-pointer text-[#0099ff] hover:underline decoration-dotted underline-offset-2 inline-block min-h-[24px] leading-relaxed"
+                onMouseEnter={(e) => handleWordEnter(lemma, e)}
+                onMouseLeave={handleWordLeave}
                 onClick={(e) => handleWordClick(lemma, e)}
               >
                 {token}
@@ -214,7 +241,7 @@ export function TranscriptViewer({
         return <span key={i}>{token}</span>;
       });
     },
-    [wordDefinitions, handleWordClick]
+    [wordDefinitions, handleWordEnter, handleWordLeave, handleWordClick]
   );
 
   return (

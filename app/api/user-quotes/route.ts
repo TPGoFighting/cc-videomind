@@ -6,7 +6,7 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 
 /** GET /api/user-quotes — 获取用户收藏的句子 */
 export async function GET(request: Request) {
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "操作过于频繁。", 429);
   }
 
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
 
 /** DELETE /api/user-quotes — 删除收藏的句子 */
 export async function DELETE(request: Request) {
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }

@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   const quota = await checkAnalysisQuota(userId);
   if (!quota.allowed) {
     return errorResponse(

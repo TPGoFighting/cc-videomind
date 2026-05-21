@@ -1,17 +1,17 @@
-import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { successResponse } from "@/lib/utils/api";
 
-export async function GET() {
-  const userId = await getAuthenticatedUserId();
+export async function GET(request: Request) {
+  const userId = await getAuthenticatedUserId(request);
 
   if (!userId) {
-    return NextResponse.json({ ok: true, data: [] });
+    return successResponse([]);
   }
 
   const supabase = createSupabaseServiceClient();
   if (!supabase) {
-    return NextResponse.json({ ok: true, data: [] });
+    return successResponse([]);
   }
 
   const { data: rows } = await supabase
@@ -32,5 +32,5 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({ ok: true, data: history });
+  return successResponse(history);
 }

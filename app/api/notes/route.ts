@@ -5,11 +5,76 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { VideoIdSchema } from "@/lib/youtube/id";
 
-const RequestSchema = z.object({
+const SaveRequestSchema = z.object({
   videoId: VideoIdSchema,
   body: z.string().min(1).max(10000),
   timestampSeconds: z.number().nonnegative().optional()
 });
+
+const DeleteRequestSchema = z.object({
+  noteId: z.string().uuid()
+});
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const videoId = searchParams.get("videoId");
+
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) {
+    return errorResponse("unauthorized", "Sign in to view notes.", 401);
+  }
+
+  const supabase = createSupabaseServiceClient();
+  if (!supabase) {
+    return errorResponse("supabase_not_configured", "Supabase is not configured.", 503);
+  }
+
+  let query = supabase
+    .from("user_notes")
+    .select("id, body, timestamp_seconds, created_at, video_id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (videoId) {
+    const parsed = VideoIdSchema.safeParse(videoId);
+    if (!parsed.success) {
+      return errorResponse("invalid_video_id", "Invalid videoId.", 400);
+    }
+    query = query.eq("video_id", parsed.data);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return errorResponse("notes_fetch_failed", "Could not fetch notes.", 500);
+  }
+
+  // 加载视频标题
+  const videoIds = [...new Set((data ?? []).map((r: Record<string, unknown>) => r.video_id as string))];
+  const titles = new Map<string, string>();
+  if (videoIds.length > 0) {
+    const { data: analyses } = await supabase
+      .from("video_analyses")
+      .select("video_id, metadata")
+      .in("video_id", videoIds);
+    for (const row of analyses ?? []) {
+      const meta = row.metadata as { title?: string } | null;
+      if (meta?.title) titles.set(row.video_id as string, meta.title);
+    }
+  }
+
+  const notes = (data ?? []).map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    video_id: row.video_id as string,
+    body: row.body as string,
+    timestamp_seconds: row.timestamp_seconds as number | null | undefined,
+    created_at: row.created_at as string,
+    video_title: titles.get(row.video_id as string),
+  }));
+
+  return successResponse(notes);
+}
 
 export async function POST(request: Request) {
   const rateLimit = checkRateLimit(getClientKey(request, "notes"), 30, 60_000);
@@ -17,12 +82,12 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "Too many note updates. Try again shortly.", 429);
   }
 
-  const parsed = await readJson(request, RequestSchema);
+  const parsed = await readJson(request, SaveRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
 
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "Sign in to save notes.", 401);
   }
@@ -40,7 +105,7 @@ export async function POST(request: Request) {
       body: parsed.data.body,
       timestamp_seconds: parsed.data.timestampSeconds
     })
-    .select("id, body, timestamp_seconds, created_at")
+    .select("id, body, timestamp_seconds, created_at, video_id")
     .single();
 
   if (error) {
@@ -48,4 +113,38 @@ export async function POST(request: Request) {
   }
 
   return successResponse(data);
+}
+
+export async function DELETE(request: Request) {
+  const rateLimit = checkRateLimit(getClientKey(request, "notes"), 30, 60_000);
+  if (!rateLimit.allowed) {
+    return errorResponse("rate_limited", "Too many requests. Try again shortly.", 429);
+  }
+
+  const parsed = await readJson(request, DeleteRequestSchema);
+  if (!parsed.ok) {
+    return parsed.response;
+  }
+
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) {
+    return errorResponse("unauthorized", "Sign in to delete notes.", 401);
+  }
+
+  const supabase = createSupabaseServiceClient();
+  if (!supabase) {
+    return errorResponse("supabase_not_configured", "Supabase is not configured.", 503);
+  }
+
+  const { error } = await supabase
+    .from("user_notes")
+    .delete()
+    .eq("id", parsed.data.noteId)
+    .eq("user_id", userId);
+
+  if (error) {
+    return errorResponse("note_delete_failed", "Could not delete note.", 500);
+  }
+
+  return successResponse({ deleted: true });
 }

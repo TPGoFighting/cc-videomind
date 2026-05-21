@@ -7,7 +7,7 @@
     "dev": "next dev",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx --test lib/utils/moments-validator.test.ts lib/youtube/transcript-provider.test.ts",
+    "test": "npx tsx --test lib/utils/moments-validator.test.ts lib/youtube/transcript-provider.test.ts lib/supabase/quota.test.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",

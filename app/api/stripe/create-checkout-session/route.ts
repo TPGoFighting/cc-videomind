@@ -4,8 +4,16 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAppUrl, getStripe } from "@/lib/stripe/server";
 
+const CheckoutRedirectSchema = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine(isAllowedCheckoutRedirect, "Checkout redirect URL is not allowed.");
+
 const RequestSchema = z.object({
-  priceId: z.string().min(1).optional()
+  priceId: z.string().min(1).optional(),
+  successUrl: CheckoutRedirectSchema.optional(),
+  cancelUrl: CheckoutRedirectSchema.optional()
 });
 
 export async function POST(request: Request) {
@@ -19,7 +27,7 @@ export async function POST(request: Request) {
     return parsed.response;
   }
 
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "Sign in before starting checkout.", 401);
   }
@@ -34,13 +42,30 @@ export async function POST(request: Request) {
     const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price, quantity: 1 }],
-      success_url: `${appUrl}/?checkout=success`,
-      cancel_url: `${appUrl}/?checkout=cancelled`,
+      success_url: parsed.data.successUrl ?? `${appUrl}/?checkout=success`,
+      cancel_url: parsed.data.cancelUrl ?? `${appUrl}/?checkout=cancelled`,
       metadata: { userId }
     });
 
     return successResponse({ url: session.url });
   } catch {
     return errorResponse("checkout_failed", "Checkout session could not be created.", 502);
+  }
+}
+
+function isAllowedCheckoutRedirect(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "teachplayer:") {
+      return true;
+    }
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+
+    return url.origin === new URL(getAppUrl()).origin;
+  } catch {
+    return false;
   }
 }

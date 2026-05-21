@@ -25,8 +25,8 @@ const UpdateSchema = z.object({
  * GET  — 返回当前 AI 配置。
  *         admin 看到完整值，非 admin 看到脱敏版本（仅展示首尾几位）。
  */
-export async function GET() {
-  const userId = await getAuthenticatedUserId();
+export async function GET(request: Request) {
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }
@@ -52,7 +52,7 @@ export async function GET() {
  * PUT — 更新单条 AI 配置（仅 admin）。
  */
 export async function PUT(request: Request) {
-  const userId = await getAuthenticatedUserId();
+  const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return NextResponse.json({ error: "请先登录" }, { status: 401 });
   }

@@ -120,6 +120,18 @@ export function createEmptyDebug(): GenerationDebug {
   };
 }
 
+// ─── 笔记 ─────────────────────────────────────────────────────────────────────
+
+export const UserNoteSchema = z.object({
+  id: z.string().uuid(),
+  video_id: z.string(),
+  body: z.string(),
+  timestamp_seconds: z.number().nullable().optional(),
+  created_at: z.string(),
+  video_title: z.string().optional()
+});
+export type UserNote = z.infer<typeof UserNoteSchema>;
+
 // ─── 英语学习增强 ──────────────────────────────────────────────────────────────
 
 export const WordDefinitionSchema = z.object({
