@@ -61,7 +61,7 @@ export function ExampleVideos() {
 
   useEffect(() => {
     let cancelled = false;
-    const selected = pickRandom(VIDEO_IDS, 2);
+    const selected = pickRandom(VIDEO_IDS, 3);
 
     async function load() {
       const results = (await Promise.all(selected.map(fetchVideoMeta))).filter(Boolean) as VideoCardData[];

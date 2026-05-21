@@ -156,26 +156,29 @@ export function TranscriptViewer({
   // 词卡关闭
   const closeWordCard = useCallback(() => setActiveWord(null), []);
 
-  // hover 单词 0.5s 后显示卡片；点击也支持（移动端）
+  // hover 单词 0.5s 后显示卡片（仅桌面端）；移动端用 click
+  const isTouchDevice = typeof window !== "undefined" && ('ontouchstart' in window || window.innerWidth < 640);
+
   const handleWordEnter = useCallback(
     (lemma: string, e: React.MouseEvent) => {
-      // 清除之前的 timer
+      if (isTouchDevice) return;
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       const rect = (e.target as HTMLElement).getBoundingClientRect();
       hoverTimerRef.current = setTimeout(() => {
         setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
       }, 500);
     },
-    []
+    [isTouchDevice]
   );
 
   const handleWordLeave = useCallback(() => {
+    if (isTouchDevice) return;
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
     setActiveWord(null);
-  }, []);
+  }, [isTouchDevice]);
 
   // 移动端点击备用
   const handleWordClick = useCallback(

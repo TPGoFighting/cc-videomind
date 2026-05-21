@@ -11,8 +11,6 @@ import { AnimatedBackground } from "./animated-background";
 const SUGGESTIONS = [
   { label: "教程", url: "https://www.youtube.com/watch?v=5puu3kN9l7c&pp=ugUEEgJlbg%3D%3D" },
   { label: "科技", url: "https://www.youtube.com/watch?v=lLX9Ls7FUGs" },
-  { label: "音乐", url: "https://www.youtube.com/watch?v=oWOyUMJWptc&pp=0gcJCQQLAYcqIYzv" },
-  { label: "Vlog", url: "https://www.youtube.com/watch?v=HZvj8T5_oUE&t=2859s" },
   { label: "演讲", url: "https://www.youtube.com/watch?v=LPZh9BOjkQs&pp=ugUHEgVlbi1VUw%3D%3D" },
   { label: "纪录片", url: "https://www.youtube.com/watch?v=ocGJWc2F1Yk" },
 ];
