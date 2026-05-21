@@ -64,7 +64,7 @@ export function ExampleVideos() {
     const selected = pickRandom(VIDEO_IDS, 2);
 
     async function load() {
-      const results = await Promise.all(selected.map(fetchVideoMeta));
+      const results = (await Promise.all(selected.map(fetchVideoMeta))).filter(Boolean) as VideoCardData[];
       if (!cancelled) {
         setVideos(results);
         setLoading(false);
