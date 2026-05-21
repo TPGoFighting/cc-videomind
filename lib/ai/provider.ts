@@ -358,12 +358,13 @@ export class OpenAiCompatibleProvider implements AiProvider {
       console.log("[AI:Chat] API 调用成功, model=%s, 耗时 %dms", model, Date.now() - t0);
       return response.choices[0]?.message.content ?? null;
     } catch (error) {
-      console.error("[AI:Chat] API 调用失败, model=%s, 耗时 %dms", model, Date.now() - t0);
+      const errStatus = error instanceof ExternalServiceError ? error.status : undefined;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("[AI:Chat] API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
+        model, errStatus ?? "N/A", errMsg, Date.now() - t0);
       if (error instanceof ExternalServiceError && error.status === 400) {
-        console.warn("[AI:Chat] 400 错误详情:", error.message);
         return null;
       }
-      console.error("[AI:Chat] 非400错误:", error instanceof Error ? error.message : error);
       throw error;
     }
   }
