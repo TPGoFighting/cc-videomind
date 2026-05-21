@@ -61,8 +61,9 @@ export function Navbar() {
                   </Link>
                   <div className="mx-3 border-t border-white/6" />
                   <a
-                    href="/teach-player.apk"
-                    download
+                    href="https://github.com/TPGoFighting/cc-videomind/releases/latest/download/teach-player.apk"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#0099ff] min-h-[44px]"
                   >
