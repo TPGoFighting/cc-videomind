@@ -81,11 +81,19 @@ const GeminiResponseSchema = z.object({
 });
 
 export class OpenAiCompatibleProvider implements AiProvider {
+  private readonly modelChain: string[];
+
   constructor(
     private readonly apiKey: string,
     private readonly baseUrl: string,
-    private readonly model: string,
-  ) {}
+    primaryModel: string,
+    fallbackModels?: string[],
+  ) {
+    this.model = primaryModel;
+    this.modelChain = [primaryModel, ...(fallbackModels ?? []).filter(m => m !== primaryModel)];
+  }
+
+  private model: string;
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
     const content = await this.chatJson(buildAnalysisPrompt(input.title, input.transcript));
@@ -292,43 +300,39 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
   private async chatJson(prompt: string) {
     const t0 = Date.now();
+    const messages = [
+      { role: "system" as const, content: "Return only valid JSON. Ground every output in the provided transcript." },
+      { role: "user" as const, content: prompt }
+    ];
 
-    const body = {
-      model: this.model,
-      messages: [
-        { role: "system" as const, content: "Return only valid JSON. Ground every output in the provided transcript." },
-        { role: "user" as const, content: prompt }
-      ]
-    };
+    const lastErrorMessages: string[] = [];
 
-    // DeepSeek 不支持 response_format，跳过以节省一次重试往返
-    if (this.isDeepSeek) {
-      const content = await this.tryChat(body);
-      if (content) {
-        console.log("[AI:Chat] DeepSeek 直连成功, 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
-        return content;
+    // 按模型链尝试，主模型失败后自动切换备选
+    for (const modelName of this.modelChain) {
+      const body = { model: modelName, messages };
+
+      // 先尝试带 response_format
+      const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
+      if (withFormat) {
+        if (modelName !== this.model) console.log("[AI:Fallback] 切换到 %s 成功", modelName);
+        console.log("[AI:Chat] model=%s, 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withFormat.length);
+        return withFormat;
       }
-      console.error("[AI:Chat] 调用失败! model=%s, baseUrl=%s, promptLen=%d", this.model, this.baseUrl, prompt.length);
-      throw new Error("AI provider returned no response — check model name, API key, and network connectivity.");
+
+      // 不带 response_format 再试
+      const withoutFormat = await this.tryChat(body);
+      if (withoutFormat) {
+        if (modelName !== this.model) console.log("[AI:Fallback] 切换到 %s 成功 (no-format)", modelName);
+        console.log("[AI:Chat] model=%s (no-format), 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withoutFormat.length);
+        return withoutFormat;
+      }
+
+      lastErrorMessages.push(`${modelName}: no response`);
     }
 
-    // OpenAI 兼容模型：先尝试带 response_format（支持结构化输出）
-    const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
-    if (withFormat) {
-      console.log("[AI:Chat] response_format 成功, 耗时 %dms, 响应长度 %d", Date.now() - t0, withFormat.length);
-      return withFormat;
-    }
-
-    // 400 等错误时回退，不带 response_format
-    console.log("[AI:Chat] response_format 失败, 回退到无 format 模式");
-    const withoutFormat = await this.tryChat(body);
-    if (withoutFormat) {
-      console.log("[AI:Chat] 无 format 模式成功, 总耗时 %dms, 响应长度 %d", Date.now() - t0, withoutFormat.length);
-      return withoutFormat;
-    }
-
-    console.error("[AI:Chat] 两次尝试均失败! model=%s, baseUrl=%s, promptLen=%d", this.model, this.baseUrl, prompt.length);
-    throw new Error("AI provider returned no response — check model name, API key, and network connectivity.");
+    console.error("[AI:Chat] 所有模型均失败! chain=%s, baseUrl=%s, errors=%s",
+      this.modelChain.join(","), this.baseUrl, lastErrorMessages.join(" | "));
+    throw new Error(`AI provider returned no response — tried ${this.modelChain.length} models.`);
   }
 
   private get isDeepSeek(): boolean {
@@ -627,10 +631,13 @@ export async function getAiProvider(): Promise<AiProvider> {
   }
 
   if (config.provider === "openai-compatible" || config.provider === "deepseek") {
+    const { getModelFallbackChain } = await import("@/lib/ai/provider-registry");
+    const chain = getModelFallbackChain(config.model || "deepseek-v4-flash");
     return new OpenAiCompatibleProvider(
       config.apiKey,
       normalizeOpenAiCompatibleBaseUrl(config.baseUrl),
-      config.model || "deepseek-v4-flash",
+      chain[0],
+      chain.slice(1),
     );
   }
 

@@ -53,13 +53,34 @@ export class TranscriptError extends Error {
 // InnertubeTranscriptProvider — InnerTube API 最快方式
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const INNERTUBE_CLIENTS = [
+  { name: "ANDROID", hl: "en", gl: "US", clientName: "ANDROID", clientVersion: "19.44.39", userAgent: "com.google.android.youtube/19.44.39 (Linux; U; Android 14) gzip" },
+  { name: "WEB", hl: "en", gl: "US", clientName: "WEB", clientVersion: "2.20250501.00.00", userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/134.0.0.0 Safari/537.36" },
+  { name: "IOS", hl: "en", gl: "US", clientName: "IOS", clientVersion: "19.44.4", userAgent: "com.google.ios.youtube/19.44.4 (iPhone16,2; U; CPU iOS 18_0 like Mac OS X)" },
+] as const;
+
 export class InnertubeTranscriptProvider implements TranscriptProvider {
   async getTranscript(videoId: string, preferredLang?: string): Promise<TranscriptSegment[]> {
     const apiKey = await this.getApiKey();
     if (!apiKey) throw new TranscriptError("PAGE_FETCH_FAILED", "无法获取 YouTube API key");
 
-    const playerResponse = await this.fetchPlayerResponse(videoId, apiKey);
-    if (!playerResponse) throw new TranscriptError("NO_PLAYER_RESPONSE", "InnerTube API 未返回播放器数据");
+    // 多客户端重试：Android → Web → iOS
+    const clientErrors: string[] = [];
+    for (const client of INNERTUBE_CLIENTS) {
+      try {
+        const result = await this.tryWithClient(videoId, apiKey, client, preferredLang);
+        if (result.length > 0) return result;
+        clientErrors.push(`${client.name}: 字幕内容为空`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        clientErrors.push(`${client.name}: ${msg}`);
+      }
+    }
+    throw new TranscriptError("ALL_TRACKS_FAILED", `所有客户端均失败（${INNERTUBE_CLIENTS.length}个）：${clientErrors.join(" | ")}`);
+  }
+
+  private async tryWithClient(videoId: string, apiKey: string, client: typeof INNERTUBE_CLIENTS[number], preferredLang?: string): Promise<TranscriptSegment[]> {
+    const playerResponse = await this.fetchPlayerResponse(videoId, apiKey, client);
 
     const tracks = new YouTubeTranscriptProvider().extractCaptionTracksPublic(playerResponse);
     if (tracks.length === 0) throw new TranscriptError("NO_CAPTION_TRACKS", "此视频没有任何字幕轨道。");
@@ -95,15 +116,15 @@ export class InnertubeTranscriptProvider implements TranscriptProvider {
     } catch { return null; }
   }
 
-  private async fetchPlayerResponse(videoId: string, apiKey: string): Promise<unknown> {
+  private async fetchPlayerResponse(videoId: string, apiKey: string, client: typeof INNERTUBE_CLIENTS[number]): Promise<unknown> {
     const body = {
-      context: { client: { hl: "en", gl: "US", clientName: "WEB", clientVersion: "2.20250501.00.00" } },
+      context: { client: { hl: client.hl, gl: client.gl, clientName: client.clientName, clientVersion: client.clientVersion } },
       videoId,
     };
     const res = await fetchWithTimeout(`https://www.youtube.com/youtubei/v1/player?key=${apiKey}`, {
       method: "POST", body: JSON.stringify(body),
-      timeoutMs: 12000, service: "YouTube InnerTube",
-      headers: { "Content-Type": "application/json", "User-Agent": USER_AGENT }
+      timeoutMs: 12000, service: `YouTube InnerTube (${client.name})`,
+      headers: { "Content-Type": "application/json", "User-Agent": client.userAgent }
     });
     const data = await res.json();
     if (data?.playabilityStatus?.status === "AGE_CHECK_REQUIRED") {
