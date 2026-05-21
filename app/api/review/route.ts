@@ -59,14 +59,17 @@ export async function GET(request: Request) {
     .limit(20);
 
   if (!rows?.length) {
-    // 自动从单词本同步未复习的单词
+    // 自动从单词本同步未复习的单词（join word_definitions 获取 lemma）
     const { data: vocabRows } = await supabase
       .from("user_vocabulary")
-      .select("lemma")
+      .select("word_definitions!inner(lemma)")
       .eq("user_id", userId);
 
     if (vocabRows?.length) {
-      const lemmas = vocabRows.map((r: Record<string, unknown>) => r.lemma as string);
+      const lemmas = vocabRows.map((r: Record<string, unknown>) => {
+        const wd = r.word_definitions as { lemma: string } | null;
+        return wd?.lemma ?? "";
+      }).filter(Boolean);
       // 批量插入复习记录（next_review_at = now，立即到期）
       const now = new Date().toISOString();
       const inserts = lemmas.map((l) => ({
@@ -91,19 +94,21 @@ export async function GET(request: Request) {
 
       if (!newRows?.length) return successResponse({ words: [] });
 
-      // 查询完整单词定义
+      // 查询完整单词定义（join word_definitions）
+      const reviewLemmas = newRows.map((r: Record<string, unknown>) => r.lemma as string);
       const { data: fullVocab } = await supabase
         .from("user_vocabulary")
-        .select("*")
+        .select("word_definitions!inner(*)")
         .eq("user_id", userId)
-        .in("lemma", newRows.map((r: Record<string, unknown>) => r.lemma as string));
+        .in("word_definitions.lemma", reviewLemmas);
 
       const defMap = new Map<string, Record<string, unknown>>();
       for (const d of fullVocab ?? []) {
-        defMap.set(d.lemma as string, d);
+        const wd = d.word_definitions as Record<string, unknown> | null;
+        if (wd?.lemma) defMap.set(wd.lemma as string, wd);
       }
 
-      const words = newRows.map((r: Record<string, unknown>) => {
+      const syncedWords = newRows.map((r: Record<string, unknown>) => {
         const def = defMap.get(r.lemma as string);
         return {
           lemma: r.lemma,
@@ -120,23 +125,24 @@ export async function GET(request: Request) {
         };
       });
 
-      return successResponse({ words });
+      return successResponse({ words: syncedWords });
     }
 
     return successResponse({ words: [] });
   }
 
-  // 查询单词定义
+  // 查询单词定义（join word_definitions）
   const lemmas = rows.map((r: Record<string, unknown>) => r.lemma as string);
   const { data: defRows } = await supabase
     .from("user_vocabulary")
-    .select("*")
+    .select("word_definitions!inner(*)")
     .eq("user_id", userId)
-    .in("lemma", lemmas);
+    .in("word_definitions.lemma", lemmas);
 
   const defMap = new Map<string, Record<string, unknown>>();
   for (const d of defRows ?? []) {
-    defMap.set(d.lemma as string, d);
+    const wd = d.word_definitions as Record<string, unknown> | null;
+    if (wd?.lemma) defMap.set(wd.lemma as string, wd);
   }
 
   const words = rows.map((r: Record<string, unknown>) => {
