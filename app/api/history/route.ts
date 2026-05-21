@@ -22,12 +22,12 @@ export async function GET(request: Request) {
     .limit(50);
 
   const history = (rows ?? []).map((row: Record<string, unknown>) => {
-    const analyses = row.video_analyses as { metadata: { title?: string; thumbnail?: string; channelName?: string } } | null;
+    const analyses = row.video_analyses as { metadata: { title?: string; thumbnailUrl?: string; authorName?: string } } | null;
     return {
       videoId: row.video_id as string,
       title: analyses?.metadata?.title ?? null,
-      thumbnail: analyses?.metadata?.thumbnail ?? null,
-      channelName: analyses?.metadata?.channelName ?? null,
+      thumbnail: analyses?.metadata?.thumbnailUrl ?? null,
+      channelName: analyses?.metadata?.authorName ?? null,
       parsedAt: row.created_at as string,
     };
   });
