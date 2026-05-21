@@ -362,10 +362,9 @@ export class OpenAiCompatibleProvider implements AiProvider {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("[AI:Chat] API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
         model, errStatus ?? "N/A", errMsg, Date.now() - t0);
-      if (error instanceof ExternalServiceError && error.status === 400) {
-        return null;
-      }
-      throw error;
+      // 所有错误都返回 null，让 chatJson 继续尝试 fallback 链中的下一个模型
+      // 不要 throw — 网络错误(无status)/400/5xx 都是模型级别的失败，不该阻断整个链
+      return null;
     }
   }
 }
