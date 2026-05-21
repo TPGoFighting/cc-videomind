@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bookmark, Clock, Download, LogIn, LogOut, Menu, NotebookPen, Settings, User } from "lucide-react";
+import { BookOpen, Bookmark, Clock, Download, Flame, LogIn, LogOut, Menu, NotebookPen, Settings, User } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 
 export function Navbar() {
@@ -51,11 +51,20 @@ export function Navbar() {
               </button>
               {open && (
                 <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl scale-in">
+                  <Link
+                    href="/review"
+                    onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-amber-400 transition-colors hover:bg-amber-400/10 hover:text-amber-300 min-h-[44px]"
+                  >
+                    <Flame className="h-3.5 w-3.5" />
+                    每日复习
+                  </Link>
+                  <div className="mx-3 border-t border-white/6" />
                   <a
                     href="/teach-player.apk"
                     download
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#0099ff] min-h-[44px]"
+                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#0099ff] min-h-[44px]"
                   >
                     <Download className="h-3.5 w-3.5" />
                     安卓APP下载（Beta）

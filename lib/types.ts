@@ -183,3 +183,32 @@ export const SaveWordRequestSchema = z.object({
   lemma: z.string().min(1),
   videoId: z.string().min(6)
 });
+
+// ─── 单词复习 ─────────────────────────────────────────────────────────────────
+
+export const ReviewResultSchema = z.object({
+  lemma: z.string().min(1),
+  quality: z.number().int().min(0).max(5)
+});
+export type ReviewResult = z.infer<typeof ReviewResultSchema>;
+
+export interface ReviewWord {
+  lemma: string;
+  phonetic?: string;
+  partOfSpeech?: string;
+  definitionZh: string;
+  definitionEn?: string;
+  exampleEn?: string;
+  exampleZh?: string;
+  repetitions: number;
+  easeFactor: number;
+  intervalDays: number;
+  status: string;
+}
+
+export interface CheckinStatus {
+  streak: number;
+  todayCompleted: boolean;
+  todayCount: number;
+  calendar: { date: string; count: number }[];
+}

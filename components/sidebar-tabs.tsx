@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, MessageSquare, NotebookPen } from "lucide-react";
+import { FileText, Flame, MessageSquare, NotebookPen } from "lucide-react";
 import { TranscriptViewer } from "./transcript-viewer";
 import { ChatPanel } from "./chat-panel";
 import { NotesPanel } from "./notes-panel";
+import Link from "next/link";
 import type { DisplayMode, TranscriptSegment, VideoAnalysis, WordDefinition } from "@/lib/types";
 
 interface SidebarTabsProps {
@@ -22,12 +23,13 @@ interface SidebarTabsProps {
   translating?: boolean;
 }
 
-type TabId = "transcript" | "chat" | "notes";
+type TabId = "transcript" | "chat" | "notes" | "review";
 
 const TABS = [
   { id: "transcript" as TabId, label: "转录文本", icon: FileText },
   { id: "chat" as TabId, label: "Chat", icon: MessageSquare },
   { id: "notes" as TabId, label: "笔记", icon: NotebookPen },
+  { id: "review" as TabId, label: "复习", icon: Flame },
 ] as const;
 
 export function SidebarTabs({
@@ -104,6 +106,21 @@ export function SidebarTabs({
         {activeTab === "notes" && (
           <div className="h-full overflow-auto p-4">
             <NotesPanel videoId={videoId} compact />
+          </div>
+        )}
+        {activeTab === "review" && (
+          <div className="h-full flex flex-col items-center justify-center text-center gap-3 p-4">
+            <Flame className="h-10 w-10 text-amber-400" />
+            <p className="text-[15px] font-medium text-white/70">每日复习</p>
+            <p className="text-[13px] text-white/35">
+              间隔重复，科学记忆<br/>打开专属页面开始今日打卡
+            </p>
+            <Link
+              href="/review"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-5 py-2.5 text-[14px] font-medium text-amber-400 transition-colors hover:bg-amber-400/25"
+            >
+              开始复习
+            </Link>
           </div>
         )}
         </div>
