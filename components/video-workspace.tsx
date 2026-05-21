@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { AlertCircle } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { HighlightsPanel } from "@/components/highlights-panel";
@@ -35,6 +36,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   // 要点时刻 + 核心摘要（独立数据源）
   const [moments, setMoments] = useState<KeyMoment[]>([]);
@@ -98,6 +100,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
         if (!payload.ok) {
           setError(payload.error.message);
+          setErrorCode(payload.error.code ?? null);
           setLoading(false);
           return false;
         }
@@ -330,9 +333,24 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             />
 
             {error ? (
-              <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/8 p-4 text-[14px] font-medium text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
-                {error}
+              <div>
+                <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/8 p-4 text-[14px] font-medium text-red-400">
+                  <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+                  {error}
+                </div>
+                {errorCode === "quota_exceeded" && (
+                  <div className="mt-3 flex gap-2">
+                    <Link href="/login" className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-5 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-white/15">
+                      立即登录
+                    </Link>
+                    <Link href="/register" className="inline-flex items-center gap-1.5 rounded-full bg-[#0099ff]/15 px-5 py-2.5 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/25">
+                      免费注册
+                    </Link>
+                    <a href="/api/stripe/create-checkout-session" className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-[13px] font-medium text-amber-400 transition-colors hover:bg-amber-500/20">
+                      ⚡ 升级Pro
+                    </a>
+                  </div>
+                )}
               </div>
             ) : null}
 

@@ -44,13 +44,12 @@ export async function POST(request: Request) {
   }
 
   const userId = await getAuthenticatedUserId(request);
-  const quota = await checkAnalysisQuota(userId);
+  const quota = await checkAnalysisQuota(userId, request);
   if (!quota.allowed) {
-    return errorResponse(
-      "quota_exceeded",
-      `Monthly analysis quota reached (${quota.used}/${quota.limit}).`,
-      402
-    );
+    const msg = quota.anonymous
+      ? "未登录仅限解析1条视频，请登录后继续使用。"
+      : "今日解析次数已达上限（3次/天），请订阅Pro会员解锁。";
+    return errorResponse("quota_exceeded", msg, 402);
   }
 
   try {
@@ -59,7 +58,7 @@ export async function POST(request: Request) {
     const analysis = await (await getAiProvider()).generateAnalysis({ title: metadata.title, transcript });
 
     await upsertAnalysisCache({ videoId, metadata, transcript, analysis });
-    await recordAnalysisUsage({ userId, videoId });
+    await recordAnalysisUsage({ userId, videoId, request });
 
     return successResponse({
       videoId,
