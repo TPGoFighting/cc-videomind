@@ -49,6 +49,86 @@ export class TranscriptError extends Error {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// InnertubeTranscriptProvider — InnerTube API 最快方式
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export class InnertubeTranscriptProvider implements TranscriptProvider {
+  async getTranscript(videoId: string, preferredLang?: string): Promise<TranscriptSegment[]> {
+    const apiKey = await this.getApiKey();
+    if (!apiKey) throw new TranscriptError("PAGE_FETCH_FAILED", "无法获取 YouTube API key");
+
+    const playerResponse = await this.fetchPlayerResponse(videoId, apiKey);
+    if (!playerResponse) throw new TranscriptError("NO_PLAYER_RESPONSE", "InnerTube API 未返回播放器数据");
+
+    const tracks = new YouTubeTranscriptProvider().extractCaptionTracksPublic(playerResponse);
+    if (tracks.length === 0) throw new TranscriptError("NO_CAPTION_TRACKS", "此视频没有任何字幕轨道。");
+
+    const ranked = new YouTubeTranscriptProvider().rankTracksPublic(tracks, preferredLang);
+
+    const errors: string[] = [];
+    for (const track of ranked) {
+      try {
+        const segments = await this.downloadAndParse(track);
+        if (segments.length > 0) return segments;
+        errors.push(`${track.languageCode}: 字幕内容为空`);
+      } catch (err) {
+        errors.push(`${track.languageCode}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    throw new TranscriptError("ALL_TRACKS_FAILED", `所有字幕轨道均失败（${ranked.length}个轨道）：${errors.join(" | ")}`);
+  }
+
+  private async getApiKey(): Promise<string | null> {
+    // 从 YouTube 首页提取 API key（缓存在内存中）
+    if (InnertubeTranscriptProvider._cachedApiKey) return InnertubeTranscriptProvider._cachedApiKey;
+    try {
+      const res = await fetchWithTimeout("https://www.youtube.com", {
+        timeoutMs: 8000, service: "YouTube homepage",
+        headers: { "User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9" }
+      });
+      const html = await res.text();
+      const match = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
+      if (match?.[1]) InnertubeTranscriptProvider._cachedApiKey = match[1];
+      return InnertubeTranscriptProvider._cachedApiKey;
+    } catch { return null; }
+  }
+
+  private async fetchPlayerResponse(videoId: string, apiKey: string): Promise<unknown> {
+    const body = {
+      context: { client: { hl: "en", gl: "US", clientName: "WEB", clientVersion: "2.20250501.00.00" } },
+      videoId,
+    };
+    const res = await fetchWithTimeout(`https://www.youtube.com/youtubei/v1/player?key=${apiKey}`, {
+      method: "POST", body: JSON.stringify(body),
+      timeoutMs: 12000, service: "YouTube InnerTube",
+      headers: { "Content-Type": "application/json", "User-Agent": USER_AGENT }
+    });
+    const data = await res.json();
+    if (data?.playabilityStatus?.status === "AGE_CHECK_REQUIRED") {
+      throw new TranscriptError("AGE_RESTRICTED", "此视频需要年龄验证。");
+    }
+    return data;
+  }
+
+  private async downloadAndParse(track: CaptionTrack): Promise<TranscriptSegment[]> {
+    const url = track.baseUrl.includes("?") ? `${track.baseUrl}&fmt=3` : `${track.baseUrl}?fmt=3`;
+    const res = await fetchWithTimeout(url, {
+      timeoutMs: 10000, service: "YouTube caption download",
+      headers: { "User-Agent": USER_AGENT }
+    });
+    const content = await res.text();
+    const rawSegments = parseCaptionContent(content);
+    const segments = rawSegments
+      .filter(s => s.text.length > 0 && Number.isFinite(s.start) && Number.isFinite(s.duration))
+      .map(s => ({ startTime: s.start, endTime: s.start + s.duration, text: s.text }));
+    return mergeIntoSentences(segments);
+  }
+
+  private static _cachedApiKey: string | null = null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // YouTubeTranscriptProvider — HTML-first 策略
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -214,6 +294,14 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
     } catch {
       return null;
     }
+  }
+
+  /** 公开版本：InnerTube provider 复用 */
+  extractCaptionTracksPublic(playerResponse: unknown): CaptionTrack[] {
+    return this.extractCaptionTracks(playerResponse);
+  }
+  rankTracksPublic(tracks: CaptionTrack[], preferredLang?: string): CaptionTrack[] {
+    return this.rankTracks(tracks, preferredLang);
   }
 
   // ─── 第3步：提取字幕轨道 ───────────────────────────────────────────────
@@ -768,8 +856,9 @@ export function getTranscriptProvider(): TranscriptProvider {
   const provider = (process.env.TRANSCRIPT_PROVIDER ?? "youtube").trim();
   if (provider === "youtube") {
     return new FallbackTranscriptProvider(
-      new YouTubeTranscriptProvider(),
-      new ExternalApiTranscriptProvider()
+      new InnertubeTranscriptProvider(),   // 第一层：InnerTube API（最快）
+      new YouTubeTranscriptProvider(),     // 第二层：HTML 爬取
+      new ExternalApiTranscriptProvider()  // 第三层：Supadata API
     );
   }
 
