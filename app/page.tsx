@@ -1,19 +1,18 @@
 import { Navbar } from "@/components/navbar";
 import { VideoUrlInput } from "@/components/video-url-input";
 import { AnimatedBackground } from "@/components/animated-background";
+import { ExampleVideos } from "@/components/example-videos";
 import { StatsSection } from "@/components/stats-section";
 import {
   ArrowRight,
   FileText,
   Lightbulb,
   MessageSquare,
-  Play,
   Sparkles,
   Youtube,
   Zap,
 } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { MobileHome } from "@/components/mobile-home";
 
 const features = [
@@ -46,37 +45,6 @@ const features = [
     icon: Sparkles,
     title: "接口可替换",
     body: "AI 模型、字幕源、支付、存储四层均采用 Provider 接口设计，可灵活接入不同后端服务。",
-  },
-];
-
-const exampleVideos = [
-  {
-    videoId: "5puu3kN9l7c",
-    title: "React 性能优化：从入门到精通",
-    channel: "前端技术分享",
-    duration: "18:24",
-    category: "教程",
-  },
-  {
-    videoId: "lLX9Ls7FUGs",
-    title: "2025 AI 发展趋势与展望",
-    channel: "科技前沿",
-    duration: "24:15",
-    category: "科技",
-  },
-  {
-    videoId: "LPZh9BOjkQs",
-    title: "如何做一场让人难忘的 TED 演讲",
-    channel: "TEDx Talks",
-    duration: "16:42",
-    category: "演讲",
-  },
-  {
-    videoId: "ocGJWc2F1Yk",
-    title: "宇宙的诞生：从大爆炸到生命出现",
-    channel: "科学探索",
-    duration: "32:08",
-    category: "纪录片",
   },
 ];
 
@@ -263,75 +231,7 @@ function PreviewCard() {
   );
 }
 
-// ── 🎬 示例视频推荐 ──
-
-function ExampleVideoCard({ video }: { video: (typeof exampleVideos)[number] }) {
-  return (
-    <Link
-      href={`/video/${video.videoId}`}
-      className="card-lift group flex-shrink-0 w-[280px] rounded-xl border border-white/6 bg-[#0a0a0a] overflow-hidden transition-colors hover:border-[#0099ff]/20"
-    >
-      {/* 缩略图 */}
-      <div className="relative aspect-video bg-[#0d0d0d] overflow-hidden">
-        <Image
-          src={`https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`}
-          alt={video.title}
-          width={280}
-          height={158}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-          unoptimized
-        />
-        {/* 播放按钮叠加 */}
-        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0099ff]/90">
-            <Play className="h-4 w-4 text-white ml-0.5" />
-          </div>
-        </div>
-        {/* 时长标签 */}
-        <span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-0.5 text-[11px] font-mono text-white/80">
-          {video.duration}
-        </span>
-        {/* 分类标签 */}
-        <span className="absolute top-2 left-2 rounded-full border border-white/10 bg-black/60 px-2 py-0.5 text-[10px] text-white/60 backdrop-blur-sm">
-          {video.category}
-        </span>
-      </div>
-
-      {/* 信息 */}
-      <div className="p-3.5 space-y-1.5">
-        <h4 className="text-[14px] font-medium leading-snug text-white/80 line-clamp-2 group-hover:text-white transition-colors">
-          {video.title}
-        </h4>
-        <p className="text-[12px] text-white/35">{video.channel}</p>
-      </div>
-    </Link>
-  );
-}
-
-function ExampleVideos() {
-  return (
-    <section className="relative mx-auto w-full max-w-full px-4 py-12 sm:max-w-[90%] sm:px-5 sm:py-16 md:max-w-[85%] lg:max-w-[80%]">
-      <div className="mb-8 text-center space-y-3">
-        <h2 className="text-[22px] font-bold tracking-tight sm:text-[28px]">
-          不想粘贴链接？试试这些
-        </h2>
-        <p className="text-[14px] text-[#a6a6a6] max-w-lg mx-auto">
-          点击任意视频，即刻体验完整分析功能
-        </p>
-      </div>
-
-      {/* 横向滚动 */}
-      <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:-mx-5 sm:px-5 scrollbar-none snap-x snap-mandatory">
-        {exampleVideos.map((video) => (
-          <div key={video.videoId} className="snap-start">
-            <ExampleVideoCard video={video} />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+// ── 🎬 示例视频推荐（客户端组件，随机选取 + 抓取真实元数据） ──
 
 // ── 🚀 底部 CTA ──
 
