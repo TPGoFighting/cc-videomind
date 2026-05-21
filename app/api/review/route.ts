@@ -29,7 +29,7 @@ const RequestSchema = z.object({
 });
 
 /** 通过 word_definitions 表查询单词定义 */
-async function getWordDefs(supabase: ReturnType<typeof createSupabaseServiceClient>, lemmas: string[]) {
+async function getWordDefs(supabase: NonNullable<ReturnType<typeof createSupabaseServiceClient>>, lemmas: string[]) {
   const { data } = await supabase
     .from("word_definitions")
     .select("id, lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh")
@@ -127,6 +127,7 @@ export async function POST(request: Request) {
   const rateLimit = checkRateLimit(getClientKey(request, "review"), 30, 60_000);
   if (!rateLimit.allowed) return errorResponse("rate_limited", "请求过于频繁。", 429);
 
+  const now = new Date().toISOString();
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) return parsed.response;
 
