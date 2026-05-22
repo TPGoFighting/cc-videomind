@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bookmark, Clock, Download, Flame, LogIn, LogOut, Menu, NotebookPen, Settings, User } from "lucide-react";
+import { BookOpen, Bookmark, Clock, Crown, Download, Flame, LogIn, LogOut, Menu, NotebookPen, Settings, User } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 
 export function Navbar() {
@@ -60,6 +60,14 @@ export function Navbar() {
                     每日复习
                   </Link>
                   <div className="mx-3 border-t border-white/6" />
+                  <Link
+                    href="/subscribe"
+                    onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff] min-h-[44px]"
+                  >
+                    <Crown className="h-3.5 w-3.5" />
+                    订阅方案
+                  </Link>
                   <a
                     href="https://github.com/TPGoFighting/cc-videomind/releases/latest/download/teach-player.apk"
                     target="_blank"
@@ -128,6 +136,13 @@ export function Navbar() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              <Link
+                href="/subscribe"
+                className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff]"
+              >
+                <Crown className="h-3.5 w-3.5" />
+                订阅
+              </Link>
               <Link
                 href="/register"
                 className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"

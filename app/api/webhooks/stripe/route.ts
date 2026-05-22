@@ -2,6 +2,16 @@ import Stripe from "stripe";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, successResponse } from "@/lib/utils/api";
 import { getStripe } from "@/lib/stripe/server";
+import type { SubscriptionTier } from "@/lib/plans";
+
+const PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID;
+const MAX_PRICE_ID = process.env.STRIPE_MAX_PRICE_ID;
+
+function getTierFromPriceId(priceId: string): SubscriptionTier {
+  if (MAX_PRICE_ID && priceId === MAX_PRICE_ID) return "max";
+  if (PRO_PRICE_ID && priceId === PRO_PRICE_ID) return "pro";
+  return "free";
+}
 
 // 关键：阻止 Next.js 解析 body，Stripe 需要原始 body 做签名验证
 export const dynamic = "force-dynamic";
@@ -62,9 +72,11 @@ async function handleStripeEvent(event: Stripe.Event) {
       return;
     }
 
+    const tier = getTierFromPriceId(session.metadata?.priceId ?? "");
+
     await supabase.from("profiles").upsert({
       id: userId,
-      subscription_tier: "pro",
+      subscription_tier: tier,
       stripe_customer_id: typeof session.customer === "string" ? session.customer : session.customer?.id,
       stripe_subscription_id:
         typeof session.subscription === "string" ? session.subscription : session.subscription?.id,
@@ -77,11 +89,12 @@ async function handleStripeEvent(event: Stripe.Event) {
     const subscription = event.data.object as Stripe.Subscription;
     const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
     const isActive = subscription.status === "active" || subscription.status === "trialing";
+    const priceId = subscription.items?.data?.[0]?.price?.id ?? "";
 
     await supabase
       .from("profiles")
       .update({
-        subscription_tier: isActive ? "pro" : "free",
+        subscription_tier: isActive ? getTierFromPriceId(priceId) : "free",
         stripe_subscription_id: subscription.id,
         subscription_status: subscription.status,
         updated_at: new Date().toISOString()

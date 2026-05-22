@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import type { VideoMetadata } from "@/lib/types";
 
 const VIDEO_IDS = [
-  "5puu3kN9l7c",  // React 教程
-  "lLX9Ls7FUGs",  // AI 科技
-  "LPZh9BOjkQs",  // TEDx 演讲
-  "ocGJWc2F1Yk",  // 纪录片
-  "oWOyUMJWptc",  // 音乐
-  "HZvj8T5_oUE",  // Vlog
+  "5puu3kN9l7c",
+  "lLX9Ls7FUGs",
+  "LPZh9BOjkQs",
+  "ocGJWc2F1Yk",
+  "oWOyUMJWptc",
+  "HZvj8T5_oUE",
+  "8Ve5SAFPYZ8",
+  "i9TvUGeTltE",
+  "aJSK3HZlvnU",
+  "s1-pfiVMKAs",
 ];
 
 function pickRandom<T>(arr: T[], count: number): T[] {
@@ -41,7 +44,9 @@ async function fetchVideoMeta(videoId: string): Promise<VideoCardData | null> {
     return {
       videoId,
       title: data.title ?? "未命名视频",
-      thumbnailUrl: data.thumbnail_url ?? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      thumbnailUrl:
+        data.thumbnail_url ??
+        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       channelName: data.author_name ?? "未知频道",
     };
   } catch {
@@ -61,17 +66,21 @@ export function ExampleVideos() {
 
   useEffect(() => {
     let cancelled = false;
-    const selected = pickRandom(VIDEO_IDS, 3);
+    const selected = pickRandom(VIDEO_IDS, 5);
 
     async function load() {
-      const results = (await Promise.all(selected.map(fetchVideoMeta))).filter(Boolean) as VideoCardData[];
+      const results = (await Promise.all(selected.map(fetchVideoMeta))).filter(
+        Boolean,
+      ) as VideoCardData[];
       if (!cancelled) {
         setVideos(results);
         setLoading(false);
       }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -86,9 +95,12 @@ export function ExampleVideos() {
       </div>
 
       {loading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:-mx-5 sm:px-5 scrollbar-none">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="flex-shrink-0 w-[280px] rounded-xl border border-white/6 bg-[#0a0a0a] overflow-hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-white/6 bg-[#0a0a0a] overflow-hidden"
+            >
               <div className="aspect-video bg-white/5 animate-breathe" />
               <div className="p-3.5 space-y-2">
                 <div className="h-3.5 w-3/4 rounded-full bg-white/6 animate-breathe" />
@@ -98,12 +110,12 @@ export function ExampleVideos() {
           ))}
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 sm:-mx-5 sm:px-5 scrollbar-none snap-x snap-mandatory">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {videos.map((video) => (
-            <div key={video.videoId} className="snap-start">
+            <div key={video.videoId}>
               <Link
                 href={`/video/${video.videoId}`}
-                className="card-lift group flex-shrink-0 w-[280px] rounded-xl border border-white/6 bg-[#0a0a0a] overflow-hidden transition-colors hover:border-[#0099ff]/20 block"
+                className="card-lift group rounded-xl border border-white/6 bg-[#0a0a0a] overflow-hidden transition-colors hover:border-[#0099ff]/20 block"
               >
                 {/* 缩略图 */}
                 <div className="relative aspect-video bg-[#0d0d0d] overflow-hidden">
@@ -129,7 +141,9 @@ export function ExampleVideos() {
                   <h4 className="text-[14px] font-medium leading-snug text-white/80 line-clamp-2 group-hover:text-white transition-colors">
                     {video.title}
                   </h4>
-                  <p className="text-[12px] text-white/35">{video.channelName}</p>
+                  <p className="text-[12px] text-white/35">
+                    {video.channelName}
+                  </p>
                 </div>
               </Link>
             </div>

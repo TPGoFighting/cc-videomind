@@ -3,6 +3,12 @@ import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAppUrl, getStripe } from "@/lib/stripe/server";
+import type { SubscriptionTier } from "@/lib/plans";
+
+const TIER_PRICE_MAP: Record<string, string | undefined> = {
+  pro: process.env.STRIPE_PRO_PRICE_ID,
+  max: process.env.STRIPE_MAX_PRICE_ID,
+};
 
 const CheckoutRedirectSchema = z
   .string()
@@ -11,7 +17,7 @@ const CheckoutRedirectSchema = z
   .refine(isAllowedCheckoutRedirect, "Checkout redirect URL is not allowed.");
 
 const RequestSchema = z.object({
-  priceId: z.string().min(1).optional(),
+  tier: z.enum(["pro", "max"] as const satisfies [SubscriptionTier, ...SubscriptionTier[]]).optional(),
   successUrl: CheckoutRedirectSchema.optional(),
   cancelUrl: CheckoutRedirectSchema.optional()
 });
@@ -32,9 +38,10 @@ export async function POST(request: Request) {
     return errorResponse("unauthorized", "Sign in before starting checkout.", 401);
   }
 
-  const price = parsed.data.priceId ?? process.env.STRIPE_PRO_PRICE_ID;
+  const tier = parsed.data.tier ?? "pro";
+  const price = TIER_PRICE_MAP[tier];
   if (!price) {
-    return errorResponse("stripe_not_configured", "Stripe price is not configured.", 503);
+    return errorResponse("stripe_not_configured", `Stripe price for ${tier} tier is not configured.`, 503);
   }
 
   try {
@@ -44,7 +51,7 @@ export async function POST(request: Request) {
       line_items: [{ price, quantity: 1 }],
       success_url: parsed.data.successUrl ?? `${appUrl}/?checkout=success`,
       cancel_url: parsed.data.cancelUrl ?? `${appUrl}/?checkout=cancelled`,
-      metadata: { userId }
+      metadata: { userId, priceId: price, tier }
     });
 
     return successResponse({ url: session.url });

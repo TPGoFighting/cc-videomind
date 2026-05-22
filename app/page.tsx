@@ -5,6 +5,7 @@ import { ExampleVideos } from "@/components/example-videos";
 import { StatsSection } from "@/components/stats-section";
 import {
   ArrowRight,
+  Crown,
   FileText,
   Lightbulb,
   MessageSquare,
@@ -13,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { MobileHome } from "@/components/mobile-home";
 
 const features = [
@@ -95,6 +97,15 @@ export default function HomePage() {
                 <p className="mt-3 text-[13px] text-white/25">
                   支持 youtube.com / youtu.be / shorts / embed 等格式
                 </p>
+                <div className="mt-5">
+                  <Link
+                    href="/subscribe"
+                    className="inline-flex items-center gap-2 rounded-full border border-[#0099ff]/30 bg-[#0099ff]/10 px-5 py-2 text-[14px] font-medium text-[#0099ff] transition-all hover:bg-[#0099ff]/20 hover:border-[#0099ff]/50 btn-press"
+                  >
+                    <Crown className="h-4 w-4" />
+                    查看订阅方案
+                  </Link>
+                </div>
               </div>
 
               {/* 桌面端操作步骤 */}

@@ -1,8 +1,9 @@
 import { createSupabaseAuthClient, createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/supabase/admin";
 import type { User } from "@supabase/supabase-js";
+import { type SubscriptionTier, getPlanConfig } from "@/lib/plans";
 
-export type SubscriptionTier = "free" | "pro";
+export type { SubscriptionTier };
 
 export function getBearerToken(request?: Request) {
   const authorization = request?.headers.get("authorization");
@@ -52,7 +53,9 @@ export async function getProfileTier(userId: string): Promise<SubscriptionTier> 
     .eq("id", userId)
     .maybeSingle();
 
-  return data?.subscription_tier === "pro" ? "pro" : "free";
+  const tier = data?.subscription_tier;
+  if (tier === "pro" || tier === "max") return tier;
+  return "free";
 }
 
 export async function checkAnalysisQuota(userId: string | null, request?: Request) {
@@ -79,22 +82,48 @@ export async function checkAnalysisQuota(userId: string | null, request?: Reques
   if (admin) return { allowed: true, anonymous: false, limit: Infinity, used: 0, isAdmin: true };
 
   const tier = await getProfileTier(userId);
-  if (!supabase) return { allowed: true, anonymous: false, limit: tier === "pro" ? 100 : 3, used: 0 };
+  const plan = getPlanConfig(tier);
+  if (!supabase) return { allowed: true, anonymous: false, tier, dailyLimit: plan.dailyLimit, weeklyLimit: plan.weeklyLimit, dailyUsed: 0, weeklyUsed: 0 };
 
-  // 每日配额（UTC+8 北京时间）
-  const todayStart = new Date();
-  todayStart.setHours(todayStart.getHours() + 8, 0, 0, 0);
+  // 日+周配额（UTC+8 北京时间）
+  const dayStart = new Date();
+  dayStart.setHours(dayStart.getHours() + 8, 0, 0, 0);
 
-  const { count } = await supabase
-    .from("usage_events")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("event_type", "video_analysis")
-    .gte("created_at", todayStart.toISOString());
+  const weekStart = getWeekStart();
 
-  const limit = tier === "pro" ? 100 : 3;
-  const used = count ?? 0;
-  return { allowed: used < limit, anonymous: false, limit, used };
+  const [{ count: dailyCount }, { count: weeklyCount }] = await Promise.all([
+    supabase
+      .from("usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("event_type", "video_analysis")
+      .gte("created_at", dayStart.toISOString()),
+    supabase
+      .from("usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("event_type", "video_analysis")
+      .gte("created_at", weekStart.toISOString()),
+  ]);
+
+  const dailyUsed = dailyCount ?? 0;
+  const weeklyUsed = weeklyCount ?? 0;
+  const allowed = dailyUsed < plan.dailyLimit && weeklyUsed < plan.weeklyLimit;
+
+  return { allowed, anonymous: false, tier, dailyLimit: plan.dailyLimit, weeklyLimit: plan.weeklyLimit, dailyUsed, weeklyUsed };
+}
+
+/** UTC+8 本周一 00:00 */
+function getWeekStart(): Date {
+  const now = new Date();
+  // 转到 UTC+8
+  const utc8 = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const day = utc8.getUTCDay(); // 0=周日, 1=周一...
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  utc8.setUTCDate(utc8.getUTCDate() + mondayOffset);
+  utc8.setUTCHours(0, 0, 0, 0);
+  // 转回 UTC
+  return new Date(utc8.getTime() - 8 * 60 * 60 * 1000);
 }
 
 function getClientIp(request?: Request): string {

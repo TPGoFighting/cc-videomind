@@ -9,10 +9,16 @@ import type { JsonResponse, VideoMetadata } from "@/lib/types";
 import { AnimatedBackground } from "./animated-background";
 
 const SUGGESTIONS = [
-  { label: "教程", url: "https://www.youtube.com/watch?v=5puu3kN9l7c&pp=ugUEEgJlbg%3D%3D" },
+  {
+    label: "访谈",
+    url: "https://www.youtube.com/watch?v=5puu3kN9l7c&pp=ugUEEgJlbg%3D%3D",
+  },
   { label: "科技", url: "https://www.youtube.com/watch?v=lLX9Ls7FUGs" },
-  { label: "演讲", url: "https://www.youtube.com/watch?v=LPZh9BOjkQs&pp=ugUHEgVlbi1VUw%3D%3D" },
-  { label: "纪录片", url: "https://www.youtube.com/watch?v=ocGJWc2F1Yk" },
+  {
+    label: "数学",
+    url: "https://www.youtube.com/watch?v=LPZh9BOjkQs&pp=ugUHEgVlbi1VUw%3D%3D",
+  },
+  { label: "脱口秀", url: "https://www.youtube.com/watch?v=ocGJWc2F1Yk" },
 ];
 
 const FEATURED_IDS = [
@@ -22,6 +28,10 @@ const FEATURED_IDS = [
   "ocGJWc2F1Yk",
   "oWOyUMJWptc",
   "HZvj8T5_oUE",
+  "8Ve5SAFPYZ8",
+  "i9TvUGeTltE",
+  "aJSK3HZlvnU",
+  "s1-pfiVMKAs",
 ];
 
 function pickRandom<T>(arr: T[], count: number): T[] {
@@ -39,7 +49,10 @@ interface VideoCardData {
 async function fetchVideoMeta(videoId: string): Promise<VideoCardData | null> {
   try {
     const endpoint = new URL("https://www.youtube.com/oembed");
-    endpoint.searchParams.set("url", `https://www.youtube.com/watch?v=${videoId}`);
+    endpoint.searchParams.set(
+      "url",
+      `https://www.youtube.com/watch?v=${videoId}`,
+    );
     endpoint.searchParams.set("format", "json");
     const res = await fetch(endpoint.toString());
     if (!res.ok) throw new Error("oEmbed failed");
@@ -47,7 +60,9 @@ async function fetchVideoMeta(videoId: string): Promise<VideoCardData | null> {
     return {
       videoId,
       title: data.title ?? "未命名视频",
-      thumbnailUrl: data.thumbnail_url ?? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      thumbnailUrl:
+        data.thumbnail_url ??
+        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       channelName: data.author_name ?? "未知频道",
     };
   } catch {
@@ -74,11 +89,18 @@ export function MobileHome() {
     let cancelled = false;
     const selected = pickRandom(FEATURED_IDS, 2);
     async function load() {
-      const results = (await Promise.all(selected.map(fetchVideoMeta))).filter(Boolean) as VideoCardData[];
-      if (!cancelled) { setVideos(results); setVideosLoading(false); }
+      const results = (await Promise.all(selected.map(fetchVideoMeta))).filter(
+        Boolean,
+      ) as VideoCardData[];
+      if (!cancelled) {
+        setVideos(results);
+        setVideosLoading(false);
+      }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -182,11 +204,16 @@ export function MobileHome() {
 
         {/* 推荐视频卡片 */}
         <div className="mt-8 w-full max-w-md">
-          <p className="text-[12px] text-white/25 text-center mb-3">或者试试这些</p>
+          <p className="text-[12px] text-white/25 text-center mb-3">
+            或者试试这些
+          </p>
           {videosLoading ? (
             <div className="space-y-3">
               {[0, 1].map((i) => (
-                <div key={i} className="flex gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-3">
+                <div
+                  key={i}
+                  className="flex gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-3"
+                >
                   <div className="w-28 h-16 rounded-lg bg-white/5 animate-breathe shrink-0" />
                   <div className="flex-1 space-y-2 py-1">
                     <div className="h-3.5 w-full rounded-full bg-white/6 animate-breathe" />
@@ -221,7 +248,9 @@ export function MobileHome() {
                     <h3 className="text-[13px] font-medium leading-snug text-white/70 line-clamp-2 group-hover:text-white/90 transition-colors">
                       {video.title}
                     </h3>
-                    <p className="mt-1 text-[11px] text-white/35">{video.channelName}</p>
+                    <p className="mt-1 text-[11px] text-white/35">
+                      {video.channelName}
+                    </p>
                   </div>
                 </Link>
               ))}

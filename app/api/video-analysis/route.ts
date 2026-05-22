@@ -15,6 +15,30 @@ const RequestSchema = z
   })
   .refine((value) => value.url || value.videoId, "url or videoId is required");
 
+function buildQuotaMessage(quota: { tier?: string; dailyLimit?: number; weeklyLimit?: number; dailyUsed?: number; weeklyUsed?: number }) {
+  const tier = quota.tier ?? "free";
+  const dailyLimit = quota.dailyLimit ?? 3;
+  const weeklyLimit = quota.weeklyLimit ?? Infinity;
+  const dailyUsed = quota.dailyUsed ?? 0;
+  const weeklyUsed = quota.weeklyUsed ?? 0;
+
+  const dailyExceeded = dailyUsed >= dailyLimit;
+  const weeklyExceeded = weeklyUsed >= weeklyLimit;
+
+  const limitDesc = dailyExceeded
+    ? `今日已达上限（${dailyLimit}次/天）`
+    : `本周已达上限（${weeklyLimit}次/周）`;
+
+  const upgradeHint =
+    tier === "free"
+      ? "请升级至 Pro 或 Max 解锁更多配额。"
+      : tier === "pro"
+        ? "请升级至 Max 解锁更多配额。"
+        : "如需更多配额，请联系技术支持。";
+
+  return `${limitDesc}，${upgradeHint}`;
+}
+
 export async function POST(request: Request) {
   const rateLimit = checkRateLimit(getClientKey(request, "video-analysis"), 8, 60_000);
   if (!rateLimit.allowed) {
@@ -48,7 +72,7 @@ export async function POST(request: Request) {
   if (!quota.allowed) {
     const msg = quota.anonymous
       ? "未登录仅限解析1条视频，请登录后继续使用。"
-      : "今日解析次数已达上限（3次/天），请订阅Pro会员解锁。";
+      : buildQuotaMessage(quota);
     return errorResponse("quota_exceeded", msg, 402);
   }
 
