@@ -56,6 +56,30 @@ export function TranscriptViewer({
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticScrolling = useRef(false);
+  const scrollCleanupRef = useRef<(() => void) | null>(null);
+
+  /** 执行平滑滚动，通过 scrollend 事件 + 超时兜底精确管理 programmaticScrolling 标志 */
+  function performSmoothScroll(container: HTMLDivElement, scrollTarget: number) {
+    scrollCleanupRef.current?.();
+
+    programmaticScrolling.current = true;
+
+    const finish = () => {
+      programmaticScrolling.current = false;
+      scrollCleanupRef.current = null;
+    };
+
+    container.addEventListener("scrollend", finish, { once: true });
+    const timer = setTimeout(finish, 900);
+
+    scrollCleanupRef.current = () => {
+      container.removeEventListener("scrollend", finish);
+      clearTimeout(timer);
+      finish();
+    };
+
+    container.scrollTo({ top: Math.max(0, scrollTarget), behavior: "smooth" });
+  }
 
   // 找到当前播放时间对应的段落索引
   const activeIndex = (() => {
@@ -94,20 +118,16 @@ export function TranscriptViewer({
     if (needsScroll) {
       const relativeTop = activeRect.top - containerRect.top + container.scrollTop;
       const scrollTarget = relativeTop - containerRect.height / 3;
-
-      programmaticScrolling.current = true;
-      requestAnimationFrame(() => {
-        container.scrollTo({
-          top: Math.max(0, scrollTarget),
-          behavior: "smooth",
-        });
-        // smooth scroll 完成后重置标记（约 400ms）
-        setTimeout(() => {
-          programmaticScrolling.current = false;
-        }, 400);
-      });
+      requestAnimationFrame(() => performSmoothScroll(container, scrollTarget));
     }
   }, [currentTime, autoScroll]);
+
+  // 卸载时清理滚动监听
+  useEffect(() => {
+    return () => {
+      scrollCleanupRef.current?.();
+    };
+  }, []);
 
   // 用户手动滚动时暂停自动跟随
   useEffect(() => {
@@ -138,17 +158,7 @@ export function TranscriptViewer({
       const activeRect = active.getBoundingClientRect();
       const relativeTop = activeRect.top - containerRect.top + container.scrollTop;
       const scrollTarget = relativeTop - containerRect.height / 3;
-
-      programmaticScrolling.current = true;
-      requestAnimationFrame(() => {
-        container.scrollTo({
-          top: Math.max(0, scrollTarget),
-          behavior: "smooth",
-        });
-        setTimeout(() => {
-          programmaticScrolling.current = false;
-        }, 400);
-      });
+      requestAnimationFrame(() => performSmoothScroll(container, scrollTarget));
     }
   }, []);
 

@@ -58,6 +58,33 @@ export async function getProfileTier(userId: string): Promise<SubscriptionTier> 
   return "free";
 }
 
+/** 检查用户（或匿名IP）是否已经解析过某个视频 */
+export async function hasUserAnalyzedVideo(userId: string | null, videoId: string, request?: Request): Promise<boolean> {
+  const supabase = createSupabaseServiceClient();
+  if (!supabase) return false;
+
+  if (userId) {
+    const { count } = await supabase
+      .from("usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("event_type", "video_analysis")
+      .eq("video_id", videoId);
+    return (count ?? 0) > 0;
+  }
+
+  // 匿名用户：按 IP 查
+  const clientIp = getClientIp(request);
+  const { count } = await supabase
+    .from("usage_events")
+    .select("id", { count: "exact", head: true })
+    .is("user_id", null)
+    .eq("event_type", "video_analysis")
+    .eq("video_id", videoId)
+    .eq("ip_address", clientIp);
+  return (count ?? 0) > 0;
+}
+
 export async function checkAnalysisQuota(userId: string | null, request?: Request) {
   const supabase = createSupabaseServiceClient();
 

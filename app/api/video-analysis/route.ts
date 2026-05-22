@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { getCachedAnalysis, upsertAnalysisCache } from "@/lib/supabase/cache";
-import { checkAnalysisQuota, getAuthenticatedUserId, recordAnalysisUsage } from "@/lib/supabase/quota";
+import { checkAnalysisQuota, getAuthenticatedUserId, hasUserAnalyzedVideo, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
@@ -67,19 +67,45 @@ export async function POST(request: Request) {
     return errorResponse("invalid_video_url", "Enter a valid public YouTube URL.", 400);
   }
 
+  const userId = await getAuthenticatedUserId(request);
   const cached = await getCachedAnalysis(videoId);
+
+  // 缓存命中：检查当前用户是否已解析过此视频
   if (cached?.metadata && cached.transcript && cached.analysis) {
+    const alreadyAnalyzed = await hasUserAnalyzedVideo(userId, videoId, request);
+    if (alreadyAnalyzed) {
+      return successResponse({
+        videoId,
+        metadata: cached.metadata,
+        transcript: cached.transcript,
+        analysis: cached.analysis,
+        cached: true,
+        preview: false
+      });
+    }
+
+    // 缓存命中但用户未解析过 → 仍需扣额度
+    const quota = await checkAnalysisQuota(userId, request);
+    if (!quota.allowed) {
+      const msg = quota.anonymous
+        ? "未登录仅限解析1条视频，请登录后继续使用。"
+        : buildQuotaMessage(quota);
+      return errorResponse("quota_exceeded", msg, 402);
+    }
+
+    await recordAnalysisUsage({ userId, videoId, request });
+
     return successResponse({
       videoId,
       metadata: cached.metadata,
       transcript: cached.transcript,
       analysis: cached.analysis,
       cached: true,
-      preview: false
+      preview: userId === null
     });
   }
 
-  const userId = await getAuthenticatedUserId(request);
+  // 缓存未命中：走完整流程
   const quota = await checkAnalysisQuota(userId, request);
   if (!quota.allowed) {
     const msg = quota.anonymous

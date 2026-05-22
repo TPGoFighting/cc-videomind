@@ -89,8 +89,8 @@ export function WordCard({
 
         {/* 词条头部 */}
         <div className="flex items-start justify-between gap-2 pr-6 sm:pr-0">
-          <div className="min-w-0">
-            <span className="text-[16px] font-semibold text-white">
+          <div>
+            <span className="text-[16px] font-semibold text-white break-words">
               {definition.lemma}
             </span>
             {definition.phonetic && (
