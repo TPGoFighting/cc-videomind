@@ -17,12 +17,11 @@ export const PLAN_CONFIGS: PlanConfig[] = [
     name: "Free",
     nameZh: "免费版",
     price: 0,
-    dailyLimit: 3,
-    weeklyLimit: 7,
+    dailyLimit: 3, // 免费版总计 3 次，不重置
+    weeklyLimit: 3,
     highlighted: false,
     features: [
-      "每日 3 次视频分析",
-      "每周 7 次",
+      "总计 3 次视频分析",
       "AI 要点时刻提取",
       "AI 结构化摘要",
       "对话式问答",

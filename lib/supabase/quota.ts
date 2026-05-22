@@ -85,7 +85,19 @@ export async function checkAnalysisQuota(userId: string | null, request?: Reques
   const plan = getPlanConfig(tier);
   if (!supabase) return { allowed: true, anonymous: false, tier, dailyLimit: plan.dailyLimit, weeklyLimit: plan.weeklyLimit, dailyUsed: 0, weeklyUsed: 0 };
 
-  // 日+周配额（UTC+8 北京时间）
+  // 免费版：总计 3 次，不按天/周重置
+  if (tier === "free") {
+    const { count } = await supabase
+      .from("usage_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("event_type", "video_analysis");
+
+    const totalUsed = count ?? 0;
+    return { allowed: totalUsed < plan.dailyLimit, anonymous: false, tier: "free" as const, totalLimit: plan.dailyLimit, totalUsed };
+  }
+
+  // 付费用户：日+周配额（UTC+8 北京时间）
   const dayStart = new Date();
   dayStart.setHours(dayStart.getHours() + 8, 0, 0, 0);
 

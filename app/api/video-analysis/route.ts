@@ -15,9 +15,23 @@ const RequestSchema = z
   })
   .refine((value) => value.url || value.videoId, "url or videoId is required");
 
-function buildQuotaMessage(quota: { tier?: string; dailyLimit?: number; weeklyLimit?: number; dailyUsed?: number; weeklyUsed?: number }) {
+function buildQuotaMessage(quota: {
+  tier?: string;
+  dailyLimit?: number;
+  weeklyLimit?: number;
+  dailyUsed?: number;
+  weeklyUsed?: number;
+  totalLimit?: number;
+  totalUsed?: number;
+}) {
   const tier = quota.tier ?? "free";
-  const dailyLimit = quota.dailyLimit ?? 3;
+
+  // 免费版：总计额度，不重置
+  if (tier === "free" && quota.totalLimit !== undefined) {
+    return `总计解析次数已达上限（${quota.totalLimit}次），请升级至 Pro 或 Max 解锁更多配额。`;
+  }
+
+  const dailyLimit = quota.dailyLimit ?? 10;
   const weeklyLimit = quota.weeklyLimit ?? Infinity;
   const dailyUsed = quota.dailyUsed ?? 0;
   const weeklyUsed = quota.weeklyUsed ?? 0;
@@ -30,11 +44,9 @@ function buildQuotaMessage(quota: { tier?: string; dailyLimit?: number; weeklyLi
     : `本周已达上限（${weeklyLimit}次/周）`;
 
   const upgradeHint =
-    tier === "free"
-      ? "请升级至 Pro 或 Max 解锁更多配额。"
-      : tier === "pro"
-        ? "请升级至 Max 解锁更多配额。"
-        : "如需更多配额，请联系技术支持。";
+    tier === "pro"
+      ? "请升级至 Max 解锁更多配额。"
+      : "如需更多配额，请联系技术支持。";
 
   return `${limitDesc}，${upgradeHint}`;
 }

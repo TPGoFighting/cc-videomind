@@ -153,12 +153,20 @@ export default function SubscribePage() {
 
                 {/* 配额 */}
                 <div className="mb-4 flex items-center gap-3 text-[11px] text-white/25">
-                  <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.03] px-2 py-0.5">
-                    每日 {plan.dailyLimit} 次
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.03] px-2 py-0.5">
-                    每周 {plan.weeklyLimit === Infinity ? "∞" : plan.weeklyLimit} 次
-                  </span>
+                  {plan.tier === "free" ? (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.03] px-2 py-0.5">
+                      总计 {plan.dailyLimit} 次
+                    </span>
+                  ) : (
+                    <>
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.03] px-2 py-0.5">
+                        每日 {plan.dailyLimit} 次
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.03] px-2 py-0.5">
+                        每周 {plan.weeklyLimit === Infinity ? "∞" : plan.weeklyLimit} 次
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 {/* 特性列表 */}
@@ -205,7 +213,7 @@ export default function SubscribePage() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/[0.06]">
               <Check className="h-5 w-5 text-emerald-400/40" />
             </div>
-            <p className="text-[14px] text-white/30">免费版无需付款，注册即享每日 3 次、每周 7 次视频分析</p>
+            <p className="text-[14px] text-white/30">免费版无需付款，注册即享总计 3 次视频分析</p>
           </div>
         ) : pendingSub ? (
           /* 审核中 */
