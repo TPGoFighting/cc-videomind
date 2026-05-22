@@ -1,6 +1,7 @@
 export const maxDuration = 120;
 
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedSummary, upsertSummaryCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   if (!rateLimit.allowed) {
     return errorResponse("rate_limited", "Too many summary requests. Try again shortly.", 429);
   }
+
+  const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, GenerateSummaryRequestSchema);
   if (!parsed.ok) {
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
     // 3. AI 生成
     const tAiStart = Date.now();
     const debug = createEmptyDebug();
-    const aiProvider = await getAiProvider();
+    const aiProvider = await getAiProvider(userId ?? undefined);
     const takeaways = await aiProvider.generateStructuredSummary({
       title,
       transcript,

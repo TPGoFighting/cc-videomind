@@ -1,6 +1,7 @@
 import { WordDefinitionsRequestSchema, type WordDefinition } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import {
   getCachedWordDefinitions,
   upsertWordDefinitions,
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   if (!rateLimit.allowed) {
     return errorResponse("rate_limited", "请求过于频繁，请稍后再试。", 429);
   }
+
+  const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, WordDefinitionsRequestSchema);
   if (!parsed.ok) return parsed.response;
@@ -36,7 +39,7 @@ export async function POST(request: Request) {
   let generated: WordDefinition[] = [];
   if (missing.length > 0) {
     try {
-      const provider = await getAiProvider();
+      const provider = await getAiProvider(userId ?? undefined);
       generated = await provider.defineWords({ lemmas: missing });
       // 写入缓存（非致命）
       if (generated.length > 0) {

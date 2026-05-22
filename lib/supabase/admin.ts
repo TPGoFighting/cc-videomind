@@ -51,6 +51,61 @@ export async function updateAppSetting(key: string, value: string, userId: strin
 }
 
 /**
+ * 读取用户个人 AI 配置覆盖。
+ * 返回 Record<key, value>，空字符串视为未设置。
+ */
+export async function getUserAiSettings(userId: string): Promise<Record<string, string>> {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return {};
+
+  const { data } = await supabase
+    .from("user_ai_settings")
+    .select("key, value")
+    .eq("user_id", userId);
+
+  const settings: Record<string, string> = {};
+  for (const row of data ?? []) {
+    if (row.value !== "") {
+      settings[row.key] = row.value;
+    }
+  }
+  return settings;
+}
+
+/**
+ * Upsert 用户个人 AI 配置单条。传 value="" 等效于删除。
+ */
+export async function updateUserAiSetting(userId: string, key: string, value: string) {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 未配置");
+
+  const { error } = await supabase.from("user_ai_settings").upsert({
+    user_id: userId,
+    key,
+    value,
+    updated_at: new Date().toISOString(),
+  });
+
+  if (error) throw error;
+}
+
+/**
+ * 删除用户个人 AI 配置单条。
+ */
+export async function deleteUserAiSetting(userId: string, key: string) {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase 未配置");
+
+  const { error } = await supabase
+    .from("user_ai_settings")
+    .delete()
+    .eq("user_id", userId)
+    .eq("key", key);
+
+  if (error) throw error;
+}
+
+/**
  * 检查用户邮箱是否匹配 ADMIN_EMAIL 环境变量，匹配则自动提升为 admin。
  * 使用 service client 绕过 RLS，因为此时用户的 profile 可能刚创建。
  */

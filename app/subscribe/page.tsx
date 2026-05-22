@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertCircle, ArrowRight, Check, Clock, Crown, Loader2, Smartphone, Sparkles, X, Zap } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 import { Navbar } from "@/components/navbar";
-import { PLAN_CONFIGS, type PlanConfig, type SubscriptionTier } from "@/lib/plans";
+import { PLAN_CONFIGS, type SubscriptionTier } from "@/lib/plans";
 
 function PlanIcon({ tier, className }: { tier: SubscriptionTier; className?: string }) {
   if (tier === "max") return <Zap className={className} />;

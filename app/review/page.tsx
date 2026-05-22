@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Flame, Loader2, Trophy, X } from "lucide-react";
+import { ArrowRight, Check, Flame, Trophy, X } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { StreakCalendar } from "@/components/streak-calendar";
 import { useAuth } from "@/components/auth-context";

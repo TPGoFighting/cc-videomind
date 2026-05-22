@@ -86,7 +86,7 @@ export function Navbar() {
                     订阅方案
                   </Link>
                   <a
-                    href="https://github.com/TPGoFighting/cc-videomind/releases/latest/download/teach-player.apk"
+                    href="https://github.com/TPGoFighting/cc-videomind/releases/download/v1.4.0/app-release.apk"
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setOpen(false)}

@@ -3,7 +3,6 @@ import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
-import type { ReviewResult } from "@/lib/types";
 
 // SM-2 算法参数
 function sm2(quality: number, repetitions: number, easeFactor: number, intervalDays: number) {

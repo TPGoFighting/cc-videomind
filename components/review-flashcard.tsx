@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Zap, BookOpen, RotateCw, RotateCcw } from "lucide-react";
+import { Zap, BookOpen, RotateCw, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import type { ReviewWord } from "@/lib/types";
 

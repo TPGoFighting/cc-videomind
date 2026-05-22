@@ -572,6 +572,9 @@ let cachedDbConfig: Record<string, string> | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 分钟
 
+// Per-user 配置缓存
+const userConfigCache = new Map<string, { config: Record<string, string>; ts: number }>();
+
 async function loadDbConfig(): Promise<Record<string, string>> {
   const now = Date.now();
   if (cachedDbConfig && now - cacheTimestamp < CACHE_TTL) {
@@ -592,10 +595,28 @@ async function loadDbConfig(): Promise<Record<string, string>> {
   return cachedDbConfig;
 }
 
+async function loadUserConfig(userId: string): Promise<Record<string, string>> {
+  const cached = userConfigCache.get(userId);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    return cached.config;
+  }
+
+  try {
+    const { getUserAiSettings } = await import("@/lib/supabase/admin");
+    const config = await getUserAiSettings(userId);
+    userConfigCache.set(userId, { config, ts: Date.now() });
+    return config;
+  } catch {
+    userConfigCache.set(userId, { config: {}, ts: Date.now() });
+    return {};
+  }
+}
+
 /** 清除数据库配置缓存，下次 AiProvider 调用时重新加载。 */
 export function clearAiProviderCache() {
   cachedDbConfig = null;
   cacheTimestamp = 0;
+  userConfigCache.clear();
 }
 
 export type AiConfig = {
@@ -605,24 +626,28 @@ export type AiConfig = {
   model: string;
 };
 
-async function getResolvedConfig(): Promise<AiConfig> {
+async function getResolvedConfig(userId?: string): Promise<AiConfig> {
   const envProvider = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
   const envApiKey = (process.env.AI_API_KEY ?? "").trim();
   const envBaseUrl = (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim();
   const envModel = (process.env.AI_MODEL ?? "deepseek-v4-flash").trim();
 
-  const db = await loadDbConfig();
+  const [db, user] = await Promise.all([
+    loadDbConfig(),
+    userId ? loadUserConfig(userId) : Promise.resolve({} as Record<string, string>),
+  ]);
 
+  // 优先级: 用户个人配置 > 全局 app_settings > 环境变量
   return {
-    provider: db.ai_provider || envProvider,
-    apiKey: db.ai_api_key || envApiKey,
-    baseUrl: db.ai_api_base_url || envBaseUrl,
-    model: db.ai_model || envModel,
+    provider: (user.ai_provider || db.ai_provider || envProvider),
+    apiKey: (user.ai_api_key || db.ai_api_key || envApiKey),
+    baseUrl: (user.ai_api_base_url || db.ai_api_base_url || envBaseUrl),
+    model: (user.ai_model || db.ai_model || envModel),
   };
 }
 
-export async function getAiProvider(): Promise<AiProvider> {
-  const config = await getResolvedConfig();
+export async function getAiProvider(userId?: string): Promise<AiProvider> {
+  const config = await getResolvedConfig(userId);
 
   if (!config.apiKey) {
     throw new Error(

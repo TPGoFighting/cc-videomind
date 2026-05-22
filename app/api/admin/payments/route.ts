@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/supabase/admin";
-import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { errorResponse, readJson } from "@/lib/utils/api";
 import { clearAiProviderCache } from "@/lib/ai/provider";
 
 const UpdateSchema = z.object({

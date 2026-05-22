@@ -34,10 +34,8 @@ function buildQuotaMessage(quota: {
   const dailyLimit = quota.dailyLimit ?? 10;
   const weeklyLimit = quota.weeklyLimit ?? Infinity;
   const dailyUsed = quota.dailyUsed ?? 0;
-  const weeklyUsed = quota.weeklyUsed ?? 0;
 
   const dailyExceeded = dailyUsed >= dailyLimit;
-  const weeklyExceeded = weeklyUsed >= weeklyLimit;
 
   const limitDesc = dailyExceeded
     ? `今日已达上限（${dailyLimit}次/天）`
@@ -117,7 +115,7 @@ export async function POST(request: Request) {
   try {
     const metadata = cached?.metadata ?? (await fetchYouTubeMetadata(videoId));
     const transcript = cached?.transcript ?? (await getTranscriptProvider().getTranscript(videoId));
-    const analysis = await (await getAiProvider()).generateAnalysis({ title: metadata.title, transcript });
+    const analysis = await (await getAiProvider(userId ?? undefined)).generateAnalysis({ title: metadata.title, transcript });
 
     await upsertAnalysisCache({ videoId, metadata, transcript, analysis });
     await recordAnalysisUsage({ userId, videoId, request });

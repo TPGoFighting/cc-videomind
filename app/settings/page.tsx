@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bookmark, Check, Clock, ExternalLink, Loader2, LogIn, LogOut, Plug, Save, Shield, Wifi, X } from "lucide-react";
 import Image from "next/image";
@@ -72,9 +72,13 @@ function GlobalConfigCard({
         <div className="space-y-2">
           <label className="text-[13px] font-medium text-white/70">AI 提供商</label>
           <select
-            value={edited.ai_provider ?? ""}
+            value={edited.ai_provider && !providers.some(p => p.id === edited.ai_provider) ? "__custom__" : (edited.ai_provider ?? "")}
             onChange={(e) => {
               const newProvider = e.target.value;
+              if (newProvider === "__custom__") {
+                setEdited((prev) => ({ ...prev, ai_provider: "" }));
+                return;
+              }
               const def = providers.find(p => p.id === newProvider);
               setEdited((prev) => ({
                 ...prev,
@@ -95,7 +99,32 @@ function GlobalConfigCard({
                 {p.displayName}
               </option>
             ))}
+            <option value="__custom__">自定义...</option>
           </select>
+          {(edited.ai_provider && !providers.some(p => p.id === edited.ai_provider)) && (
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={edited.ai_provider ?? ""}
+                onChange={(e) => setEdited((prev) => ({ ...prev, ai_provider: e.target.value }))}
+                placeholder="输入自定义提供商 ID"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => saveKey("global", "ai_provider", edited.ai_provider ?? "")}
+                disabled={saving["global:ai_provider"] || edited.ai_provider === config.ai_provider}
+              >
+                {saving["global:ai_provider"] ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                保存
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* API Key */}
@@ -202,6 +231,13 @@ function PersonalConfigCard({
   testConnection,
   status,
   providers,
+  targetUserEmail,
+  setTargetUserEmail,
+  onLookup,
+  onResetTarget,
+  lookingUp,
+  lookupError,
+  targetUserId,
 }: {
   config: AiConfigData;
   edited: AiConfigData;
@@ -213,6 +249,13 @@ function PersonalConfigCard({
   testConnection: () => Promise<void>;
   status: { type: "error" | "success"; message: string } | null;
   providers: ProviderInfo[];
+  targetUserEmail: string;
+  setTargetUserEmail: (v: string) => void;
+  onLookup: () => Promise<void>;
+  onResetTarget: () => void;
+  lookingUp: boolean;
+  lookupError: string | null;
+  targetUserId: string | null;
 }) {
   return (
     <Card>
@@ -223,6 +266,54 @@ function PersonalConfigCard({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* 目标用户选择器（管理员专用） */}
+        <div className="rounded-lg bg-[#0099ff]/5 border border-[#0099ff]/15 p-3 space-y-2">
+          <p className="text-[11px] text-[#0099ff]/60 uppercase tracking-wider">目标用户</p>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={targetUserEmail}
+              onChange={(e) => {
+                setTargetUserEmail(e.target.value);
+                if (lookupError) onResetTarget();
+              }}
+              placeholder="输入用户邮箱查找..."
+              className="flex-1 text-[13px]"
+              onKeyDown={(e) => { if (e.key === "Enter") onLookup(); }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={onLookup}
+              disabled={lookingUp || !targetUserEmail.trim()}
+            >
+              {lookingUp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "查找"}
+            </Button>
+            {targetUserId && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onResetTarget}
+                className="text-[12px]"
+              >
+                重置
+              </Button>
+            )}
+          </div>
+          {lookupError && (
+            <p className="text-[12px] text-red-400">{lookupError}</p>
+          )}
+          {targetUserId && (
+            <p className="text-[12px] text-[#0099ff]/70">
+              当前编辑: {targetUserEmail}
+            </p>
+          )}
+          {!targetUserId && (
+            <p className="text-[12px] text-white/30">未指定时编辑自己的个人配置</p>
+          )}
+        </div>
+
         {/* 当前生效摘要 */}
         <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3 space-y-1.5">
           <p className="text-[11px] text-white/30 uppercase tracking-wider">当前设置</p>
@@ -248,13 +339,21 @@ function PersonalConfigCard({
         <div className="space-y-2">
           <label className="text-[13px] font-medium text-white/70">AI 提供商</label>
           <select
-            value={edited.ai_provider ?? ""}
+            value={edited.ai_provider && !providers.some(p => p.id === edited.ai_provider) ? "__custom__" : (edited.ai_provider ?? "")}
             onChange={(e) => {
               const newProvider = e.target.value;
+              if (newProvider === "__custom__") {
+                setEdited((prev) => ({ ...prev, ai_provider: "" }));
+                return;
+              }
+              if (newProvider === "") {
+                setEdited((prev) => ({ ...prev, ai_provider: null }));
+                return;
+              }
               const def = providers.find(p => p.id === newProvider);
               setEdited((prev) => ({
                 ...prev,
-                ai_provider: newProvider || null,
+                ai_provider: newProvider,
                 ai_api_base_url: prev.ai_api_base_url || def?.defaultBaseUrl || "",
                 ai_model: prev.ai_model || def?.defaultModel || "",
               }));
@@ -272,7 +371,32 @@ function PersonalConfigCard({
                 {p.displayName}
               </option>
             ))}
+            <option value="__custom__">自定义...</option>
           </select>
+          {(edited.ai_provider && !providers.some(p => p.id === edited.ai_provider)) && (
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={edited.ai_provider ?? ""}
+                onChange={(e) => setEdited((prev) => ({ ...prev, ai_provider: e.target.value }))}
+                placeholder="输入自定义提供商 ID"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => saveKey("personal", "ai_provider", edited.ai_provider ?? "")}
+                disabled={saving["personal:ai_provider"] || edited.ai_provider === config.ai_provider}
+              >
+                {saving["personal:ai_provider"] ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                保存
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* API Key */}
@@ -405,11 +529,16 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [targetUserId, setTargetUserId] = useState<string | null>(null);
+  const [targetUserEmail, setTargetUserEmail] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
   // 加载配置
   useEffect(() => {
     if (!user) return;
-    fetch("/api/admin/settings")
+    const params = targetUserId ? `?targetUserId=${encodeURIComponent(targetUserId)}` : "";
+    fetch(`/api/admin/settings${params}`)
       .then((res) => res.json())
       .then((data: { admin: boolean; global: AiConfigData; personal: AiConfigData; providers: ProviderInfo[] }) => {
         setGlobalConfig(data.global ?? {});
@@ -419,7 +548,38 @@ export default function SettingsPage() {
         setProviders(data.providers ?? []);
       })
       .catch(console.error);
-  }, [user]);
+  }, [user, targetUserId]);
+
+  async function lookupUser() {
+    const email = targetUserEmail.trim().toLowerCase();
+    if (!email) return;
+    setLookingUp(true);
+    setLookupError(null);
+    try {
+      const res = await fetch(`/api/admin/users?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (!res.ok || !data.users?.length) {
+        setLookupError("未找到该用户");
+        return;
+      }
+      // 精确匹配优先
+      const exact = data.users.find((u: { email: string }) => u.email?.toLowerCase() === email);
+      const match = exact ?? data.users[0];
+      setTargetUserId(match.id);
+      setTargetUserEmail(match.email);
+      setLookupError(null);
+    } catch {
+      setLookupError("查询失败，请稍后再试。");
+    } finally {
+      setLookingUp(false);
+    }
+  }
+
+  function resetTargetUser() {
+    setTargetUserId(null);
+    setTargetUserEmail("");
+    setLookupError(null);
+  }
 
   // 刷新 profile 确保 isAdmin 同步
   useEffect(() => {
@@ -434,10 +594,14 @@ export default function SettingsPage() {
     clearStatus();
 
     try {
+      const body: Record<string, string> = { scope, key, value };
+      if (scope === "personal" && targetUserId) {
+        body.targetUserId = targetUserId;
+      }
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope, key, value }),
+        body: JSON.stringify(body),
       });
       const payload = (await res.json()) as { ok?: boolean; error?: { message?: string } };
       if (!res.ok || !payload.ok) {
@@ -592,7 +756,7 @@ export default function SettingsPage() {
           />
         )}
 
-        {/* 个人 API 配置（仅管理员） */}
+        {/* 个人 API 配置（仅管理员可管理任意用户） */}
         {isAdmin && (
         <PersonalConfigCard
           config={personalConfig}
@@ -605,6 +769,13 @@ export default function SettingsPage() {
           testConnection={testConnection}
           status={status}
           providers={providers}
+          targetUserEmail={targetUserEmail}
+          setTargetUserEmail={setTargetUserEmail}
+          onLookup={lookupUser}
+          onResetTarget={resetTargetUser}
+          lookingUp={lookingUp}
+          lookupError={lookupError}
+          targetUserId={targetUserId}
         />
         )}
 
@@ -728,12 +899,7 @@ function AdminPaymentsPanel() {
   const [processing, setProcessing] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
-  useEffect(() => {
-    loadSubmissions();
-  }, [filter]);
-
-  async function loadSubmissions() {
-    setLoading(true);
+  const loadSubmissions = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/payments?status=${filter}`);
       const data = await res.json();
@@ -748,10 +914,32 @@ function AdminPaymentsPanel() {
     } catch {
       console.error("加载付款提交失败");
       setMessage({ type: "error", text: "网络错误" });
-    } finally {
-      setLoading(false);
     }
-  }
+  }, [filter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/admin/payments?status=${filter}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setMessage({ type: "error", text: data.error_description ?? `API 错误 (${res.status})` });
+          setSubmissions([]);
+        } else {
+          setSubmissions(data.submissions ?? []);
+          setMessage(null);
+        }
+      } catch {
+        if (!cancelled) setMessage({ type: "error", text: "网络错误" });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [filter]);
 
   async function handleReview(submissionId: string, action: "approve" | "reject") {
     setProcessing(submissionId);
@@ -765,7 +953,11 @@ function AdminPaymentsPanel() {
       const data = await res.json();
       if (res.ok) {
         setMessage({ type: "success", text: action === "approve" ? "已批准并升级用户方案" : "已拒绝" });
-        loadSubmissions();
+        setLoading(true);
+        loadSubmissions().then(
+          () => setLoading(false),
+          () => setLoading(false)
+        );
       } else {
         setMessage({ type: "error", text: data.error_description ?? "操作失败" });
       }

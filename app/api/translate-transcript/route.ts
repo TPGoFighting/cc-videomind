@@ -1,6 +1,7 @@
 import { TranslateTranscriptRequestSchema, TranscriptSegmentSchema, type TranscriptSegment } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson } from "@/lib/utils/api";
@@ -28,6 +29,8 @@ export async function POST(request: Request) {
   if (!rateLimit.allowed) {
     return errorResponse("rate_limited", "翻译请求过于频繁。", 429);
   }
+
+  const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, TranslateTranscriptRequestSchema);
   if (!parsed.ok) return parsed.response;
@@ -65,7 +68,7 @@ export async function POST(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const provider = await getAiProvider();
+        const provider = await getAiProvider(userId ?? undefined);
 
         // 并发 worker 处理
         let chunkIndex = 0;

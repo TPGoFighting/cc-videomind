@@ -1,6 +1,7 @@
 export const maxDuration = 120;
 
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedMoments, upsertMomentsCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   if (!rateLimit.allowed) {
     return errorResponse("rate_limited", "Too many requests. Try again shortly.", 429);
   }
+
+  const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, GenerateMomentsRequestSchema);
   if (!parsed.ok) {
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
     // 3. AI 生成
     const tAiStart = Date.now();
     const debug = createEmptyDebug();
-    const moments = await (await getAiProvider()).generateKeyMoments({
+    const moments = await (await getAiProvider(userId ?? undefined)).generateKeyMoments({
       title,
       transcript,
       mode,

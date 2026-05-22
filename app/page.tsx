@@ -13,7 +13,6 @@ import {
   Youtube,
   Zap,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { MobileHome } from "@/components/mobile-home";
 import { YouTubeStatusAlert } from "@/components/youtube-status-alert";

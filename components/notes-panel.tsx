@@ -36,21 +36,33 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
 
   const loggedIn = !authLoading && user !== null;
 
-  // 加载已保存的笔记
+  // 刷新笔记列表（saveNote 后调用）
   const loadNotes = useCallback(async () => {
-    if (!loggedIn) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
     const data = await fetchNotes(videoId);
     setNotes(data);
-    setLoading(false);
-  }, [videoId, loggedIn]);
+  }, [videoId]);
 
+  // 初始加载
   useEffect(() => {
-    loadNotes();
-  }, [loadNotes]);
+    if (!loggedIn) {
+      Promise.resolve().then(() => setLoading(false));
+      return;
+    }
+    let cancelled = false;
+    fetchNotes(videoId)
+      .then((data) => {
+        if (!cancelled) {
+          setNotes(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [videoId, loggedIn]);
 
   async function saveNote() {
     if (!body.trim()) return;

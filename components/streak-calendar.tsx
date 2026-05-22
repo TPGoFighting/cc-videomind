@@ -10,7 +10,7 @@ export function StreakCalendar({
   data: { date: string; count: number }[];
   streak: number;
 }) {
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
 
   // 生成近30天的日期网格（7列 x 5行）
   const grid = useMemo(() => {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
 import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis, upsertTranscriptCache } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { VideoIdSchema } from "@/lib/youtube/id";
@@ -18,6 +19,8 @@ export async function POST(request: Request) {
     return errorResponse("rate_limited", "Too many chat requests. Try again shortly.", 429);
   }
 
+  const userId = await getAuthenticatedUserId(request);
+
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
       await upsertTranscriptCache({ videoId: parsed.data.videoId, metadata, transcript });
     }
 
-    const answer = await (await getAiProvider()).answerQuestion({
+    const answer = await (await getAiProvider(userId ?? undefined)).answerQuestion({
       question: parsed.data.question,
       transcript
     });
