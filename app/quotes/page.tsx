@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Bookmark, ExternalLink, Trash2 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
+import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
 import { formatTimestamp } from "@/lib/utils/time";
 
 interface QuoteItem {
@@ -22,30 +23,17 @@ interface QuoteItem {
 
 export default function QuotesPage() {
   const { user, loading: authLoading } = useAuth();
-  const [items, setItems] = useState<QuoteItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/user-quotes");
-        const payload = await res.json();
-        if (!cancelled && payload.ok) {
-          setItems(payload.data.quotes ?? []);
-        }
-      } catch {
-        // 静默失败
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [authLoading]);
+  const { data: items, loading, mutate } = useCachedFetch<QuoteItem>(
+    "quotes",
+    async () => {
+      const res = await fetch("/api/user-quotes");
+      const payload = await res.json();
+      return { ok: payload.ok, data: payload.data?.quotes ?? [] };
+    },
+    { deps: [authLoading, user?.id], userId: user?.id },
+  );
 
   const handleDelete = async (id: string) => {
     setDeleting((prev) => new Set(prev).add(id));
@@ -55,7 +43,7 @@ export default function QuotesPage() {
       });
       const payload = await res.json();
       if (payload.ok) {
-        setItems((prev) => prev.filter((item) => item.id !== id));
+        mutate((prev) => prev.filter((item) => item.id !== id));
       }
     } catch {
       // 静默失败
@@ -134,7 +122,6 @@ export default function QuotesPage() {
                 key={item.id}
                 className="group rounded-xl border border-white/8 bg-white/4 p-4"
               >
-                {/* 来源视频 */}
                 {item.videoTitle && (
                   <div className="mb-2 flex items-center gap-1.5">
                     <Link
@@ -149,26 +136,22 @@ export default function QuotesPage() {
                   </div>
                 )}
 
-                {/* 英文原文 */}
                 <p className="text-[14px] leading-relaxed text-white/80">
                   &ldquo;{item.textEn}&rdquo;
                 </p>
 
-                {/* 中文翻译 */}
                 {item.textZh && (
                   <p className="mt-1 text-[13px] leading-relaxed text-white/40">
                     {item.textZh}
                   </p>
                 )}
 
-                {/* 笔记 */}
                 {item.notes && (
                   <p className="mt-2 text-[12px] leading-relaxed text-white/30 italic">
                     {item.notes}
                   </p>
                 )}
 
-                {/* 底部信息 */}
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-[11px] text-white/25">
                     {new Date(item.createdAt).toLocaleDateString("zh-CN")}

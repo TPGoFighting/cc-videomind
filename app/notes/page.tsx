@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink, NotebookPen, Trash2 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
-import type { JsonResponse, UserNote } from "@/lib/types";
+import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
+import type { UserNote } from "@/lib/types";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -20,30 +21,17 @@ function formatDate(iso: string): string {
 
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuth();
-  const [items, setItems] = useState<UserNote[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/notes");
-        const payload = (await res.json()) as JsonResponse<UserNote[]>;
-        if (!cancelled && payload.ok) {
-          setItems(payload.data ?? []);
-        }
-      } catch {
-        // 静默失败
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [authLoading]);
+  const { data: items, loading, mutate } = useCachedFetch<UserNote>(
+    "notes",
+    async () => {
+      const res = await fetch("/api/notes");
+      const payload = await res.json();
+      return { ok: payload.ok, data: payload.data ?? [] };
+    },
+    { deps: [authLoading, user?.id], userId: user?.id },
+  );
 
   const handleDelete = async (id: string) => {
     setDeleting((prev) => new Set(prev).add(id));
@@ -55,7 +43,7 @@ export default function NotesPage() {
       });
       const payload = await res.json();
       if (payload.ok) {
-        setItems((prev) => prev.filter((item) => item.id !== id));
+        mutate((prev) => prev.filter((item) => item.id !== id));
       }
     } catch {
       // 静默失败
@@ -134,7 +122,6 @@ export default function NotesPage() {
                 key={item.id}
                 className="group rounded-xl border border-white/8 bg-white/4 p-4"
               >
-                {/* 来源视频 */}
                 {item.video_title && (
                   <div className="mb-2">
                     <Link
@@ -147,12 +134,10 @@ export default function NotesPage() {
                   </div>
                 )}
 
-                {/* 笔记正文 */}
                 <p className="text-[14px] leading-relaxed text-white/80 whitespace-pre-wrap">
                   {item.body}
                 </p>
 
-                {/* 底部信息 */}
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-[11px] text-white/25">
                     {formatDate(item.created_at)}

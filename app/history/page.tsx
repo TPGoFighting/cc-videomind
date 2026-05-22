@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Clock, ExternalLink } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
+import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
 
 interface HistoryItem {
   videoId: string;
@@ -17,29 +17,16 @@ interface HistoryItem {
 
 export default function HistoryPage() {
   const { user, loading: authLoading } = useAuth();
-  const [items, setItems] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/history");
-        const payload = await res.json();
-        if (!cancelled && payload.ok) {
-          setItems(payload.data);
-        }
-      } catch {
-        // 静默失败
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [authLoading]);
+  const { data: items, loading } = useCachedFetch<HistoryItem>(
+    "history",
+    async () => {
+      const res = await fetch("/api/history");
+      const payload = await res.json();
+      return { ok: payload.ok, data: payload.data };
+    },
+    { deps: [authLoading, user?.id], userId: user?.id },
+  );
 
   if (authLoading) {
     return (

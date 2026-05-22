@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { BookOpen, ExternalLink, Trash2 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
+import { useCachedFetch } from "@/lib/hooks/useCachedFetch";
 
 interface VocabItem {
   id: string;
@@ -22,30 +23,17 @@ interface VocabItem {
 
 export default function VocabularyPage() {
   const { user, loading: authLoading } = useAuth();
-  const [items, setItems] = useState<VocabItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/user-vocabulary");
-        const payload = await res.json();
-        if (!cancelled && payload.ok) {
-          setItems(payload.data.vocabulary ?? []);
-        }
-      } catch {
-        // 静默失败
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [authLoading]);
+  const { data: items, loading, mutate } = useCachedFetch<VocabItem>(
+    "vocabulary",
+    async () => {
+      const res = await fetch("/api/user-vocabulary");
+      const payload = await res.json();
+      return { ok: payload.ok, data: payload.data?.vocabulary ?? [] };
+    },
+    { deps: [authLoading, user?.id], userId: user?.id },
+  );
 
   const handleDelete = async (id: string) => {
     setDeleting((prev) => new Set(prev).add(id));
@@ -55,7 +43,7 @@ export default function VocabularyPage() {
       });
       const payload = await res.json();
       if (payload.ok) {
-        setItems((prev) => prev.filter((item) => item.id !== id));
+        mutate((prev) => prev.filter((item) => item.id !== id));
       }
     } catch {
       // 静默失败
@@ -135,7 +123,6 @@ export default function VocabularyPage() {
                 className="group flex items-start gap-4 rounded-xl border border-white/8 bg-white/4 p-4"
               >
                 <div className="min-w-0 flex-1">
-                  {/* 词条头部 */}
                   <div className="flex items-center gap-2">
                     <h2 className="text-[15px] font-semibold">{item.lemma}</h2>
                     {item.phonetic && (
@@ -146,7 +133,6 @@ export default function VocabularyPage() {
                     )}
                   </div>
 
-                  {/* 释义 */}
                   <p className="mt-1 text-[13px] leading-relaxed text-white/70">
                     {item.definitionZh}
                   </p>
@@ -156,7 +142,6 @@ export default function VocabularyPage() {
                     </p>
                   )}
 
-                  {/* 例句 */}
                   {item.exampleEn && (
                     <div className="mt-2 rounded-lg bg-white/5 px-3 py-2">
                       <p className="text-[12px] leading-relaxed text-white/60">
@@ -170,13 +155,11 @@ export default function VocabularyPage() {
                     </div>
                   )}
 
-                  {/* 时间 */}
                   <p className="mt-2 text-[11px] text-white/25">
                     {new Date(item.createdAt).toLocaleDateString("zh-CN")}
                   </p>
                 </div>
 
-                {/* 操作按钮 */}
                 <div className="flex items-center gap-1 touch-reveal">
                   <Link
                     href={`/video/${item.videoId}`}
