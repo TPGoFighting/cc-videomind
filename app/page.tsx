@@ -16,6 +16,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { MobileHome } from "@/components/mobile-home";
+import { YouTubeStatusAlert } from "@/components/youtube-status-alert";
 
 const features = [
   {
@@ -65,8 +66,13 @@ export default function HomePage() {
 
         <Navbar />
 
+        {/* YouTube 连通性告警 */}
+        <div className="mx-auto w-full max-w-full px-4 pt-16 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%]">
+          <YouTubeStatusAlert />
+        </div>
+
         {/* Hero 区域 */}
-        <section className="relative mx-auto w-full max-w-full px-4 pt-20 pb-8 sm:max-w-[90%] sm:px-5 sm:pt-32 sm:pb-12 md:max-w-[85%] lg:max-w-[80%]">
+        <section className="relative mx-auto w-full max-w-full px-4 pt-8 pb-8 sm:max-w-[90%] sm:px-5 sm:pt-12 sm:pb-12 md:max-w-[85%] lg:max-w-[80%]">
           <div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
             <div className="flex flex-col justify-center space-y-8">
               <div className="animate-fade-in-up">

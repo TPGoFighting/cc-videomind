@@ -82,12 +82,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             allowFullScreen
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-white/8 bg-[#090909] p-4">
-          <h1 className="min-w-0 flex-1 text-[17px] font-semibold leading-snug tracking-[-0.01em]">
+        <div className="flex flex-col gap-2 border-t border-white/8 bg-[#090909] p-4 sm:flex-row sm:items-center">
+          <h1 className="text-[17px] font-semibold leading-snug tracking-[-0.01em] sm:flex-1 sm:min-w-0 break-words">
             {metadata?.title ?? "正在加载视频信息…"}
           </h1>
           {metadata?.authorName ? (
-            <Badge>{metadata.authorName}</Badge>
+            <Badge className="self-start sm:self-auto shrink-0">{metadata.authorName}</Badge>
           ) : null}
         </div>
       </section>

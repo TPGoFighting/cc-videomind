@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, Play } from "lucide-react";
 import type { JsonResponse, VideoMetadata } from "@/lib/types";
 import { AnimatedBackground } from "./animated-background";
+import { YouTubeStatusBanner } from "./youtube-status-banner";
+import { useYouTubeStatus } from "@/lib/hooks/useYouTubeStatus";
 
 const SUGGESTIONS = [
   {
@@ -77,6 +79,7 @@ async function fetchVideoMeta(videoId: string): Promise<VideoCardData | null> {
 
 export function MobileHome() {
   const router = useRouter();
+  const youtubeStatus = useYouTubeStatus();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -138,6 +141,13 @@ export function MobileHome() {
   return (
     <div className="flex flex-col min-h-screen bg-black text-white">
       <AnimatedBackground variant="mobile" />
+
+      {/* YouTube 连通性告警 */}
+      {youtubeStatus !== "available" && youtubeStatus !== "checking" && (
+        <div className="px-5 pt-4">
+          <YouTubeStatusBanner status={youtubeStatus} variant="banner" />
+        </div>
+      )}
 
       {/* 主体内容 — 垂直居中 */}
       <div className="flex-1 flex flex-col items-center justify-center px-5 pt-[10vh] pb-20 page-enter">

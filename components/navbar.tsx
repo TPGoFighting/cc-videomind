@@ -4,13 +4,24 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Bookmark, Clock, Crown, Download, Flame, LogIn, LogOut, Menu, NotebookPen, Settings, User } from "lucide-react";
+import { Clock, LogIn, LogOut, Menu } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
+import { getPlanConfig } from "@/lib/plans";
+import { GameIcon } from "@/components/game-icon";
+import { YouTubeStatusBanner } from "@/components/youtube-status-banner";
+import { useYouTubeStatus } from "@/lib/hooks/useYouTubeStatus";
+
+const TIER_STYLES: Record<string, string> = {
+  free: "bg-white/8 text-white/40 border-white/10",
+  pro: "bg-[#0099ff]/12 text-[#0099ff] border-[#0099ff]/25",
+  max: "bg-amber-400/10 text-amber-400 border-amber-400/25",
+};
 
 export function Navbar() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, subscriptionTier } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const youtubeStatus = useYouTubeStatus();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭下拉菜单
@@ -36,6 +47,9 @@ export function Navbar() {
         </Link>
 
         <div className="flex items-center gap-3">
+          {youtubeStatus !== "available" && youtubeStatus !== "checking" && (
+            <YouTubeStatusBanner status={youtubeStatus} variant="inline" />
+          )}
           {loading ? (
             <div className="h-8 w-20 animate-breathe rounded-full bg-white/8" />
           ) : user ? (
@@ -46,8 +60,11 @@ export function Navbar() {
                 className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
               >
                 <Menu className="h-4 w-4 shrink-0 md:hidden" />
-                <User className="h-3.5 w-3.5 shrink-0 hidden md:block" />
+                <GameIcon name="user" size={14} className="hidden md:inline-block opacity-60" />
                 <span className="hidden sm:inline">{user.email}</span>
+                <span className={`hidden sm:inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none ${TIER_STYLES[subscriptionTier] ?? TIER_STYLES.free}`}>
+                  {getPlanConfig(subscriptionTier).nameZh}
+                </span>
               </button>
               {open && (
                 <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl scale-in">
@@ -56,7 +73,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-amber-400 transition-colors hover:bg-amber-400/10 hover:text-amber-300 min-h-[44px]"
                   >
-                    <Flame className="h-3.5 w-3.5" />
+                    <GameIcon name="fire" size={14} />
                     每日复习
                   </Link>
                   <div className="mx-3 border-t border-white/6" />
@@ -65,7 +82,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff] min-h-[44px]"
                   >
-                    <Crown className="h-3.5 w-3.5" />
+                    <GameIcon name="crown" size={14} />
                     订阅方案
                   </Link>
                   <a
@@ -75,7 +92,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#0099ff] min-h-[44px]"
                   >
-                    <Download className="h-3.5 w-3.5" />
+                    <GameIcon name="download" size={14} />
                     安卓APP下载（Beta）
                   </a>
                   <div className="mx-3 border-t border-white/6" />
@@ -92,7 +109,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
-                    <BookOpen className="h-3.5 w-3.5" />
+                    <GameIcon name="book" size={14} />
                     单词本
                   </Link>
                   <Link
@@ -100,7 +117,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
-                    <Bookmark className="h-3.5 w-3.5" />
+                    <GameIcon name="bookmark" size={14} />
                     句子本
                   </Link>
                   <Link
@@ -108,7 +125,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
-                    <NotebookPen className="h-3.5 w-3.5" />
+                    <GameIcon name="notebook" size={14} />
                     笔记本
                   </Link>
                   <Link
@@ -116,7 +133,7 @@ export function Navbar() {
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
                   >
-                    <Settings className="h-3.5 w-3.5" />
+                    <GameIcon name="settings" size={14} />
                     设置
                   </Link>
                   <button
@@ -140,7 +157,7 @@ export function Navbar() {
                 href="/subscribe"
                 className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff]"
               >
-                <Crown className="h-3.5 w-3.5" />
+                <GameIcon name="crown" size={14} />
                 订阅
               </Link>
               <Link
