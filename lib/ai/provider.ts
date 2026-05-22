@@ -119,19 +119,19 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const lang = input.targetLanguage ?? "zh";
     const t0 = Date.now();
 
-    // Fast 模式：切片 → 多次 AI → 归并
+    // Fast 模式：切片 → 并发 AI 调用 → 归并
     if (input.mode === "fast") {
       const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
       console.log("[AI:Moments] Fast 模式, chunk 数量: %d", chunks.length);
-      const allCandidates: KeyMoment[] = [];
 
-      for (const chunk of chunks) {
+      const chunkResults = await runConcurrent(3, chunks, async (chunk) => {
         const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
         const content = await this.chatJson(prompt);
         const candidates = parseKeyMoments(content).slice(0, 2);
         console.log("[AI:Moments] Chunk 解析出 %d 候选, AI 响应前200字: %s", candidates.length, content.slice(0, 200));
-        allCandidates.push(...candidates);
-      }
+        return candidates;
+      });
+      const allCandidates = chunkResults.flat();
 
       console.log("[AI:Moments] 全部候选: %d 条", allCandidates.length);
       if (allCandidates.length === 0) {
@@ -229,18 +229,19 @@ export class OpenAiCompatibleProvider implements AiProvider {
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
     if (input.lemmas.length === 0) return [];
 
-    // 分批处理，每批最多 30 个词
     const BATCH_SIZE = 30;
-    const results: WordDefinition[] = [];
-
+    const batches: string[][] = [];
     for (let i = 0; i < input.lemmas.length; i += BATCH_SIZE) {
-      const batch = input.lemmas.slice(i, i + BATCH_SIZE);
+      batches.push(input.lemmas.slice(i, i + BATCH_SIZE));
+    }
+
+    const batchResults = await runConcurrent(3, batches, async (batch) => {
       const prompt = buildWordDefinitionsPrompt(batch);
       const content = await this.chatJson(prompt);
       const value = parseJsonContent(content);
 
       if (isRecord(value) && Array.isArray(value.definitions)) {
-        const parsed = value.definitions
+        return value.definitions
           .filter(isRecord)
           .map((d) => {
             const result = WordDefinitionSchema.safeParse({
@@ -255,11 +256,11 @@ export class OpenAiCompatibleProvider implements AiProvider {
             return result.success ? result.data : null;
           })
           .filter((d): d is WordDefinition => d !== null);
-        results.push(...parsed);
       }
-    }
+      return [];
+    });
 
-    return results;
+    return batchResults.flat();
   }
 
   async translateTranscript(input: { segments: TranscriptSegment[] }): Promise<TranscriptSegment[]> {
@@ -400,14 +401,14 @@ export class GeminiProvider implements AiProvider {
 
     if (input.mode === "fast") {
       const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
-      const allCandidates: KeyMoment[] = [];
 
-      for (const chunk of chunks) {
+      const chunkResults = await runConcurrent(3, chunks, async (chunk) => {
         const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
         const content = await this.generateJson(prompt);
         const candidates = parseKeyMoments(content).slice(0, 2);
-        allCandidates.push(...candidates);
-      }
+        return candidates;
+      });
+      const allCandidates = chunkResults.flat();
 
       if (allCandidates.length === 0) {
         if (input.debug) fillDebug(input.debug, { model: this.model, finalCount: 0 });
@@ -479,16 +480,18 @@ export class GeminiProvider implements AiProvider {
     if (input.lemmas.length === 0) return [];
 
     const BATCH_SIZE = 30;
-    const results: WordDefinition[] = [];
-
+    const batches: string[][] = [];
     for (let i = 0; i < input.lemmas.length; i += BATCH_SIZE) {
-      const batch = input.lemmas.slice(i, i + BATCH_SIZE);
+      batches.push(input.lemmas.slice(i, i + BATCH_SIZE));
+    }
+
+    const batchResults = await runConcurrent(3, batches, async (batch) => {
       const prompt = buildWordDefinitionsPrompt(batch);
       const content = await this.generateJson(prompt);
       const value = parseJsonContent(content);
 
       if (isRecord(value) && Array.isArray(value.definitions)) {
-        const parsed = value.definitions
+        return value.definitions
           .filter(isRecord)
           .map((d) => {
             const result = WordDefinitionSchema.safeParse({
@@ -503,11 +506,11 @@ export class GeminiProvider implements AiProvider {
             return result.success ? result.data : null;
           })
           .filter((d): d is WordDefinition => d !== null);
-        results.push(...parsed);
       }
-    }
+      return [];
+    });
 
-    return results;
+    return batchResults.flat();
   }
 
   async translateTranscript(input: { segments: TranscriptSegment[] }): Promise<TranscriptSegment[]> {
@@ -936,6 +939,27 @@ function getNumber(record: Record<string, unknown>, keys: string[]) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 限制并发数的并行执行器，保持结果顺序 */
+async function runConcurrent<T, R>(
+  concurrency: number,
+  items: T[],
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const i = cursor++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
+  );
+  return results;
 }
 
 function normalizeOpenAiCompatibleBaseUrl(value: string) {

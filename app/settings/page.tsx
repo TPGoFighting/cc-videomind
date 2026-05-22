@@ -76,7 +76,7 @@ function GlobalConfigCard({
             onChange={(e) => {
               const newProvider = e.target.value;
               if (newProvider === "__custom__") {
-                setEdited((prev) => ({ ...prev, ai_provider: "" }));
+                setEdited((prev) => ({ ...prev, ai_provider: "__custom__" }));
                 return;
               }
               const def = providers.find(p => p.id === newProvider);
@@ -88,7 +88,7 @@ function GlobalConfigCard({
               }));
             }}
             onBlur={() => {
-              if (edited.ai_provider !== config.ai_provider) {
+              if (edited.ai_provider && edited.ai_provider !== "__custom__" && edited.ai_provider !== config.ai_provider) {
                 saveKey("global", "ai_provider", edited.ai_provider ?? "");
               }
             }}
@@ -114,7 +114,7 @@ function GlobalConfigCard({
                 type="button"
                 size="sm"
                 onClick={() => saveKey("global", "ai_provider", edited.ai_provider ?? "")}
-                disabled={saving["global:ai_provider"] || edited.ai_provider === config.ai_provider}
+                disabled={saving["global:ai_provider"] || edited.ai_provider === config.ai_provider || edited.ai_provider === "__custom__"}
               >
                 {saving["global:ai_provider"] ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -343,7 +343,7 @@ function PersonalConfigCard({
             onChange={(e) => {
               const newProvider = e.target.value;
               if (newProvider === "__custom__") {
-                setEdited((prev) => ({ ...prev, ai_provider: "" }));
+                setEdited((prev) => ({ ...prev, ai_provider: "__custom__" }));
                 return;
               }
               if (newProvider === "") {
@@ -359,7 +359,7 @@ function PersonalConfigCard({
               }));
             }}
             onBlur={() => {
-              if (edited.ai_provider !== config.ai_provider) {
+              if (edited.ai_provider && edited.ai_provider !== "__custom__" && edited.ai_provider !== config.ai_provider) {
                 saveKey("personal", "ai_provider", edited.ai_provider ?? "");
               }
             }}
@@ -386,7 +386,7 @@ function PersonalConfigCard({
                 type="button"
                 size="sm"
                 onClick={() => saveKey("personal", "ai_provider", edited.ai_provider ?? "")}
-                disabled={saving["personal:ai_provider"] || edited.ai_provider === config.ai_provider}
+                disabled={saving["personal:ai_provider"] || edited.ai_provider === config.ai_provider || edited.ai_provider === "__custom__"}
               >
                 {saving["personal:ai_provider"] ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

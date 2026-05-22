@@ -49,6 +49,8 @@ function buildQuotaMessage(quota: {
   return `${limitDesc}，${upgradeHint}`;
 }
 
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   const rateLimit = checkRateLimit(getClientKey(request, "video-analysis"), 8, 60_000);
   if (!rateLimit.allowed) {
@@ -113,8 +115,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const metadata = cached?.metadata ?? (await fetchYouTubeMetadata(videoId));
-    const transcript = cached?.transcript ?? (await getTranscriptProvider().getTranscript(videoId));
+    const [metadata, transcript] = await Promise.all([
+      cached?.metadata ?? fetchYouTubeMetadata(videoId),
+      cached?.transcript ?? getTranscriptProvider().getTranscript(videoId),
+    ]);
     const analysis = await (await getAiProvider(userId ?? undefined)).generateAnalysis({ title: metadata.title, transcript });
 
     await upsertAnalysisCache({ videoId, metadata, transcript, analysis });
