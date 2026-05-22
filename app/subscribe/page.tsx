@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, Check, Clock, Crown, Loader2, Smartphone, Sparkles, Zap } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Clock, Crown, Loader2, Smartphone, Sparkles, X, Zap } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 import { Navbar } from "@/components/navbar";
 import { PLAN_CONFIGS, type PlanConfig, type SubscriptionTier } from "@/lib/plans";
@@ -20,6 +20,7 @@ export default function SubscribePage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [pendingSub, setPendingSub] = useState<{ tier: string; status: string; createdAt: string } | null>(null);
+  const [zoomedQr, setZoomedQr] = useState<string | null>(null);
 
   const selectedPlan = PLAN_CONFIGS.find((p) => p.tier === selectedTier)!;
 
@@ -248,11 +249,15 @@ export default function SubscribePage() {
                   <div className="grid grid-cols-2 gap-4">
                     {/* 微信 */}
                     <div className="text-center group">
-                      <div className="relative mx-auto mb-2 aspect-square w-full max-w-[200px] sm:max-w-[240px] rounded-2xl border border-[#07c160]/15 bg-[#07c160]/[0.03] overflow-hidden transition-all group-hover:border-[#07c160]/25">
+                      <button
+                        type="button"
+                        onClick={() => setZoomedQr("/wechat-pay.jpg")}
+                        className="relative mx-auto mb-2 block aspect-square w-full max-w-[200px] sm:max-w-[240px] rounded-2xl border border-[#07c160]/15 bg-[#07c160]/[0.03] overflow-hidden transition-all group-hover:border-[#07c160]/25 cursor-zoom-in"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src="/wechat-pay.jpg"
-                          alt="微信收款码"
+                          alt="微信收款码 - 点击放大"
                           className="w-full h-full object-contain p-4"
                           onError={(e) => {
                             const el = e.currentTarget; el.style.display = "none";
@@ -260,16 +265,20 @@ export default function SubscribePage() {
                             if (p) p.innerHTML = '<span class="flex items-center justify-center h-full text-[11px] text-white/12 text-center px-2">微信<br/>收款码</span>';
                           }}
                         />
-                      </div>
-                      <span className="text-[13px] font-medium text-[#07c160]/80">微信支付</span>
+                      </button>
+                      <span className="text-[13px] font-medium text-[#07c160]/80">微信支付 · 点击放大</span>
                     </div>
                     {/* 支付宝 */}
                     <div className="text-center group">
-                      <div className="relative mx-auto mb-2 aspect-square w-full max-w-[200px] sm:max-w-[240px] rounded-2xl border border-[#1677ff]/15 bg-[#1677ff]/[0.03] overflow-hidden transition-all group-hover:border-[#1677ff]/25">
+                      <button
+                        type="button"
+                        onClick={() => setZoomedQr("/alipay.jpg")}
+                        className="relative mx-auto mb-2 block aspect-square w-full max-w-[200px] sm:max-w-[240px] rounded-2xl border border-[#1677ff]/15 bg-[#1677ff]/[0.03] overflow-hidden transition-all group-hover:border-[#1677ff]/25 cursor-zoom-in"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src="/alipay.jpg"
-                          alt="支付宝收款码"
+                          alt="支付宝收款码 - 点击放大"
                           className="w-full h-full object-contain p-4"
                           onError={(e) => {
                             const el = e.currentTarget; el.style.display = "none";
@@ -277,8 +286,8 @@ export default function SubscribePage() {
                             if (p) p.innerHTML = '<span class="flex items-center justify-center h-full text-[11px] text-white/12 text-center px-2">支付宝<br/>收款码</span>';
                           }}
                         />
-                      </div>
-                      <span className="text-[13px] font-medium text-[#1677ff]/80">支付宝</span>
+                      </button>
+                      <span className="text-[13px] font-medium text-[#1677ff]/80">支付宝 · 点击放大</span>
                     </div>
                   </div>
                 </div>
@@ -349,6 +358,33 @@ export default function SubscribePage() {
           </div>
         )}
       </section>
+
+      {/* 二维码放大弹窗 */}
+      {zoomedQr && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
+          onClick={() => setZoomedQr(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setZoomedQr(null)}
+            className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <div
+            className="relative max-w-[90vw] max-h-[90vh] sm:max-w-[420px] sm:max-h-[420px] w-full aspect-square rounded-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={zoomedQr}
+              alt="收款码放大"
+              className="w-full h-full object-contain bg-[#0a0a0a] rounded-2xl p-2"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
