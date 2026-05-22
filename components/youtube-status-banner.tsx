@@ -24,9 +24,16 @@ export function YouTubeStatusBanner({
   if (variant === "inline") {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-red-600/15 border border-red-500/25 px-3 py-1.5 text-[12px] font-medium text-red-400">
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-        <span className="hidden sm:inline">{message}</span>
-        <span className="sm:hidden">YouTube 受限</span>
+        <a
+          href="https://www.youtube.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 hover:text-red-300 transition-colors"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="hidden sm:inline">{message}</span>
+          <span className="sm:hidden">YouTube 受限 · 点击登录</span>
+        </a>
         <button
           type="button"
           onClick={(e) => {
