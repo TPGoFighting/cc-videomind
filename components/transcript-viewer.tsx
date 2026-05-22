@@ -53,9 +53,9 @@ export function TranscriptViewer({
   const [savingQuote, setSavingQuote] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
-  const lastUserScrollTime = useRef(0);
-  const manualModeRef = useRef(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticScrolling = useRef(false);
 
   // 找到当前播放时间对应的段落索引
   const activeIndex = (() => {
@@ -75,33 +75,36 @@ export function TranscriptViewer({
     return best;
   })();
 
-  // 自动滚动到当前段落（舒适区：视口顶部 25%-40%，提前滚动）
+  // 自动滚动到当前段落（舒适区：视口顶部 25%-40%）
   useEffect(() => {
-    if (!autoScroll || !activeRef.current || !containerRef.current || currentTime === undefined || currentTime <= 0) return;
+    if (!autoScroll || !activeRef.current || !containerRef.current || currentTime === undefined || currentTime < 0) return;
 
     const container = containerRef.current;
     const active = activeRef.current;
     const containerRect = container.getBoundingClientRect();
     const activeRect = active.getBoundingClientRect();
 
-    // 舒适区：视口顶部 25% 到 40%
-    const topThreshold = containerRect.top + containerRect.height * 0.25;
+    // 舒适区：视口顶部 20% 到 40%
+    const topThreshold = containerRect.top + containerRect.height * 0.20;
     const bottomThreshold = containerRect.top + containerRect.height * 0.40;
 
     const isOutOfView = activeRect.bottom < containerRect.top || activeRect.top > containerRect.bottom;
     const needsScroll = isOutOfView || activeRect.top < topThreshold || activeRect.bottom > bottomThreshold;
 
     if (needsScroll) {
-      // 定位到视口顶部 1/3 处
       const relativeTop = activeRect.top - containerRect.top + container.scrollTop;
       const scrollTarget = relativeTop - containerRect.height / 3;
 
-      lastUserScrollTime.current = Date.now() + 500;
+      programmaticScrolling.current = true;
       requestAnimationFrame(() => {
         container.scrollTo({
           top: Math.max(0, scrollTarget),
           behavior: "smooth",
         });
+        // smooth scroll 完成后重置标记（约 400ms）
+        setTimeout(() => {
+          programmaticScrolling.current = false;
+        }, 400);
       });
     }
   }, [currentTime, autoScroll]);
@@ -112,17 +115,11 @@ export function TranscriptViewer({
     if (!container) return;
 
     const handleScroll = () => {
-      const now = Date.now();
-      if (manualModeRef.current) {
-        lastUserScrollTime.current = now;
-        return;
-      }
-      // 300ms 阈值：超过此时间说明不是程序触发的滚动
-      if (now - lastUserScrollTime.current > 300) {
-        if (autoScroll) {
-          setAutoScroll(false);
-          setShowJumpButton(true);
-        }
+      // 程序触发的滚动，忽略
+      if (programmaticScrolling.current) return;
+      if (autoScroll) {
+        setAutoScroll(false);
+        setShowJumpButton(true);
       }
     };
 
@@ -132,7 +129,6 @@ export function TranscriptViewer({
 
   // 跳转到当前播放位置
   const jumpToCurrent = useCallback(() => {
-    manualModeRef.current = false;
     setAutoScroll(true);
     setShowJumpButton(false);
     if (activeRef.current && containerRef.current) {
@@ -143,12 +139,15 @@ export function TranscriptViewer({
       const relativeTop = activeRect.top - containerRect.top + container.scrollTop;
       const scrollTarget = relativeTop - containerRect.height / 3;
 
-      lastUserScrollTime.current = Date.now() + 500;
+      programmaticScrolling.current = true;
       requestAnimationFrame(() => {
         container.scrollTo({
           top: Math.max(0, scrollTarget),
           behavior: "smooth",
         });
+        setTimeout(() => {
+          programmaticScrolling.current = false;
+        }, 400);
       });
     }
   }, []);
@@ -162,6 +161,11 @@ export function TranscriptViewer({
   const handleWordEnter = useCallback(
     (lemma: string, e: React.MouseEvent) => {
       if (isTouchDevice) return;
+      // 清除隐藏计时器
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = null;
+      }
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       const rect = (e.target as HTMLElement).getBoundingClientRect();
       hoverTimerRef.current = setTimeout(() => {
@@ -177,8 +181,19 @@ export function TranscriptViewer({
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
-    setActiveWord(null);
+    // 延迟 300ms 关闭，给用户时间移动到卡片上
+    hideTimerRef.current = setTimeout(() => {
+      setActiveWord(null);
+    }, 300);
   }, [isTouchDevice]);
+
+  // WordCard 鼠标进入时取消隐藏
+  const cancelHide = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
 
   // 移动端点击备用
   const handleWordClick = useCallback(
@@ -272,13 +287,7 @@ export function TranscriptViewer({
                   onClick={() => {
                     const next = !autoScroll;
                     setAutoScroll(next);
-                    if (!next) {
-                      manualModeRef.current = true;
-                      setShowJumpButton(true);
-                    } else {
-                      manualModeRef.current = false;
-                      setShowJumpButton(false);
-                    }
+                    setShowJumpButton(!next);
                   }}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
@@ -461,6 +470,8 @@ export function TranscriptViewer({
           position={activeWord.position}
           onClose={closeWordCard}
           onSave={onSaveWord}
+          onMouseEnter={cancelHide}
+          onMouseLeave={handleWordLeave}
         />
       )}
     </Card>

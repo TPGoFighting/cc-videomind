@@ -28,11 +28,15 @@ export function WordCard({
   position,
   onClose,
   onSave,
+  onMouseEnter,
+  onMouseLeave,
 }: {
   definition: WordDefinition;
   position: { top: number; left: number };
   onClose: () => void;
   onSave?: (lemma: string) => Promise<boolean>;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
@@ -69,6 +73,8 @@ export function WordCard({
 
       <div
         ref={ref}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
         className="fixed z-50 w-[calc(100vw-1rem)] max-w-72 rounded-xl border border-white/15 bg-[#1a1a1a] p-4 shadow-2xl sm:max-h-[80vh] sm:overflow-y-auto"
         style={{ top: adjustedPos.top, left: adjustedPos.left }}
       >
