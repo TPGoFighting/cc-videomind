@@ -15,7 +15,13 @@ const UpdateSchema = z.object({
 /** GET — 管理员查看所有付款提交 */
 export async function GET(request: Request) {
   const userId = await getAuthenticatedUserId(request);
-  if (!userId || !(await isAdmin(userId))) {
+  console.log("[Admin:Payments] userId:", userId);
+  if (!userId) {
+    return errorResponse("forbidden", "未登录", 401);
+  }
+  const admin = await isAdmin(userId);
+  console.log("[Admin:Payments] isAdmin:", admin);
+  if (!admin) {
     return errorResponse("forbidden", "仅管理员可访问", 403);
   }
 
@@ -24,31 +30,45 @@ export async function GET(request: Request) {
 
   const supabase = createSupabaseServiceClient();
   if (!supabase) {
+    console.error("[Admin:Payments] service client 为空");
     return errorResponse("db_error", "数据库连接失败", 500);
   }
 
-  const query = supabase
+  // 先尝试简单查询（不加 join）排查是否 join 导致失败
+  const { data: rawData, error: rawError } = await supabase
     .from("payment_submissions")
-    .select("*, profiles:user_id (email)")
+    .select("*")
     .order("created_at", { ascending: false });
 
-  if (status !== "all") {
-    query.eq("status", status);
-  }
+  console.log("[Admin:Payments] 原始查询结果:", { count: rawData?.length, error: rawError });
 
-  const { data, error } = await query;
-  if (error) {
-    console.error("[Admin:Payments] 查询失败:", error);
+  if (rawError) {
+    console.error("[Admin:Payments] 查询失败:", rawError);
     return errorResponse("db_error", "查询失败", 500);
   }
 
-  // 展平 profiles.email
-  const submissions = (data ?? []).map((s) => ({
+  // 筛选 status
+  const filtered = status === "all" ? (rawData ?? []) : (rawData ?? []).filter((s) => s.status === status);
+
+  // 再单独查 profiles
+  const userIds = [...new Set(filtered.map((s) => s.user_id))];
+  const emailMap: Record<string, string> = {};
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", userIds);
+    for (const p of (profiles ?? [])) {
+      emailMap[p.id] = p.email ?? "";
+    }
+  }
+
+  const submissions = filtered.map((s) => ({
     ...s,
-    userEmail: (s.profiles as { email?: string } | null)?.email ?? null,
-    profiles: undefined,
+    userEmail: emailMap[s.user_id] ?? null,
   }));
 
+  console.log("[Admin:Payments] 返回 submissions 数量:", submissions.length);
   return NextResponse.json({ submissions });
 }
 

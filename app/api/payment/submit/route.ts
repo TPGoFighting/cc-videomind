@@ -75,16 +75,17 @@ export async function POST(request: Request) {
     return errorResponse("duplicate", "你已有一个待审核的相同方案申请，请等待管理员审核。", 409);
   }
 
-  const { error } = await supabase.from("payment_submissions").insert({
+  const { error, data: inserted } = await supabase.from("payment_submissions").insert({
     user_id: userId,
     tier,
     transaction_id: transactionId,
-  });
+  }).select("id").single();
 
   if (error) {
-    console.error("[Payment:Submit] 插入失败:", error);
-    return errorResponse("submit_failed", "提交失败，请稍后再试。", 500);
+    console.error("[Payment:Submit] 插入失败:", JSON.stringify(error));
+    return errorResponse("submit_failed", `提交失败：${error.message ?? "未知错误"}`, 500);
   }
 
+  console.log("[Payment:Submit] 插入成功:", { id: inserted?.id, userId, tier });
   return successResponse({ ok: true });
 }
