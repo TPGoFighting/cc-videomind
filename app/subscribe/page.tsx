@@ -233,19 +233,19 @@ export default function SubscribePage() {
 
             <div className="p-5 sm:p-6">
               {/* 桌面端：QR码和表单并排 */}
-              <div className="grid sm:grid-cols-[1fr_1.2fr] gap-6 sm:gap-8">
+              <div className="grid sm:grid-cols-[1.2fr_1fr] gap-6 sm:gap-10">
                 {/* 左侧：收款码 */}
                 <div className="space-y-4">
                   <p className="text-[11px] font-medium text-white/20 tracking-wider uppercase">扫码支付</p>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     {/* 微信 */}
                     <div className="text-center group">
-                      <div className="relative mx-auto mb-2 aspect-square w-full max-w-[160px] rounded-2xl border border-[#07c160]/15 bg-[#07c160]/[0.03] overflow-hidden transition-all group-hover:border-[#07c160]/25">
+                      <div className="relative mx-auto mb-2 aspect-square w-full max-w-[200px] sm:max-w-[240px] rounded-2xl border border-[#07c160]/15 bg-[#07c160]/[0.03] overflow-hidden transition-all group-hover:border-[#07c160]/25">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src="/wechat-pay.jpg"
                           alt="微信收款码"
-                          className="w-full h-full object-contain p-3"
+                          className="w-full h-full object-contain p-4"
                           onError={(e) => {
                             const el = e.currentTarget; el.style.display = "none";
                             const p = el.parentElement;
@@ -253,16 +253,16 @@ export default function SubscribePage() {
                           }}
                         />
                       </div>
-                      <span className="text-[12px] font-medium text-[#07c160]/80">微信支付</span>
+                      <span className="text-[13px] font-medium text-[#07c160]/80">微信支付</span>
                     </div>
                     {/* 支付宝 */}
                     <div className="text-center group">
-                      <div className="relative mx-auto mb-2 aspect-square w-full max-w-[160px] rounded-2xl border border-[#1677ff]/15 bg-[#1677ff]/[0.03] overflow-hidden transition-all group-hover:border-[#1677ff]/25">
+                      <div className="relative mx-auto mb-2 aspect-square w-full max-w-[200px] sm:max-w-[240px] rounded-2xl border border-[#1677ff]/15 bg-[#1677ff]/[0.03] overflow-hidden transition-all group-hover:border-[#1677ff]/25">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src="/alipay.jpg"
                           alt="支付宝收款码"
-                          className="w-full h-full object-contain p-3"
+                          className="w-full h-full object-contain p-4"
                           onError={(e) => {
                             const el = e.currentTarget; el.style.display = "none";
                             const p = el.parentElement;
@@ -270,7 +270,7 @@ export default function SubscribePage() {
                           }}
                         />
                       </div>
-                      <span className="text-[12px] font-medium text-[#1677ff]/80">支付宝</span>
+                      <span className="text-[13px] font-medium text-[#1677ff]/80">支付宝</span>
                     </div>
                   </div>
                 </div>
