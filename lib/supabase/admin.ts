@@ -37,7 +37,7 @@ export async function getAppSettings(): Promise<Record<string, string>> {
  * 更新单条全局配置（仅 admin 可调用，写入受 RLS 保护）。
  */
 export async function updateAppSetting(key: string, value: string, userId: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseServiceClient();
   if (!supabase) throw new Error("Supabase 未配置");
 
   const { error } = await supabase.from("app_settings").upsert({
@@ -55,7 +55,7 @@ export async function updateAppSetting(key: string, value: string, userId: strin
  * 返回 Record<key, value>，空字符串视为未设置。
  */
 export async function getUserAiSettings(userId: string): Promise<Record<string, string>> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseServiceClient();
   if (!supabase) return {};
 
   const { data } = await supabase
@@ -76,7 +76,7 @@ export async function getUserAiSettings(userId: string): Promise<Record<string, 
  * Upsert 用户个人 AI 配置单条。传 value="" 等效于删除。
  */
 export async function updateUserAiSetting(userId: string, key: string, value: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseServiceClient();
   if (!supabase) throw new Error("Supabase 未配置");
 
   const { error } = await supabase.from("user_ai_settings").upsert({
@@ -93,7 +93,7 @@ export async function updateUserAiSetting(userId: string, key: string, value: st
  * 删除用户个人 AI 配置单条。
  */
 export async function deleteUserAiSetting(userId: string, key: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseServiceClient();
   if (!supabase) throw new Error("Supabase 未配置");
 
   const { error } = await supabase
