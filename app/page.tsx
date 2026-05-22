@@ -60,11 +60,11 @@ const steps = [
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
+      <Navbar />
+
       {/* 桌面端 — 完整丰富布局 */}
       <div className="hidden md:block">
         <AnimatedBackground variant="desktop" />
-
-        <Navbar />
 
         {/* YouTube 连通性告警 */}
         <div className="mx-auto w-full max-w-full px-4 pt-16 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%]">

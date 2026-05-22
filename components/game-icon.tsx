@@ -11,6 +11,14 @@ const ICONS: Record<string, string> = {
   bookmark: "/icons/bookmark.svg",
   notebook: "/icons/notebook.svg",
   download: "/icons/download.svg",
+  play: "/icons/play.svg",
+  time: "/icons/time.svg",
+  alarm: "/icons/alarm.svg",
+  home: "/icons/home.svg",
+  video: "/icons/video.svg",
+  search: "/icons/search.svg",
+  pause: "/icons/pause.svg",
+  phone: "/icons/phone.svg",
 } as const;
 
 export type GameIconName = keyof typeof ICONS;

@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Play, Clock, BookOpen, User } from "lucide-react";
 import { MAIN_NAV_ITEMS } from "@/lib/navigation";
 import { cn } from "@/lib/utils/cn";
+import { GameIcon, type GameIconName } from "./game-icon";
 
-const ICON_MAP = {
-  Play,
-  Clock,
-  BookOpen,
-  User,
-} as const;
+const ICON_MAP: Record<string, GameIconName> = {
+  Play: "play",
+  Clock: "time",
+  BookOpen: "book",
+  User: "user",
+};
 
 export function MobileTabBar({
   isAuthenticated,
@@ -27,7 +27,7 @@ export function MobileTabBar({
     >
       <div className="flex items-center justify-around h-[56px]">
         {MAIN_NAV_ITEMS.map((item) => {
-          const Icon = ICON_MAP[item.iconName];
+          const iconName = ICON_MAP[item.iconName];
           const isActive = item.matchPattern(pathname);
 
           // 需要登录的标签，未登录时跳转 /login
@@ -40,13 +40,17 @@ export function MobileTabBar({
               href={href}
               className={cn(
                 "flex flex-col items-center justify-center gap-0.5 min-h-[44px] min-w-[64px]",
-                "transition-colors duration-200",
+                "transition-all duration-200",
                 isActive
                   ? "text-[#0099ff]"
                   : "text-white/40 hover:text-white/60"
               )}
             >
-              <Icon className="h-5 w-5 shrink-0" aria-hidden />
+              <GameIcon
+                name={iconName}
+                size={20}
+                className={isActive ? "opacity-100" : "opacity-50"}
+              />
               <span className="text-[10px] font-medium leading-none">
                 {item.label}
               </span>
