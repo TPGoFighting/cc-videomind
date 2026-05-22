@@ -62,7 +62,7 @@ export function Navbar() {
                 <Menu className="h-4 w-4 shrink-0 md:hidden" />
                 <GameIcon name="user" size={14} className="hidden md:inline-block opacity-60" />
                 <span className="hidden sm:inline">{user.email}</span>
-                <span className={`hidden sm:inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none ${TIER_STYLES[subscriptionTier] ?? TIER_STYLES.free}`}>
+                <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none ${TIER_STYLES[subscriptionTier] ?? TIER_STYLES.free}`}>
                   {getPlanConfig(subscriptionTier).nameZh}
                 </span>
               </button>
