@@ -737,9 +737,17 @@ function AdminPaymentsPanel() {
     try {
       const res = await fetch(`/api/admin/payments?status=${filter}`);
       const data = await res.json();
+      if (!res.ok) {
+        console.error("加载付款提交失败:", data);
+        setMessage({ type: "error", text: data.error_description ?? `API 错误 (${res.status})` });
+        setSubmissions([]);
+        return;
+      }
       setSubmissions(data.submissions ?? []);
+      setMessage(null);
     } catch {
       console.error("加载付款提交失败");
+      setMessage({ type: "error", text: "网络错误" });
     } finally {
       setLoading(false);
     }
