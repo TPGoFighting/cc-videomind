@@ -122,7 +122,7 @@ export default function ExplorePage() {
   return (
     <div className="min-h-screen bg-black text-white">
       <Navbar />
-      <AnimatedBackground variant="desktop" />
+      <AnimatedBackground />
 
       <main className="relative z-10 mx-auto w-full max-w-full px-4 pt-28 pb-20 sm:max-w-[90%] sm:px-5 sm:pt-36 md:max-w-[85%] lg:max-w-[80%]">
         {/* 返回链接 */}

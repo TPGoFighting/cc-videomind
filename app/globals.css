@@ -3,41 +3,24 @@
 @tailwind utilities;
 
 :root {
-  /* Framer 暗黑色彩系统 */
-  --background: 0 0% 0%;
-  --foreground: 0 0% 100%;
-  --card: 0 0% 3.5%;
-  --card-foreground: 0 0% 100%;
-  --primary: 205 100% 50%;
-  --primary-foreground: 0 0% 100%;
-  --muted: 0 0% 65%;
-  --muted-foreground: 0 0% 65%;
-  --accent: 205 100% 50%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 18%;
-  --input: 0 0% 12%;
-  --ring: 205 100% 50%;
+  /* Victor Furuya 暗黑色彩系统 */
+  --bg: #050505;
+  --surface: #0a0a0a;
+  --border: #1a1a1a;
+  --text-primary: #f5f5f5;
+  --text-secondary: #8a8a8a;
+  --text-tertiary: #4a4a4a;
+  --accent: #7c5cff;
+  --accent-glow: rgba(124, 92, 255, 0.15);
   --radius: 0.5rem;
 
-  /* Framer 特殊色 */
-  --framer-blue: #0099ff;
-  --framer-blue-ring: rgba(0, 153, 255, 0.15);
-  --framer-frosted: rgba(255, 255, 255, 0.08);
-  --framer-frosted-hover: rgba(255, 255, 255, 0.14);
-  --framer-surface: #090909;
-  --framer-silver: #a6a6a6;
-  --framer-white-edge: rgba(255, 255, 255, 0.08);
-
-  /* 中文字体栈 */
-  --font-sans: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", system-ui, -apple-system, sans-serif;
-  --font-display: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", system-ui, sans-serif;
+  /* 字体 */
+  --font-sans: "Inter", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", monospace;
 }
 
 * {
-  border-color: hsl(var(--border));
+  border-color: var(--border);
 }
 
 html {
@@ -48,235 +31,104 @@ html {
 
 body {
   min-height: 100vh;
-  background: #000000;
-  color: hsl(var(--foreground));
+  background: var(--bg);
+  color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.7;
-  letter-spacing: 0.01em;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
 }
 
-/* 中文标题的压缩感 — 用负 letter-spacing 仅在大标题上 */
+/* ═══ 排版层级 ═══ */
 h1, h2, h3, h4 {
-  font-family: var(--font-display);
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  font-family: var(--font-sans);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
 }
 
-/* 按钮与输入框全局样式 */
-button, input, textarea, select {
-  font-family: var(--font-sans);
+h1 { font-size: clamp(48px, 8vw, 96px); }
+h2 { font-size: clamp(32px, 5vw, 64px); }
+
+/* 正文段落 */
+p {
+  color: var(--text-secondary);
+  line-height: 1.65;
 }
 
 /* 选中颜色 */
 ::selection {
-  background: rgba(0, 153, 255, 0.3);
-  color: #ffffff;
+  background: rgba(124, 92, 255, 0.25);
+  color: var(--text-primary);
 }
 
 /* 滚动条 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 100px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 100px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-/* 聚焦环 — 统一使用 Framer Blue */
+/* 聚焦环 */
 :focus-visible {
-  outline: 2px solid var(--framer-blue);
+  outline: 1.5px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
-/* 毛玻璃动画工具类 */
+/* ═══ 按钮全局 ═══ */
+button, input, textarea, select {
+  font-family: var(--font-sans);
+}
+
+/* ═══ 链接 ═══ */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ═══ 工具类 ═══ */
 @layer utilities {
-  .frosted {
-    background: var(--framer-frosted);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-
-  .frosted-hover {
-    transition: background 0.2s ease;
-  }
-  .frosted-hover:hover {
-    background: var(--framer-frosted-hover);
-  }
-
-  .ring-blue {
-    box-shadow: var(--framer-blue-ring) 0px 0px 0px 1px;
-  }
-
-  .elevate-card {
-    box-shadow:
-      var(--framer-white-edge) 0px 0.5px 0px 0.5px,
-      rgba(0, 0, 0, 0.25) 0px 10px 30px;
+  .text-accent {
+    color: var(--accent);
   }
 
   .text-balance {
     text-wrap: balance;
   }
 
-  /* 隐藏滚动条但保留滚动能力 */
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* 中文大标题压缩 */
-  .heading-compressed {
-    letter-spacing: -0.03em;
-    line-height: 1.1;
-  }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 }
 
-/* ── 渐变文字 ── */
-.text-gradient {
-  background: linear-gradient(135deg, #0099ff 0%, #33adff 40%, #a855f7 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.text-gradient-warm {
-  background: linear-gradient(135deg, #0099ff 0%, #a855f7 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ── 毛玻璃卡片 ── */
-.glass {
-  background: rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.glass-hover:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(0, 153, 255, 0.2);
-}
-
-/* ── 3D 透视容器 ── */
-.perspective-card {
-  perspective: 1000px;
-  transform-style: preserve-3d;
-}
-
-/* 脉冲呼吸动画 — 用于加载态 */
+/* ═══ 加载动画 — 仅保留必须的 ═══ */
 @keyframes breathe {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
 }
-
 .animate-breathe {
   animation: breathe 2s ease-in-out infinite;
 }
 
-/* 渐变背景平移 —— 标题文字 */
-@keyframes gradient-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-
-.animate-gradient-shift {
-  animation: gradient-shift 4s ease-in-out infinite;
-}
-
-/* 触屏友好操作按钮：移动端始终可见，桌面端 hover 显示 */
-.touch-reveal {
-  opacity: 1;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .touch-reveal {
-    opacity: 0;
-    transition: opacity 0.2s ease;
-  }
-  .group:hover .touch-reveal,
-  .touch-reveal:hover {
-    opacity: 1;
-  }
-}
-
-/* ══════════════════════════════════════════
-   增强 UI 动效
-   ══════════════════════════════════════════ */
-
-/* ── 交错入场 → 已迁移至 GSAP useScrollReveal / useGSAP + stagger ── */
-
-/* ── 卡片悬浮提升 + 光晕 ── */
-.card-lift {
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-              box-shadow 0.3s ease,
-              border-color 0.3s ease;
-}
-
-.card-lift:hover {
-  transform: translateY(-2px);
-}
-
-.card-lift:active {
-  transform: scale(0.985);
-  transition: transform 0.1s ease;
-}
-
-/* ── 按钮按压反馈 ── */
-.btn-press {
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
-              box-shadow 0.15s ease;
-}
-
-.btn-press:active {
-  transform: scale(0.95);
-}
-
-/* ── 输入框聚焦光晕 ── */
-.input-glow {
-  transition: border-color 0.2s ease,
-              box-shadow 0.3s ease,
-              background-color 0.2s ease;
-}
-
-.input-glow:focus {
-  box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.2),
-              0 0 20px rgba(0, 153, 255, 0.08);
-}
-
-/* ── 骨架屏波浪 ── */
 @keyframes skeleton-wave {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
-
 .skeleton-wave {
   background: linear-gradient(
     110deg,
-    rgba(255, 255, 255, 0.04) 25%,
-    rgba(255, 255, 255, 0.08) 37%,
-    rgba(255, 255, 255, 0.04) 63%
+    rgba(255, 255, 255, 0.02) 25%,
+    rgba(255, 255, 255, 0.05) 37%,
+    rgba(255, 255, 255, 0.02) 63%
   );
   background-size: 200% 100%;
   animation: skeleton-wave 2s ease-in-out infinite;
 }
 
-/* ── 减少动画偏好 ── */
+/* ═══ 减少动画偏好 ═══ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
