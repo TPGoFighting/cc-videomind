@@ -47,13 +47,13 @@ export function VideoUrlInput() {
           placeholder="粘贴 YouTube 公开视频链接"
           aria-label="YouTube 视频链接"
           required
-          className="h-13 rounded-full px-6 text-[15px]"
+          className="h-16 rounded-full border-2 px-8 text-[16px]"
         />
         {error ? (
           <p className="mt-1.5 text-[13px] font-medium text-red-400">{error}</p>
         ) : null}
       </div>
-      <Button type="submit" disabled={loading} size="lg" className="h-13 shrink-0">
+      <Button type="submit" disabled={loading} size="lg" className="h-16 shrink-0 px-8 text-[16px]">
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
         ) : (
