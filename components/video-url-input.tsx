@@ -47,7 +47,7 @@ export function VideoUrlInput() {
           placeholder="粘贴 YouTube 公开视频链接"
           aria-label="YouTube 视频链接"
           required
-          className="h-13 text-[15px]"
+          className="h-13 rounded-full px-6 text-[15px]"
         />
         {error ? (
           <p className="mt-1.5 text-[13px] font-medium text-red-400">{error}</p>
