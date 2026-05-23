@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth-context";
+import { GsapProvider } from "@/components/gsap-provider";
 import { MobileTabBarClient } from "@/components/mobile-tab-bar-client";
 import "./globals.css";
 
@@ -17,8 +18,10 @@ export default function RootLayout({
     <html lang="zh-CN" className="dark">
       <body className="antialiased">
         <AuthProvider>
-          {children}
-          <MobileTabBarClient />
+          <GsapProvider>
+            {children}
+            <MobileTabBarClient />
+          </GsapProvider>
         </AuthProvider>
       </body>
     </html>

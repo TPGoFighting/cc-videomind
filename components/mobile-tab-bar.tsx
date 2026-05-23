@@ -1,7 +1,10 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { MAIN_NAV_ITEMS } from "@/lib/navigation";
 import { cn } from "@/lib/utils/cn";
 import { GameIcon, type GameIconName } from "./game-icon";
@@ -19,10 +22,20 @@ export function MobileTabBar({
   isAuthenticated: boolean;
 }) {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement>(null);
+
+  useGSAP(() => {
+    gsap.fromTo(
+      navRef.current,
+      { opacity: 0, y: "100%" },
+      { opacity: 1, y: 0, duration: 0.4, ease: "back.out(1.1)" }
+    );
+  }, { scope: navRef });
 
   return (
     <nav
-      className="slide-up-fade md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/8 bg-black/90 backdrop-blur-xl"
+      ref={navRef}
+      className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/8 bg-black/90 backdrop-blur-xl"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 16px)" }}
     >
       <div className="flex items-center justify-around h-[56px]">

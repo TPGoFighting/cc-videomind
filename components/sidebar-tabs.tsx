@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { FileText, Flame, MessageSquare, NotebookPen } from "lucide-react";
 import { TranscriptViewer } from "./transcript-viewer";
 import { ChatPanel } from "./chat-panel";
@@ -47,6 +49,16 @@ export function SidebarTabs({
   translating,
 }: SidebarTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(() => {
+    if (!contentRef.current) return;
+    gsap.fromTo(
+      contentRef.current,
+      { opacity: 0, y: 6 },
+      { opacity: 1, y: 0, duration: 0.25, ease: "power2.out" }
+    );
+  }, { scope: contentRef, dependencies: [activeTab], revertOnUpdate: true });
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-white/8 bg-[#0d0d0d]">
@@ -75,7 +87,7 @@ export function SidebarTabs({
 
       {/* 标签页内容 */}
       <div className="flex-1 min-h-0 overflow-hidden" key={activeTab}>
-        <div className="tab-enter h-full">
+        <div ref={contentRef} className="h-full">
         {activeTab === "transcript" && (
           <div className="h-full">
             <TranscriptViewer

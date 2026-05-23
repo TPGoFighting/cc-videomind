@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { FileText, Flame, MessageSquare, NotebookPen } from "lucide-react";
 import { TranscriptViewer } from "./transcript-viewer";
 import { ChatPanel } from "./chat-panel";
@@ -48,6 +50,16 @@ export function MobileVideoTabs({
   translating,
 }: MobileVideoTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(() => {
+    if (!contentRef.current) return;
+    gsap.fromTo(
+      contentRef.current,
+      { opacity: 0, y: 6 },
+      { opacity: 1, y: 0, duration: 0.25, ease: "power2.out" }
+    );
+  }, { scope: contentRef, dependencies: [activeTab], revertOnUpdate: true });
 
   return (
     <div className="rounded-xl border border-white/8 bg-[#0d0d0d] overflow-hidden">
@@ -79,7 +91,7 @@ export function MobileVideoTabs({
 
       {/* 内容区 */}
       <div className="min-h-[300px]" key={activeTab}>
-        <div className="tab-enter">
+        <div ref={contentRef}>
         {activeTab === "transcript" && (
           <TranscriptViewer
             transcript={transcript}

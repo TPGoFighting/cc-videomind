@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useGSAP } from "@gsap/react";
 import { Clock, LogIn, LogOut, Menu } from "lucide-react";
 import { useAuth } from "@/components/auth-context";
 import { getPlanConfig } from "@/lib/plans";
@@ -22,7 +25,10 @@ export function Navbar() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const youtubeStatus = useYouTubeStatus();
+  const navRef = useRef<HTMLElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const skeletonRef = useRef<HTMLDivElement>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭下拉菜单
   useEffect(() => {
@@ -35,8 +41,54 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  // 加载骨架屏脉冲动画
+  useGSAP(() => {
+    if (!skeletonRef.current) return;
+    gsap.to(skeletonRef.current, {
+      opacity: 0.3,
+      duration: 0.8,
+      repeat: -1,
+      yoyo: true,
+      ease: "sine.inOut",
+    });
+  }, { scope: skeletonRef, dependencies: [loading] });
+
+  // 下拉菜单入场/出场
+  useGSAP(() => {
+    if (!dropdownMenuRef.current) return;
+    if (open) {
+      gsap.fromTo(
+        dropdownMenuRef.current,
+        { opacity: 0, scale: 0.92, y: -8 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.22, ease: "back.out(1.2)" }
+      );
+    }
+  }, { scope: dropdownRef, dependencies: [open] });
+
+  // 滚动时导航栏背景渐变
+  useGSAP(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    // 初始状态：接近透明
+    gsap.set(nav, { backgroundColor: "rgba(0,0,0,0.2)", backdropFilter: "blur(4px)" });
+
+    ScrollTrigger.create({
+      start: "top -60px",
+      end: "bottom 60px",
+      onUpdate: (self) => {
+        const p = Math.min(1, self.progress);
+        gsap.to(nav, {
+          backgroundColor: `rgba(0,0,0,${0.2 + p * 0.65})`,
+          backdropFilter: `blur(${4 + p * 14}px)`,
+          duration: 0.15,
+          overwrite: "auto",
+        });
+      },
+    });
+  }, { scope: navRef });
+
   return (
-    <nav className="fixed inset-x-0 top-0 z-50 border-b border-white/8 bg-black/80 backdrop-blur-xl">
+    <nav ref={navRef} className="fixed inset-x-0 top-0 z-50 border-b border-white/8">
       <div className="mx-auto flex h-14 w-full max-w-full items-center justify-between px-3 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%]">
         <Link
           href="/"
@@ -51,7 +103,7 @@ export function Navbar() {
             <YouTubeStatusBanner status={youtubeStatus} variant="inline" />
           )}
           {loading ? (
-            <div className="h-8 w-20 animate-breathe rounded-full bg-white/8" />
+            <div ref={skeletonRef} className="h-8 w-20 rounded-full bg-white/8" />
           ) : user ? (
             <div ref={dropdownRef} className="relative">
               <button
@@ -67,7 +119,7 @@ export function Navbar() {
                 </span>
               </button>
               {open && (
-                <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl scale-in">
+                <div ref={dropdownMenuRef} className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl">
                   <Link
                     href="/review"
                     onClick={() => setOpen(false)}

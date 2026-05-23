@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { AlertCircle } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { HighlightsPanel } from "@/components/highlights-panel";
@@ -50,6 +52,15 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   const [currentTime, setCurrentTime] = useState(0);
 
   const playerRef = useRef<VideoPlayerHandle>(null);
+  const mainRef = useRef<HTMLElement>(null);
+
+  useGSAP(() => {
+    gsap.fromTo(
+      mainRef.current,
+      { opacity: 0, y: 12 },
+      { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }
+    );
+  }, { scope: mainRef });
 
   // 转录文本显示模式
   const transcriptMode = useDisplayMode("en");
@@ -321,7 +332,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       <Navbar />
 
       {/* 主内容 */}
-      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16 page-enter">
+      <main ref={mainRef} className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
         <div className="grid gap-4 md:gap-6 md:grid-cols-[1fr_auto]">
           {/* 左侧：视频 + 章节列表 + 核心摘要 */}
           <div className="min-w-0 space-y-6">

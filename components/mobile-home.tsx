@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -80,10 +82,58 @@ export function MobileHome() {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const logoRef = useRef<HTMLDivElement>(null);
+  const skeletonRef = useRef<HTMLDivElement>(null);
+
+  // 页面入场
+  useGSAP(() => {
+    gsap.fromTo(
+      mainRef.current,
+      { opacity: 0, y: 12 },
+      { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }
+    );
+  }, { scope: mainRef });
+
+  // 图标浮动
+  useGSAP(() => {
+    if (!logoRef.current) return;
+    gsap.to(logoRef.current, {
+      y: -8,
+      duration: 4,
+      repeat: -1,
+      yoyo: true,
+      ease: "sine.inOut",
+    });
+  }, { scope: logoRef });
+
+  // 按钮按压
+  function onPress(e: MouseEvent<HTMLButtonElement>) {
+    gsap.to(e.currentTarget, { scale: 0.94, duration: 0.1, ease: "power2.in" });
+  }
+  function onRelease(e: MouseEvent<HTMLButtonElement>) {
+    gsap.to(e.currentTarget, { scale: 1, duration: 0.25, ease: "back.out(1.7)" });
+  }
 
   // 随机推荐视频
   const [videos, setVideos] = useState<VideoCardData[]>([]);
   const [videosLoading, setVideosLoading] = useState(true);
+
+  // 骨架屏脉冲
+  useGSAP(() => {
+    if (!skeletonRef.current) return;
+    const items = gsap.utils.toArray<HTMLElement>(skeletonRef.current.querySelectorAll(".skel-pulse"));
+    items.forEach((el) => {
+      gsap.to(el, {
+        opacity: 0.3,
+        duration: 0.9,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+        delay: gsap.utils.random(-0.5, 0.5),
+      });
+    });
+  }, { scope: skeletonRef, dependencies: [videosLoading] });
 
   useEffect(() => {
     let cancelled = false;
@@ -140,16 +190,18 @@ export function MobileHome() {
       <AnimatedBackground variant="mobile" />
 
       {/* 主体内容 — 垂直居中 */}
-      <div className="flex-1 flex flex-col items-center justify-center px-5 pt-[10vh] pb-20 page-enter">
+      <div ref={mainRef} className="flex-1 flex flex-col items-center justify-center px-5 pt-[10vh] pb-20">
         {/* Logo + 名称 */}
         <div className="flex flex-col items-center gap-3 mb-10">
-          <Image
-            src="/logo.png"
-            alt="Teach Player"
-            width={56}
-            height={56}
-            className="rounded-xl animate-float-slow"
-          />
+          <div ref={logoRef}>
+            <Image
+              src="/logo.png"
+              alt="Teach Player"
+              width={56}
+              height={56}
+              className="rounded-xl"
+            />
+          </div>
           <h1 className="text-[22px] font-bold tracking-[-0.02em]">
             Teach Player
           </h1>
@@ -172,7 +224,10 @@ export function MobileHome() {
             <button
               type="submit"
               disabled={loading || !url.trim()}
-              className="btn-press absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-xl bg-[#0099ff] text-white flex items-center justify-center transition-colors duration-200 hover:bg-[#0099ff]/90 disabled:opacity-30 disabled:cursor-not-allowed"
+              onMouseDown={onPress}
+              onMouseUp={onRelease}
+              onMouseLeave={onRelease}
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-xl bg-[#0099ff] text-white flex items-center justify-center transition-colors duration-200 hover:bg-[#0099ff]/90 disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="开始解析"
             >
               {loading ? (
@@ -195,7 +250,10 @@ export function MobileHome() {
               key={s.label}
               type="button"
               onClick={() => fillSuggestion(s.url)}
-              className="btn-press rounded-full border border-white/8 bg-white/[0.04] px-4 py-2 text-[13px] text-white/50 transition-all duration-200 hover:border-white/15 hover:bg-white/[0.08] hover:text-white/70"
+              onMouseDown={onPress}
+              onMouseUp={onRelease}
+              onMouseLeave={onRelease}
+              className="rounded-full border border-white/8 bg-white/[0.04] px-4 py-2 text-[13px] text-white/50 transition-all duration-200 hover:border-white/15 hover:bg-white/[0.08] hover:text-white/70"
             >
               {s.label}
             </button>
@@ -208,16 +266,16 @@ export function MobileHome() {
             或者试试这些
           </p>
           {videosLoading ? (
-            <div className="space-y-3">
+            <div ref={skeletonRef} className="space-y-3">
               {[0, 1].map((i) => (
                 <div
                   key={i}
                   className="flex gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-3"
                 >
-                  <div className="w-28 h-16 rounded-lg bg-white/5 animate-breathe shrink-0" />
+                  <div className="skel-pulse w-28 h-16 rounded-lg bg-white/5 shrink-0" />
                   <div className="flex-1 space-y-2 py-1">
-                    <div className="h-3.5 w-full rounded-full bg-white/6 animate-breathe" />
-                    <div className="h-3 w-2/3 rounded-full bg-white/4 animate-breathe" />
+                    <div className="skel-pulse h-3.5 w-full rounded-full bg-white/6" />
+                    <div className="skel-pulse h-3 w-2/3 rounded-full bg-white/4" />
                   </div>
                 </div>
               ))}
