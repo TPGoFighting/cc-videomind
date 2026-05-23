@@ -186,8 +186,8 @@ export function MobileHome() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[var(--bg)] text-[var(--text-primary)]">
-      <AnimatedBackground />
+    <div className="flex flex-col min-h-screen bg-black text-white">
+      <AnimatedBackground variant="mobile" />
 
       {/* 主体内容 — 垂直居中 */}
       <div ref={mainRef} className="flex-1 flex flex-col items-center justify-center px-5 pt-[10vh] pb-20">
@@ -227,7 +227,7 @@ export function MobileHome() {
               onMouseDown={onPress}
               onMouseUp={onRelease}
               onMouseLeave={onRelease}
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-xl bg-[var(--accent)] text-white flex items-center justify-center transition-colors duration-200 hover:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-xl bg-[#0099ff] text-white flex items-center justify-center transition-colors duration-200 hover:bg-[#0099ff]/90 disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="开始解析"
             >
               {loading ? (
@@ -286,7 +286,7 @@ export function MobileHome() {
                 <Link
                   key={video.videoId}
                   href={`/video/${video.videoId}`}
-                  className="group flex gap-3 rounded-lg border border-[var(--border)] bg-white/[0.01] p-3 transition-colors hover:border-[var(--accent)]/20 active:scale-[0.98]"
+                  className="card-lift group flex gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-3 transition-colors hover:border-[#0099ff]/20 active:scale-[0.98]"
                 >
                   <div className="relative w-28 h-16 shrink-0 rounded-lg overflow-hidden bg-[#0d0d0d]">
                     <Image
@@ -298,7 +298,7 @@ export function MobileHome() {
                       loading="lazy"
                       unoptimized
                     />
-                    <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg)]/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Play className="h-5 w-5 text-white" />
                     </div>
                   </div>

@@ -34,22 +34,12 @@ const config: Config = {
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))"
-        },
-        "furuya-accent": "var(--accent)",
-        "furuya-surface": "var(--surface)",
-        "furuya-text-primary": "var(--text-primary)",
-        "furuya-text-secondary": "var(--text-secondary)",
-        "furuya-text-tertiary": "var(--text-tertiary)",
+        }
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)"
-      },
-      fontFamily: {
-        sans: ["var(--font-inter)", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "system-ui", "sans-serif"],
-        display: ["var(--font-inter)", "PingFang SC", "Noto Sans SC", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", "monospace"],
       }
     }
   },

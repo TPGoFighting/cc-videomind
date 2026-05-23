@@ -1,16 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { AuthProvider } from "@/components/auth-context";
 import { GsapProvider } from "@/components/gsap-provider";
 import { MobileTabBarClient } from "@/components/mobile-tab-bar-client";
 import "./globals.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "700", "900"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Teach Player — YouTube 视频 AI 学习工作区",
@@ -24,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" className="dark">
-      <body className={`${inter.variable} antialiased`}>
+      <body className="antialiased">
         <AuthProvider>
           <GsapProvider>
             {children}

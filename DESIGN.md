@@ -1,494 +1,246 @@
-# DESIGN.md
-
-## Vision
-
-这个网站不是传统意义上的 Portfolio。
-它更像一个「数字人格容器」。
-
-参考 [Victor Furuya Portfolio](https://victorfuruya.com/?utm_source=chatgpt.com) 的核心气质：
-
-- 极简但不冷漠
-- 高级感来自“节奏”而不是装饰
-- 动效像呼吸，而不是炫技
-- 页面是“流动”的，不是“切换”的
-- 用户在浏览时会有一种：
-
-> “我正在进入某个人的大脑。”
-
-的感觉。 
-
-------
-
-# Design Philosophy
-
-## 1. Motion First
-
-动画不是附属品。
-动画本身就是 UI。
-
-页面中的每一次：
-
-- hover
-- scroll
-- reveal
-- transition
-- parallax
-- easing
-
-都应该像电影镜头语言。
-
-核心关键词：
-
-- cinematic
-- organic
-- smooth
-- tension
-- invisible interaction
-
-不要做“互联网感”。
-
-要做：
-
-> “未来操作系统感”。
-
-------
-
-## 2. Typography is the Interface
-
-字体不是信息承载工具。
-字体本身就是视觉主体。
-
-设计原则：
-
-- 超大标题
-- 极少文字
-- 强留白
-- 高对比字号
-- 使用字体层级创造空间感
-
-推荐：
-
-### Heading
-
-- Neue Montreal
-- Satoshi
-- General Sans
-- Suisse Intl
-
-### Body
-
-- Inter
-- Manrope
-
-风格：
-
-- 超粗标题 + 超细辅助文本
-- lowercase 优先
-- letter spacing 微负值
-- 行高宽松
-
-参考：
-
-- 日本设计杂志
-- fashion editorial
-- Apple keynote typography
-- brutal minimalism ([CSS Winner](https://www.csswinner.com/details/motoi-furuya-portfolio-site/14551?utm_source=chatgpt.com))
-
-------
-
-# Color System
-
-## Base Palette
-
-```txt
-Background: #050505
-Primary Text: #F5F5F5
-Secondary Text: #8A8A8A
-Accent: #7C5CFF
-Accent Glow: rgba(124,92,255,.35)
-Card Border: rgba(255,255,255,.08)
-```
-
-整体原则：
-
-- 颜色数量 ≤ 3
-- 不使用纯黑纯白
-- 所有颜色偏“雾面”
-- 高级感来自克制
-
-------
-
-# Layout Language
-
-## Grid
-
-使用：
-
-- 12-column grid
-- 大量 asymmetric layout
-- broken alignment
-- oversized whitespace
-
-不要：
-
-- 居中堆叠式 Landing Page
-- SaaS 模板布局
-- “标准互联网 Hero”
-
-页面需要有：
-
-> “呼吸感”。
-
-------
-
-# Interaction System
-
-## Hover
-
-hover 不只是 scale。
-
-推荐组合：
-
-- subtle translateY
-- blur sharpen
-- opacity fade
-- image reveal
-- magnetic cursor
-- directional movement
-
-hover duration:
-
-```js
-0.4s — 0.8s
-```
-
-easing：
-
-```css
-cubic-bezier(0.22, 1, 0.36, 1)
-```
-
-------
-
-## Scroll
-
-滚动是整个网站的“主叙事”。
-
-推荐：
-
-- smooth scroll
-- inertia
-- section pinning
-- layered parallax
-- stagger reveal
-- kinetic typography
-
-技术建议：
-
-- GSAP ScrollTrigger
-- Lenis
-- Framer Motion
-
-网站滚动时应该像：
-
-> 在宇宙飞船里漂移。 🌌
-
-------
-
-# Hero Section
-
-## Composition
-
-Hero 不应该只是：
-
-```txt
-标题 + 按钮 + 插图
-```
-
-而应该像：
-
-- 艺术装置
-- 数字展厅
-- 未来海报
-
-推荐结构：
-
-```txt
-Left:
-Huge typography
-micro intro
-
-Right:
-interactive visual system
-parallax media
-3D object / video texture
-```
-
-视觉元素：
-
-- noise texture
-- glass blur
-- floating grid
-- grain
-- cinematic shadow
-- ambient glow
-
-------
-
-# Imagery Style
-
-不要：
-
-- stock photo
-- 普通 UI mockup
-- Dribbble 风素材
-
-推荐：
-
-- 抽象几何
-- 建筑感构图
-- 实验性排版
-- XR / AI / cyberpunk visual
-- 黑白摄影
-- procedural graphics
-- chrome material
-- holographic surface
-
-视觉关键词：
-
-```txt
-future
-editorial
-experimental
-quiet luxury
-neo-brutal
-digital architecture
-```
-
-------
-
-# Section Structure
-
-## Recommended Sections
-
-### 1. Hero
-
-沉浸式第一屏。
-
-目标：
-
-> 3 秒内让用户意识到：
-> “这个网站不一样。”
-
-------
-
-### 2. Selected Work
-
-不是 project list。
-
-而是：
-
-- curated experiences
-- cinematic showcase
-
-每个项目像 Netflix 封面一样出现。 ([Reddit](https://www.reddit.com/r/web_design/comments/ph8fl4?utm_source=chatgpt.com))
-
-支持：
-
-- hover preview
-- video reveal
-- smooth expand
-- fullscreen transition
-
-------
-
-### 3. Philosophy
-
-不是 About Me。
-
-而是：
-
-- worldview
-- creative thinking
-- future imagination
-
-内容可以极少。
-
-但文字必须“有重量”。
-
-------
-
-### 4. Capabilities
-
-技能展示不要做：
-
-```txt
-HTML
-CSS
-JS
-```
-
-这种新人简历风。
-
-推荐：
-
-```txt
-creative development
-motion systems
-immersive interaction
-ai-native products
-xr experience design
-```
-
-------
-
-### 5. Contact
-
-Contact 页不要像表单系统。
-
-更像：
-
-> 一封来自未来的邀请函。
-
-推荐：
-
-- 巨型邮箱
-- 动态背景
-- ambient motion
-- 微交互 hover
-
-------
-
-# Motion Rules
-
-## IMPORTANT
-
-动画必须：
-
-- 慢
-- 丝滑
-- 有惯性
-- 有重量
-
-不要：
-
-- 快速 bounce
-- 夸张 elastic
-- 廉价粒子特效
-- 到处飞元素
-
-高级网站的秘密：
-
-> “它们动得很克制。”
-
-------
-
-# Sound Design (Optional)
-
-如果做极致版本：
-
-可以加入：
-
-- hover ambient sound
-- soft UI tick
-- cinematic atmosphere
-- scroll texture audio
-
-但必须：
-
-- 默认静音
-- 极轻
-- 不干扰
-
-------
-
-# Technical Stack
-
-推荐：
-
-## Frontend
-
-- Next.js
-- React
-- TypeScript
-
-## Animation
-
-- GSAP
-- Framer Motion
-- Lenis
-
-## 3D
-
-- Three.js
-- React Three Fiber
-
-## Styling
-
-- TailwindCSS
-- SCSS Modules
-
-------
-
-# Performance Rules
-
-再炫也必须：
-
-- 60fps
-- mobile smooth
-- lazy load
-- image optimization
-- motion reduction support
-
-因为：
-
-> 卡顿会瞬间摧毁高级感。 💀
-
-------
-
-# UX Philosophy
-
-这个网站不是为了：
-
-- 快速成交
-- SaaS 转化率
-- SEO 内容农场
-
-它是：
-
-> “数字时代的个人电影。”
-
-用户离开后应该记住的是：
-
-- 气质
-- 氛围
-- 节奏
-- 情绪
-
-而不是：
-
-“哦他会 React。”
-
-------
-
-# Final Direction
-
-整体目标：
-
-```txt
-Apple 的克制
-+
-A24 的气质
-+
-Cyberpunk 的未来感
-+
-日本平面设计的留白
-+
-电影级动态语言
-```
-
-最终体验应该像：
-
-> 一个来自 2035 年的创意开发者，
-> 在互联网废墟里搭建的私人宇宙。 ✨
-
+# Design System: Framer
+
+## 1. Visual Theme & Atmosphere
+
+Framer's website is a cinematic, tool-obsessed dark canvas that radiates the confidence of a design tool built by designers who worship craft. The entire experience is drenched in pure black — not a warm charcoal or a cozy dark gray, but an absolute void (`#000000`) that makes every element, every screenshot, every typographic flourish feel like it's floating in deep space. This is a website that treats its own product UI as the hero art, embedding full-fidelity screenshots and interactive demos directly into the narrative flow.
+
+The typography is the signature move: GT Walsheim with aggressively tight letter-spacing (as extreme as -5.5px on 110px display text) creates headlines that feel compressed, kinetic, almost spring-loaded — like words under pressure that might expand at any moment. The transition to Inter for body text is seamless, with extensive OpenType feature usage (`cv01`, `cv05`, `cv09`, `cv11`, `ss03`, `ss07`) that gives even small text a refined, custom feel. Framer Blue (`#0099ff`) is deployed sparingly but decisively — as link color, border accents, and subtle ring shadows — creating a cold, electric throughline against the warm-less black.
+
+The overall effect is a nightclub for web designers: dark, precise, seductive, and unapologetically product-forward. Every section exists to showcase what the tool can do, with the website itself serving as proof of concept.
+
+**Key Characteristics:**
+- Pure black (`#000000`) void canvas — absolute dark, not warm or gray-tinted
+- GT Walsheim display font with extreme negative letter-spacing (-5.5px at 110px)
+- Framer Blue (`#0099ff`) as the sole accent color — cold, electric, precise
+- Pill-shaped buttons (40px–100px radius) — no sharp corners on interactive elements
+- Product screenshots as hero art — the tool IS the marketing
+- Frosted glass button variants using `rgba(255, 255, 255, 0.1)` on dark surfaces
+- Extensive OpenType feature usage across Inter for refined micro-typography
+
+## 2. Color Palette & Roles
+
+### Primary
+- **Pure Black** (`#000000`): Primary background, the void canvas that defines Framer's dark-first identity
+- **Pure White** (`#ffffff`): Primary text color on dark surfaces, button text on accent backgrounds
+- **Framer Blue** (`#0099ff`): Primary accent color — links, borders, ring shadows, interactive highlights
+
+### Secondary & Accent
+- **Muted Silver** (`#a6a6a6`): Secondary text, subdued labels, dimmed descriptions on dark surfaces
+- **Near Black** (`#090909`): Elevated dark surface, shadow ring color for subtle depth separation
+
+### Surface & Background
+- **Void Black** (`#000000`): Page background, primary canvas
+- **Frosted White** (`rgba(255, 255, 255, 0.1)`): Translucent button backgrounds, glass-effect surfaces on dark
+- **Subtle White** (`rgba(255, 255, 255, 0.5)`): Slightly more opaque frosted elements for hover states
+
+### Neutrals & Text
+- **Pure White** (`#ffffff`): Heading text, high-emphasis body text
+- **Muted Silver** (`#a6a6a6`): Body text, descriptions, secondary information
+- **Ghost White** (`rgba(255, 255, 255, 0.6)`): Tertiary text, placeholders on dark surfaces
+
+### Semantic & Accent
+- **Framer Blue** (`#0099ff`): Links, interactive borders, focus rings
+- **Blue Glow** (`rgba(0, 153, 255, 0.15)`): Focus ring shadow, subtle blue halo around interactive elements
+- **Default Link Blue** (`#0000ee`): Standard browser link color (used sparingly in content areas)
+
+### Gradient System
+- No prominent gradient usage — Framer relies on pure flat black surfaces with occasional blue-tinted glows for depth
+- Subtle radial glow effects behind product screenshots using Framer Blue at very low opacity
+
+## 3. Typography Rules
+
+### Font Family
+- **Display**: `GT Walsheim Framer Medium` / `GT Walsheim Medium` — custom geometric sans-serif, weight 500. Fallbacks: `GT Walsheim Framer Medium Placeholder`, system sans-serif
+- **Body/UI**: `Inter Variable` / `Inter` — variable sans-serif with extensive OpenType features. Fallbacks: `Inter Placeholder`, `-apple-system`, `system-ui`
+- **Accent**: `Mona Sans` — GitHub's open-source font, used for select elements at ultra-light weight (100)
+- **Monospace**: `Azeret Mono` — companion mono for code and technical labels
+- **Rounded**: `Open Runde` — small rounded companion font for micro-labels
+
+### Hierarchy
+
+| Role            | Font                      | Size   | Weight | Line Height | Letter Spacing | Notes                                        |
+| --------------- | ------------------------- | ------ | ------ | ----------- | -------------- | -------------------------------------------- |
+| Display Hero    | GT Walsheim Framer Medium | 110px  | 500    | 0.85        | -5.5px         | Extreme negative tracking, compressed impact |
+| Section Display | GT Walsheim Medium        | 85px   | 500    | 0.95        | -4.25px        | OpenType: ss02, tnum                         |
+| Section Heading | GT Walsheim Medium        | 62px   | 500    | 1.00        | -3.1px         | OpenType: ss02                               |
+| Feature Heading | GT Walsheim Medium        | 32px   | 500    | 1.13        | -1px           | Tightest of the smaller headings             |
+| Accent Display  | Mona Sans                 | 61.5px | 100    | 1.00        | -3.1px         | Ultra-light weight, ethereal                 |
+| Card Title      | Inter Variable            | 24px   | 400    | 1.30        | -0.01px        | OpenType: cv01, cv05, cv09, cv11, ss03, ss07 |
+| Feature Title   | Inter                     | 22px   | 700    | 1.20        | -0.8px         | OpenType: cv05                               |
+| Sub-heading     | Inter                     | 20px   | 600    | 1.20        | -0.8px         | OpenType: cv01, cv09                         |
+| Body Large      | Inter Variable            | 18px   | 400    | 1.30        | -0.01px        | OpenType: cv01, cv05, cv09, cv11, ss03, ss07 |
+| Body            | Inter Variable            | 15px   | 400    | 1.30        | -0.01px        | OpenType: cv11                               |
+| Nav/UI          | Inter Variable            | 15px   | 400    | 1.00        | -0.15px        | OpenType: cv06, cv11, dlig, ss03             |
+| Body Readable   | Inter Framer Regular      | 14px   | 400    | 1.60        | normal         | Long-form body text                          |
+| Caption         | Inter Variable            | 14px   | 400    | 1.40        | normal         | OpenType: cv01, cv06, cv09, cv11, ss03, ss07 |
+| Label           | Inter                     | 13px   | 500    | 1.60        | normal         | OpenType: cv06, cv11, ss03                   |
+| Small Caption   | Inter Variable            | 12px   | 400    | 1.40        | normal         | OpenType: cv01, cv06, cv09, cv11, ss03, ss07 |
+| Micro Code      | Azeret Mono               | 10.4px | 400    | 1.60        | normal         | OpenType: cv06, cv11, ss03                   |
+| Badge           | Open Runde                | 9px    | 600    | 1.11        | normal         | OpenType: cv01, cv09                         |
+| Micro Uppercase | Inter Variable            | 7px    | 400    | 1.00        | 0.21px         | uppercase transform                          |
+
+### Principles
+- **Compression as personality**: GT Walsheim's extreme negative letter-spacing (-5.5px at 110px) is the defining typographic gesture — headlines feel spring-loaded, urgent, almost breathless
+- **OpenType maximalism**: Inter is deployed with 6+ OpenType features simultaneously (`cv01`, `cv05`, `cv09`, `cv11`, `ss03`, `ss07`), creating a subtly custom feel even at body sizes
+- **Weight restraint on display**: All GT Walsheim usage is weight 500 (medium) — never bold, never regular. This creates a confident-but-not-aggressive display tone
+- **Ultra-tight line heights**: Display text at 0.85 line-height means letters nearly overlap vertically — intentional density that rewards reading at arm's length
+
+## 4. Component Stylings
+
+### Buttons
+- **Frosted Pill**: `rgba(255, 255, 255, 0.1)` background, black text (`#000000`), pill shape (40px radius). The glass-effect button that lives on dark surfaces — translucent, ambient, subtle
+- **Solid White Pill**: `rgb(255, 255, 255)` background, black text (`#000000`), full pill shape (100px radius), padding `10px 15px`. The primary CTA — clean, high-contrast on dark, unmissable
+- **Ghost**: No visible background, white text, relies on text styling alone. Hover reveals subtle frosted background
+- **Transition**: Scale-based animations (matrix transform with 0.85 scale factor), opacity transitions for reveal effects
+
+### Cards & Containers
+- **Dark Surface Card**: Black or near-black (`#090909`) background, `rgba(0, 153, 255, 0.15) 0px 0px 0px 1px` blue ring shadow border, rounded corners (10px–15px radius)
+- **Elevated Card**: Multi-layer shadow — `rgba(255, 255, 255, 0.1) 0px 0.5px 0px 0.5px` (subtle top highlight) + `rgba(0, 0, 0, 0.25) 0px 10px 30px` (deep ambient shadow)
+- **Product Screenshots**: Full-width or padded within dark containers, 8px–12px border-radius for software UI previews
+- **Hover**: Subtle glow increase on Framer Blue ring shadow, or brightness shift on frosted surfaces
+
+### Inputs & Forms
+- Minimal form presence on the marketing site
+- Input fields follow dark theme: dark background, subtle border, white text
+- Focus state: Framer Blue (`#0099ff`) ring border, `1px solid #0099ff`
+- Placeholder text in `rgba(255, 255, 255, 0.4)`
+
+### Navigation
+- **Dark floating nav bar**: Black background with frosted glass effect, white text links
+- **Nav links**: Inter at 15px, weight 400, white text with subtle hover opacity change
+- **CTA button**: Pill-shaped, white or frosted, positioned at right end of nav
+- **Mobile**: Collapses to hamburger menu, maintains dark theme
+- **Sticky behavior**: Nav remains fixed at top on scroll
+
+### Image Treatment
+- **Product screenshots as hero art**: Full-width embedded UI screenshots with rounded corners (8px–12px)
+- **Dark-on-dark composition**: Screenshots placed on black backgrounds with subtle shadow for depth separation
+- **16:9 and custom aspect ratios**: Product demos fill their containers
+- **No decorative imagery**: All images are functional — showing the tool, the output, or the workflow
+
+### Trust & Social Proof
+- Customer logos and testimonials in muted gray on dark surfaces
+- Minimal ornamentation — the product screenshots serve as the trust signal
+
+## 5. Layout Principles
+
+### Spacing System
+- **Base unit**: 8px
+- **Scale**: 1px, 2px, 3px, 4px, 5px, 6px, 8px, 10px, 12px, 15px, 20px, 30px, 35px
+- **Section padding**: Large vertical spacing (80px–120px between sections)
+- **Card padding**: 15px–30px internal padding
+- **Component gaps**: 8px–20px between related elements
+
+### Grid & Container
+- **Max width**: ~1200px container, centered
+- **Column patterns**: Full-width hero, 2-column feature sections, single-column product showcases
+- **Asymmetric layouts**: Feature sections often pair text (40%) with screenshot (60%)
+
+### Whitespace Philosophy
+- **Breathe through darkness**: Generous vertical spacing between sections — the black background means whitespace manifests as void, creating dramatic pauses between content blocks
+- **Dense within, spacious between**: Individual components are tightly composed (tight line-heights, compressed text) but float in generous surrounding space
+- **Product-first density**: Screenshot areas are allowed to be dense and information-rich, contrasting with the sparse marketing text
+
+### Border Radius Scale
+- **1px**: Micro-elements, nearly squared precision edges
+- **5px–7px**: Small UI elements, image thumbnails — subtly softened
+- **8px**: Standard component radius — code blocks, buttons, interactive elements
+- **10px–12px**: Cards, product screenshots — comfortably rounded
+- **15px–20px**: Large containers, feature cards — generously rounded
+- **30px–40px**: Navigation pills, pagination — noticeably rounded
+- **100px**: Full pill shape — primary CTAs, tag elements
+
+## 6. Depth & Elevation
+
+| Level               | Treatment                                                    | Use                                                          |
+| ------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| Level 0 (Flat)      | No shadow, pure black surface                                | Page background, empty areas                                 |
+| Level 1 (Ring)      | `rgba(0, 153, 255, 0.15) 0px 0px 0px 1px`                    | Card borders, interactive element outlines — Framer Blue glow ring |
+| Level 2 (Contained) | `rgb(9, 9, 9) 0px 0px 0px 2px`                               | Near-black ring for subtle containment on dark surfaces      |
+| Level 3 (Floating)  | `rgba(255, 255, 255, 0.1) 0px 0.5px 0px 0.5px, rgba(0, 0, 0, 0.25) 0px 10px 30px` | Elevated cards, floating elements — subtle white top-edge highlight + deep ambient shadow |
+
+### Shadow Philosophy
+Framer's elevation system is inverted from traditional light-theme designs. Instead of darker shadows on light backgrounds, Framer uses:
+- **Blue-tinted ring shadows** at very low opacity (0.15) for containment — a signature move that subtly brands every bordered element
+- **White edge highlights** (0.5px) on the top edge of elevated elements — simulating light hitting the top surface
+- **Deep ambient shadows** for true floating elements — `rgba(0, 0, 0, 0.25)` at large spread (30px)
+
+### Decorative Depth
+- **Blue glow auras**: Subtle Framer Blue (`#0099ff`) radial gradients behind key interactive areas
+- **No background blur/glassmorphism**: Despite the frosted button effect, there's no heavy glass blur usage — the translucency is achieved through simple rgba opacity
+
+## 7. Do's and Don'ts
+
+### Do
+- Use pure black (`#000000`) as the primary background — not dark gray, not charcoal
+- Apply extreme negative letter-spacing on GT Walsheim display text (-3px to -5.5px)
+- Keep all buttons pill-shaped (40px+ radius) — never use squared or slightly-rounded buttons
+- Use Framer Blue (`#0099ff`) exclusively for interactive accents — links, borders, focus states
+- Deploy `rgba(255, 255, 255, 0.1)` for frosted glass surfaces on dark backgrounds
+- Maintain GT Walsheim at weight 500 only — the medium weight IS the brand
+- Use extensive OpenType features on Inter text (cv01, cv05, cv09, cv11, ss03, ss07)
+- Let product screenshots be the visual centerpiece — the tool markets itself
+- Apply blue ring shadows (`rgba(0, 153, 255, 0.15) 0px 0px 0px 1px`) for card containment
+
+### Don't
+- Use warm dark backgrounds (no `#1a1a1a`, `#2d2d2d`, or brownish blacks)
+- Apply bold (700+) weight to GT Walsheim display text — medium 500 only
+- Introduce additional accent colors beyond Framer Blue — this is a one-accent-color system
+- Use large border-radius on non-interactive elements (cards use 10px–15px, only buttons get 40px+)
+- Add decorative imagery, illustrations, or icons — the product IS the illustration
+- Use positive letter-spacing on headlines — everything is compressed, negative tracking
+- Create heavy drop shadows — depth is communicated through subtle rings and minimal ambients
+- Place light/white backgrounds behind content sections — the void is sacred
+- Use serif or display-weight fonts — the system is geometric sans-serif only
+
+## 8. Responsive Behavior
+
+### Breakpoints
+| Name    | Width        | Key Changes                                                  |
+| ------- | ------------ | ------------------------------------------------------------ |
+| Mobile  | <809px       | Single column, stacked feature sections, reduced hero text (62px→40px), hamburger nav |
+| Tablet  | 809px–1199px | 2-column features begin, nav links partially visible, screenshots scale down |
+| Desktop | >1199px      | Full layout, expanded nav with all links + CTA, 110px display hero, side-by-side features |
+
+### Touch Targets
+- Pill buttons: minimum 40px height with 10px vertical padding — exceeds 44px WCAG minimum
+- Nav links: 15px text with generous padding for touch accessibility
+- Mobile CTA buttons: Full-width pills on mobile for easy thumb reach
+
+### Collapsing Strategy
+- **Navigation**: Full horizontal nav → hamburger menu at mobile breakpoint
+- **Hero text**: 110px display → 85px → 62px → ~40px across breakpoints, maintaining extreme negative tracking proportionally
+- **Feature sections**: Side-by-side (text + screenshot) → stacked vertically on mobile
+- **Product screenshots**: Scale responsively within containers, maintaining aspect ratios
+- **Section spacing**: Reduces proportionally — 120px desktop → 60px mobile
+
+### Image Behavior
+- Product screenshots are responsive, scaling within their container boundaries
+- No art direction changes — same crops across breakpoints
+- Dark background ensures screenshots maintain visual impact at any size
+- Screenshots lazy-load as user scrolls into view
+
+## 9. Agent Prompt Guide
+
+### Quick Color Reference
+- Primary Background: Void Black (`#000000`)
+- Primary Text: Pure White (`#ffffff`)
+- Accent/CTA: Framer Blue (`#0099ff`)
+- Secondary Text: Muted Silver (`#a6a6a6`)
+- Frosted Surface: Translucent White (`rgba(255, 255, 255, 0.1)`)
+- Elevation Ring: Blue Glow (`rgba(0, 153, 255, 0.15)`)
+
+### Example Component Prompts
+- "Create a hero section on pure black background with 110px GT Walsheim heading in white, letter-spacing -5.5px, line-height 0.85, and a pill-shaped white CTA button (100px radius) with black text"
+- "Design a feature card on black background with a 1px Framer Blue ring shadow border (rgba(0,153,255,0.15)), 12px border-radius, white heading in Inter at 22px weight 700, and muted silver (a6a6a6) body text"
+- "Build a navigation bar with black background, white Inter text links at 15px, and a frosted pill button (rgba(255,255,255,0.1) background, 40px radius) as the CTA"
+- "Create a product showcase section with a full-width screenshot embedded on black, 10px border-radius, subtle multi-layer shadow (white 0.5px top highlight + rgba(0,0,0,0.25) 30px ambient)"
+- "Design a pricing card using pure black surface, Framer Blue (#0099ff) accent for the selected plan border, white text hierarchy (24px Inter bold heading, 14px regular body), and a solid white pill CTA button"
+
+### Iteration Guide
+When refining existing screens generated with this design system:
+1. Focus on ONE component at a time — the dark canvas makes each element precious
+2. Always verify letter-spacing on GT Walsheim headings — the extreme negative tracking is non-negotiable
+3. Check that Framer Blue appears ONLY on interactive elements — never as decorative background or text color for non-links
+4. Ensure all buttons are pill-shaped — any squared corner immediately breaks the Framer aesthetic
+5. Test frosted glass surfaces by checking they have exactly `rgba(255, 255, 255, 0.1)` — too opaque looks like a bug, too transparent disappears

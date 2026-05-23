@@ -15,9 +15,9 @@ import { YouTubeStatusBanner } from "@/components/youtube-status-banner";
 import { useYouTubeStatus } from "@/lib/hooks/useYouTubeStatus";
 
 const TIER_STYLES: Record<string, string> = {
-  free: "bg-white/6 text-white/35 border-white/6",
-  pro: "bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/20",
-  max: "bg-amber-400/8 text-amber-400 border-amber-400/20",
+  free: "bg-white/8 text-white/40 border-white/10",
+  pro: "bg-[#0099ff]/12 text-[#0099ff] border-[#0099ff]/25",
+  max: "bg-amber-400/10 text-amber-400 border-amber-400/25",
 };
 
 export function Navbar() {
@@ -69,7 +69,8 @@ export function Navbar() {
   useGSAP(() => {
     const nav = navRef.current;
     if (!nav) return;
-    gsap.set(nav, { backgroundColor: "rgba(5,5,5,0.3)", backdropFilter: "blur(6px)" });
+    // 初始状态：接近透明
+    gsap.set(nav, { backgroundColor: "rgba(0,0,0,0.2)", backdropFilter: "blur(4px)" });
 
     ScrollTrigger.create({
       start: "top -60px",
@@ -77,9 +78,9 @@ export function Navbar() {
       onUpdate: (self) => {
         const p = Math.min(1, self.progress);
         gsap.to(nav, {
-          backgroundColor: `rgba(5,5,5,${0.3 + p * 0.55})`,
-          backdropFilter: `blur(${6 + p * 10}px)`,
-          duration: 0.2,
+          backgroundColor: `rgba(0,0,0,${0.2 + p * 0.65})`,
+          backdropFilter: `blur(${4 + p * 14}px)`,
+          duration: 0.15,
           overwrite: "auto",
         });
       },
@@ -87,7 +88,7 @@ export function Navbar() {
   }, { scope: navRef });
 
   return (
-    <nav ref={navRef} className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.04]">
+    <nav ref={navRef} className="fixed inset-x-0 top-0 z-50 border-b border-white/8">
       <div className="mx-auto flex h-14 w-full max-w-full items-center justify-between px-3 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%]">
         <Link
           href="/"
@@ -131,7 +132,7 @@ export function Navbar() {
                   <Link
                     href="/subscribe"
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] min-h-[44px]"
+                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff] min-h-[44px]"
                   >
                     <GameIcon name="crown" size={14} />
                     订阅方案
@@ -141,7 +142,7 @@ export function Navbar() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] min-h-[44px]"
+                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#0099ff] min-h-[44px]"
                   >
                     <GameIcon name="download" size={14} />
                     安卓APP下载（Beta）
@@ -206,7 +207,7 @@ export function Navbar() {
             <div className="flex items-center gap-2">
               <Link
                 href="/subscribe"
-                className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10"
+                className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff]"
               >
                 <GameIcon name="crown" size={14} />
                 订阅
