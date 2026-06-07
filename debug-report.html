@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 模型渲染 Bug 分析报告 — VideoMind</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --card: #12121a;
+    --border: #1e1e2e;
+    --text: #d4d4d8;
+    --muted: #71717a;
+    --accent: #0099ff;
+    --danger: #ff4466;
+    --success: #00cc77;
+    --warn: #f0a030;
+    --code-bg: #0d0d16;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.7;
+    padding: 40px 20px 80px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 {
+    font-size: 2.2em;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--accent), #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--muted); font-size: 0.95em; margin-bottom: 40px; }
+  h2 {
+    font-size: 1.35em;
+    font-weight: 700;
+    margin: 40px 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    color: #e4e4e7;
+  }
+  h3 {
+    font-size: 1.05em;
+    font-weight: 600;
+    margin: 24px 0 10px;
+    color: #d4d4d8;
+  }
+  p { margin-bottom: 14px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 0.93em;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: 500; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 0.82em;
+    font-weight: 600;
+  }
+  .badge-ok { background: #00cc7720; color: var(--success); }
+  .badge-fail { background: #ff446620; color: var(--danger); }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    overflow-x: auto;
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    line-height: 1.6;
+    margin: 14px 0;
+  }
+  code { font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace; font-size: 0.9em; }
+  .highlight { color: var(--accent); font-weight: 600; }
+  .danger { color: var(--danger); }
+  .success { color: var(--success); }
+  .muted { color: var(--muted); }
+  .diff-line { display: block; }
+  .diff-add { color: var(--success); }
+  .diff-remove { color: var(--danger); }
+  .formula {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 14px 20px;
+    margin: 16px 0;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.9em;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85em;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+  .timeline { position: relative; padding-left: 30px; }
+  .timeline::before {
+    content: "";
+    position: absolute;
+    left: 12px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--border);
+  }
+  .timeline-item { position: relative; margin-bottom: 28px; }
+  .timeline-item::before {
+    content: "";
+    position: absolute;
+    left: -20px;
+    top: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+    border: 2px solid var(--bg);
+  }
+  .timeline-item.root::before { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  .timeline-item.fix::before { background: var(--success); box-shadow: 0 0 8px var(--success); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>3D 模型渲染 Bug 分析报告</h1>
+<p class="subtitle">VideoMind — glb-decoration.tsx · 2026-05-26</p>
+
+<!-- ============ 1. 现象 ============ -->
+<h2>1. 故障现象</h2>
+<div class="card">
+  <p>首页共放置 <strong>5 个 GLB 3D 模型</strong>（Parrot / Stork / Flamingo / SittingBox / Horse），用于装饰页面。模型均能正常加载和解析，但实际渲染结果：</p>
+  <table>
+    <tr><th>模型</th><th>文件大小</th><th>渲染状态</th></tr>
+    <tr><td>Parrot.glb</td><td>97 KB</td><td><span class="badge badge-fail">不可见</span></td></tr>
+    <tr><td>Stork.glb</td><td>77 KB</td><td><span class="badge badge-fail">不可见</span></td></tr>
+    <tr><td>Flamingo.glb</td><td>77 KB</td><td><span class="badge badge-fail">不可见</span></td></tr>
+    <tr><td>SittingBox.glb</td><td>422 KB</td><td><span class="badge badge-ok">正常</span></td></tr>
+    <tr><td>Horse.glb</td><td>182 KB</td><td><span class="badge badge-fail">不可见</span></td></tr>
+  </table>
+  <p style="margin-top:14px"><strong>特征：</strong>只有 SittingBox 能正常渲染，其余 4 个模型完全不可见（仅能看到 Canvas 背景色）。在调试中强制替换为高亮绿色 <code>MeshBasicMaterial</code> 后问题依旧，证明并非材质/光照问题。</p>
+</div>
+
+<!-- ============ 2. 调试过程 ============ -->
+<h2>2. 调试过程</h2>
+<div class="timeline">
+  <div class="timeline-item">
+    <strong>阶段 1：怀疑加载失败</strong>
+    <p class="muted">检查 Network 面板，所有 .glb 文件均返回 HTTP 200，加载成功。排除网络问题。</p>
+  </div>
+  <div class="timeline-item">
+    <strong>阶段 2：怀疑材质/光照</strong>
+    <p class="muted">MeshStandardMaterial（PBR）在无环境贴图时颜色偏暗。尝试转换为 MeshPhongMaterial，加强灯光强度，问题依旧。排除光照问题。</p>
+  </div>
+  <div class="timeline-item">
+    <strong>阶段 3：激进调试 — 高亮 BasicMaterial</strong>
+    <p class="muted">将所有材质强制替换为亮绿色 <code>MeshBasicMaterial("#00ff88")</code>（完全不受光照影响），并设置 Canvas 背景为暗紫色以提供对比。结果：SittingBox 变绿可见，其余 4 个依然不可见。</p>
+    <p style="margin-top:6px"><span class="danger">结论：问题不在材质或光照，而在模型的空间位置。</span> 模型 geometry 虽然加载成功，但被放置在了相机视锥之外。</p>
+  </div>
+  <div class="timeline-item root">
+    <strong>阶段 4：包围盒数据诊断（定位根因）</strong>
+    <p class="muted">在模型加载后输出详细的包围盒和缩放数据：</p>
+  </div>
+</div>
+
+<!-- ============ 3. 根因 ============ -->
+<h2>3. 关键数据</h2>
+<div class="card">
+  <table>
+    <tr><th>模型</th><th>原始包围盒 maxDim</th><th>缩放因子 (2.2 / maxDim)</th><th>与 SittingBox 的比例</th></tr>
+    <tr><td>Parrot</td><td style="color:var(--warn)">166.7</td><td style="color:var(--danger)">0.0132</td><td>82×</td></tr>
+    <tr><td>Stork</td><td style="color:var(--warn)">315.4</td><td style="color:var(--danger)">0.0070</td><td>156×</td></tr>
+    <tr><td>Flamingo</td><td style="color:var(--warn)">416.1</td><td style="color:var(--danger)">0.0053</td><td>206×</td></tr>
+    <tr><td><strong>SittingBox</strong></td><td><strong style="color:var(--success)">2.02</strong></td><td><strong style="color:var(--success)">1.089</strong></td><td>1×（基准）</td></tr>
+    <tr><td>Horse</td><td style="color:var(--warn)">721.7</td><td style="color:var(--danger)">0.0030</td><td>357×</td></tr>
+  </table>
+  <p style="margin-top:14px">不同模型的<strong>原生尺寸差异巨大</strong>：SittingBox 约 2 单位，而 Horse 高达 722 单位（357 倍差距）。代码通过 <code>scaleRef = 2.2 / maxDim</code> 将所有模型统一缩放到约 2.2 单位，但 <strong>居中偏移量未随缩放同步调整</strong>。</p>
+</div>
+
+<!-- ============ 4. 根因分析 ============ -->
+<h2>4. 根因分析</h2>
+
+<h3>4.1 错误的代码逻辑</h3>
+<pre><code><span class="muted">// useFrame 中的首帧居中逻辑（修复前）</span>
+<span style="color:#71717a">if (baselineY.current === 0 && groupRef.current.children.length > 0) {</span>
+  <span class="muted">// Step A: 在 scale=1 时计算包围盒</span>
+  <span style="color:#71717a">const box = new THREE.Box3().setFromObject(groupRef.current);</span>
+  <span style="color:#71717a">const center = box.getCenter(new THREE.Vector3());</span>
+  <span class="muted">//   → center.y = 83 (Parrot 未缩放的几何中心)</span>
+
+  <span class="muted">// Step B: 用未缩放的 center 设置 position</span>
+  <span style="color:#ff4466">groupRef.current.position.set(-center.x, -center.y, -center.z);</span>
+  <span class="muted">//   → position.y = -83 ❌</span>
+
+  <span class="muted">// Step C: 然后才设置缩放</span>
+  <span style="color:#ff4466">groupRef.current.scale.setScalar(scaleRef.current);</span>
+  <span class="muted">//   → scale = 0.013</span>
+<span style="color:#71717a">}</span></code></pre>
+
+<h3>4.2 数学分析</h3>
+<p>Three.js 中节点的世界变换矩阵为：</p>
+<div class="formula">M<sub>world</sub> = T(position) · R(rotation) · S(scale)</div>
+<p>即 <strong>先缩放，再旋转，最后平移</strong>。对于模型上的一个顶点 <strong>v</strong>，其世界坐标为：</p>
+<div class="formula">v<sub>world</sub> = position + rotation · (scale × v)</div>
+<p>以 Parrot 为例（首帧旋转为 0）：</p>
+<div class="formula">
+  v<sub>world</sub> = (-83) + 0.013 × v<br>
+  模型中心 v = 83 时：v<sub>world</sub> = -83 + 0.013 × 83 = <span class="danger">-81.9</span>
+</div>
+
+<p style="margin-top:20px"><span class="danger">模型世界坐标中心在 y = −81.9，而相机位于 z = 3.5，fov = 40°。</span>相机在 y 轴方向的可视范围约为 ±2.5 单位，模型远在 82 单位之外。</p>
+
+<h3>4.3 为什么 SittingBox 正常？</h3>
+<div class="card">
+  <p>SittingBox 的 <code>maxDim ≈ 2.02</code>，缩放因子 <code>s ≈ 1.089</code>（接近 1）。</p>
+  <div class="formula">
+    center ≈ (0, 0, 0)（模型本身接近原点）<br>
+    v<sub>world</sub> = 0 + 1.089 × 0 = <span class="success">0</span> → 完美居中
+  </div>
+  <p style="margin-top:10px">缩放因子越接近 1，位置误差越小。Parrot/Horse 等模型的缩放因子极小（0.013~0.003），导致 position 设定的偏移量相对于缩放后的模型尺寸被放大了 <strong>77~333 倍</strong>。</p>
+</div>
+
+<h3>4.4 量化误差公式</h3>
+<div class="formula">
+  实际偏移 = center<sub>box</sub> × (1 − scale)<br>
+  ≈ center<sub>box</sub>（当 scale ≪ 1 时）
+</div>
+<p>对于大尺寸模型，<code>center<sub>box</sub></code> 可达数十到数百单位，误差也因此达到数十到数百单位，远远超出相机视锥范围。</p>
+
+<!-- ============ 5. 修复 ============ -->
+<h2>5. 修复方案</h2>
+<div class="timeline">
+  <div class="timeline-item fix">
+    <strong>核心思路：先缩放，再计算包围盒，再居中</strong>
+    <p class="muted">保证居中偏移量基于已缩放的坐标系，与模型最终渲染尺寸一致。</p>
+  </div>
+</div>
+
+<h3>5.1 修复后的代码</h3>
+<pre><code><span class="muted">// useFrame 中的首帧居中逻辑（修复后）</span>
+<span style="color:#71717a">if (baselineY.current === 0 && groupRef.current.children.length > 0) {</span>
+  <span class="diff-add">  const s = scaleRef.current;</span>
+  <span class="diff-add">  groupRef.current.scale.setScalar(s);        // ① 先缩放</span>
+  <span class="diff-add">  groupRef.current.updateWorldMatrix(true, true);  // ② 刷新世界矩阵</span>
+  <span style="color:#71717a">  const box = new THREE.Box3().setFromObject(groupRef.current);  // ③ 再算包围盒</span>
+  <span style="color:#71717a">  const center = box.getCenter(new THREE.Vector3());</span>
+  <span style="color:#71717a">  groupRef.current.position.set(-center.x, -center.y, -center.z); // ④ 居中</span>
+  <span style="color:#71717a">  baselineY.current = groupRef.current.position.y;</span>
+<span style="color:#71717a">}</span></code></pre>
+
+<h3>5.2 修复效果验证</h3>
+<div class="formula">
+  以 Parrot 为例，修复后：<br>
+  scale = 0.013（先应用）→ box 包围盒在缩放后空间计算<br>
+  center<sub>scaled</sub> ≈ (0, 1.08, 0)<br>
+  position = (-0, -1.08, -0)<br>
+  v<sub>world</sub> = -1.08 + 0.013 × 83 = <span class="success">0</span> → 模型居中在原点
+</div>
+
+<!-- ============ 6. 总结 ============ -->
+<h2>6. 总结</h2>
+<div class="card">
+  <table>
+    <tr><th>项目</th><th>内容</th></tr>
+    <tr><td>Bug 类型</td><td>3D 空间位置计算错误（坐标系不一致）</td></tr>
+    <tr><td>直接影响</td><td>4 个 GLB 模型被放置在相机视锥外（偏移 50~300+ 单位）</td></tr>
+    <tr><td>根本原因</td><td>居中偏移量用未缩放坐标系计算，但 Three.js 的 TRS 变换顺序是 Scale → Rotation → Translation，导致大尺寸模型偏移被等比放大</td></tr>
+    <tr><td>修复方法</td><td>先 <code>setScalar(scale)</code> → <code>updateWorldMatrix()</code> → 再 <code>Box3().setFromObject()</code> → 最后 <code>position.set(-center)</code></td></tr>
+    <tr><td>受影响文件</td><td><code>components/glb-decoration.tsx</code>（useFrame 首帧居中逻辑，4 行改动）</td></tr>
+    <tr><td>为何 SittingBox 正常</td><td>其原生尺寸 ≈ 2 单位，缩放因子 ≈ 1.09，误差可忽略</td></tr>
+    <tr><td>调试教训</td><td>BasicMaterial 绿色覆盖是验证"材质 vs 位置"问题的有效手段；包围盒日志是定位空间问题的关键数据！！！！！！关键发现！ 堆栈显示 page.tsx 是 Server Component，而 GLB_MODELS 来自 "use client" 的 glb-decoration.tsx。RSC 客户端边界序列化导致新键值为 undefined——Turbopack
+  生成的服务端代理模块是旧版本，不含后来添加的键。
+
+  解决：把 GLB_MODELS 提取到独立文件（纯数据，不需要 "use client"）。</td></tr>
+  </table>
+</div>
+
+<p style="text-align:center; color:var(--muted); margin-top:40px; font-size:0.85em">
+  VideoMind · glb-decoration.tsx Bug Report · 生成于 2026-05-26
+</p>
+
+</div>
+</body>
+</html>
