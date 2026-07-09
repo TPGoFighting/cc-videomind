@@ -27,7 +27,7 @@ import {
 } from "@/lib/ai/prompts-learn";
 import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
 import { chunkTranscript } from "@/lib/utils/chunk";
-import { extractBalancedJson, repairBrokenJson } from "@/lib/utils/json";
+import { extractBalancedJson, extractJsonFromThinking, repairBrokenJson } from "@/lib/utils/json";
 import {
   parseKeyMoments,
   parseSummaryTakeaways,
@@ -950,6 +950,24 @@ function parseJsonContent(content: string) {
     if (repaired) {
       try {
         return JSON.parse(repaired) as unknown;
+      } catch {
+        // 最终失败
+      }
+    }
+  }
+
+  // 从 thinking 文本中智能提取 JSON（处理 LongCat 等 API 返回 thinking 块的情况）
+  const thinkingJson = extractJsonFromThinking(content);
+  if (thinkingJson) {
+    try {
+      return JSON.parse(thinkingJson) as unknown;
+    } catch {
+      // 继续尝试修复
+    }
+    const repairedThinking = repairBrokenJson(thinkingJson);
+    if (repairedThinking) {
+      try {
+        return JSON.parse(repairedThinking) as unknown;
       } catch {
         // 最终失败
       }
