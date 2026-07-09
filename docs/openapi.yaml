@@ -1,0 +1,847 @@
+openapi: 3.1.0
+info:
+  title: cc-videomind API
+  description: |
+    YouTube AI 学习工作区 API 文档。
+
+    ## 概览
+
+    本 API 提供视频字幕提取、AI 分析、词义生成、关键时刻提取、内容摘要、对话问答等功能。
+
+    ## 认证
+
+    大部分 API 需要 Supabase JWT 认证，通过 `Authorization: Bearer <token>` 头部传递。
+
+    ## 限流
+
+    - 普通用户：10 次/分钟
+    - Pro 用户：30 次/分钟
+    - Max 用户：100 次/分钟
+
+    ## 错误格式
+
+    ```json
+    {
+      "ok": false,
+      "error": {
+        "code": "error_code",
+        "message": "错误描述",
+        "details": {}
+      }
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: TPGoFighting
+    url: https://github.com/TPGoFighting/cc-videomind
+
+servers:
+  - url: https://teachplayer.tpgofighting.top
+    description: 生产环境
+  - url: http://localhost:3000
+    description: 本地开发
+
+tags:
+  - name: transcript
+    description: 字幕提取
+  - name: analysis
+    description: AI 视频分析
+  - name: moments
+    description: 关键时刻提取
+  - name: summary
+    description: 内容摘要
+  - name: chat
+    description: 对话问答
+  - name: vocabulary
+    description: 词汇学习
+  - name: notes
+    description: 笔记管理
+  - name: user
+    description: 用户功能
+  - name: admin
+    description: 管理后台
+
+paths:
+  # ============================================================================
+  # 字幕相关
+  # ============================================================================
+
+  /api/transcript:
+    post:
+      tags: [transcript]
+      summary: 提取视频字幕
+      description: |
+        从 YouTube 或 Bilibili 视频提取字幕。
+
+        支持 4 层回退链：
+        1. YouTube InnerTube API (Android/Web 并发)
+        2. YouTube HTML 页面解析
+        3. youtube-transcript npm 包
+        4. Supadata 外部 API
+      operationId: getTranscript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoId]
+              properties:
+                videoId:
+                  type: string
+                  description: 视频 ID（YouTube 或 Bilibili 格式）
+                  example: "dQw4w9WgXcQ"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimitExceeded"
+
+  # ============================================================================
+  # AI 分析相关
+  # ============================================================================
+
+  /api/analyze:
+    post:
+      tags: [analysis]
+      summary: AI 视频分析
+      description: |
+        对视频字幕进行 AI 分析，生成摘要、要点、问题和高亮。
+
+        支持降级策略：
+        1. 主要 Provider 失败 → 尝试缓存
+        2. 缓存未命中 → 尝试备用 Provider
+        3. 备用失败 → 返回降级结果
+      operationId: analyzeVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoId, title, transcript]
+              properties:
+                videoId:
+                  type: string
+                  example: "dQw4w9WgXcQ"
+                title:
+                  type: string
+                  example: "Never Gonna Give You Up"
+                transcript:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/TranscriptSegment"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+
+  /api/generate-moments:
+    post:
+      tags: [moments]
+      summary: 提取关键时刻
+      description: |
+        从视频字幕中提取最有价值的学习片段。
+
+        支持两种模式：
+        - smart：全文分析，更精准
+        - fast：分块处理，更快
+      operationId: generateMoments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoId]
+              properties:
+                videoId:
+                  type: string
+                  example: "dQw4w9WgXcQ"
+                mode:
+                  type: string
+                  enum: [smart, fast]
+                  default: smart
+                theme:
+                  type: string
+                  description: 用户指定主题（可选）
+                targetLanguage:
+                  type: string
+                  enum: [zh, en]
+                  default: zh
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MomentsResponse"
+
+  /api/generate-summary:
+    post:
+      tags: [summary]
+      summary: 生成结构化摘要
+      description: 从视频字幕生成带时间戳的结构化学习要点。
+      operationId: generateSummary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoId]
+              properties:
+                videoId:
+                  type: string
+                  example: "dQw4w9WgXcQ"
+                targetLanguage:
+                  type: string
+                  enum: [zh, en]
+                  default: zh
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SummaryResponse"
+
+  # ============================================================================
+  # 对话相关
+  # ============================================================================
+
+  /api/chat:
+    post:
+      tags: [chat]
+      summary: AI 对话问答
+      description: |
+        基于视频字幕的 RAG 式问答。
+
+        AI 会引用字幕中的具体内容回答问题。
+      operationId: chatWithVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoId, question]
+              properties:
+                videoId:
+                  type: string
+                  example: "dQw4w9WgXcQ"
+                question:
+                  type: string
+                  example: "What is the main topic?"
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  # ============================================================================
+  # 词汇相关
+  # ============================================================================
+
+  /api/word-definitions:
+    post:
+      tags: [vocabulary]
+      summary: 生成词义定义
+      description: |
+        批量生成英文单词的词义定义。
+
+        包含：音标、词性、中英释义、例句。
+      operationId: defineWords
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lemmas]
+              properties:
+                lemmas:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 30
+                  example: ["hello", "world"]
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WordDefinitionsResponse"
+
+  # ============================================================================
+  # 翻译相关
+  # ============================================================================
+
+  /api/translate-transcript:
+    post:
+      tags: [transcript]
+      summary: 翻译字幕
+      description: |
+        将字幕翻译成目标语言。
+
+        使用 SSE 流式返回，支持实时进度更新。
+      operationId: translateTranscript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [segments]
+              properties:
+                segments:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/TranscriptSegment"
+                targetLanguage:
+                  type: string
+                  enum: [zh, en]
+                  default: zh
+      responses:
+        "200":
+          description: 成功（SSE 流）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # ============================================================================
+  # 笔记相关
+  # ============================================================================
+
+  /api/notes:
+    get:
+      tags: [notes]
+      summary: 获取笔记列表
+      description: 获取当前用户的视频笔记列表。
+      operationId: getNotes
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotesResponse"
+      security:
+        - bearerAuth: []
+
+    post:
+      tags: [notes]
+      summary: 创建笔记
+      description: 为视频创建新笔记。
+      operationId: createNote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [videoId, body]
+              properties:
+                videoId:
+                  type: string
+                body:
+                  type: string
+                  description: Markdown 格式笔记内容
+                timestampSeconds:
+                  type: number
+                  description: 关联的时间戳（可选）
+      responses:
+        "201":
+          description: 创建成功
+      security:
+        - bearerAuth: []
+
+  # ============================================================================
+  # 用户相关
+  # ============================================================================
+
+  /api/me:
+    get:
+      tags: [user]
+      summary: 获取当前用户信息
+      description: 获取当前登录用户的详细信息。
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+      security:
+        - bearerAuth: []
+
+  /api/history:
+    get:
+      tags: [user]
+      summary: 获取浏览历史
+      description: 获取当前用户的视频浏览历史。
+      operationId: getHistory
+      responses:
+        "200":
+          description: 成功
+      security:
+        - bearerAuth: []
+
+  /api/user-vocabulary:
+    get:
+      tags: [vocabulary]
+      summary: 获取生词本
+      description: 获取当前用户的生词本。
+      operationId: getVocabulary
+      responses:
+        "200":
+          description: 成功
+      security:
+        - bearerAuth: []
+
+    post:
+      tags: [vocabulary]
+      summary: 添加生词
+      description: 向生词本添加新单词。
+      operationId: addWord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lemma]
+              properties:
+                lemma:
+                  type: string
+      responses:
+        "201":
+          description: 添加成功
+      security:
+        - bearerAuth: []
+
+  # ============================================================================
+  # 管理后台
+  # ============================================================================
+
+  /api/admin/users:
+    get:
+      tags: [admin]
+      summary: 获取用户列表
+      description: 获取所有用户列表（仅管理员）。
+      operationId: adminGetUsers
+      responses:
+        "200":
+          description: 成功
+      security:
+        - bearerAuth: []
+
+  /api/admin/videos:
+    get:
+      tags: [admin]
+      summary: 获取视频列表
+      description: 获取所有视频列表（仅管理员）。
+      operationId: adminGetVideos
+      responses:
+        "200":
+          description: 成功
+      security:
+        - bearerAuth: []
+
+  /api/admin/settings:
+    get:
+      tags: [admin]
+      summary: 获取系统设置
+      description: 获取全局系统设置（仅管理员）。
+      operationId: adminGetSettings
+      responses:
+        "200":
+          description: 成功
+      security:
+        - bearerAuth: []
+
+    post:
+      tags: [admin]
+      summary: 更新系统设置
+      description: 更新全局系统设置（仅管理员）。
+      operationId: adminUpdateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: 更新成功
+      security:
+        - bearerAuth: []
+
+# ============================================================================
+# 组件定义
+# ============================================================================
+
+components:
+  # ---------------------------------------------------------------------------
+  # 安全方案
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase JWT token
+
+  # ---------------------------------------------------------------------------
+  # 通用响应
+  # ---------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimitExceeded:
+      description: 请求过于频繁
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: 重试等待时间（秒）
+    PayloadTooLarge:
+      description: 请求体过大
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  # ---------------------------------------------------------------------------
+  # 数据模型
+  # ---------------------------------------------------------------------------
+  schemas:
+    # --- 通用 ---
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+
+    # --- 字幕 ---
+    TranscriptSegment:
+      type: object
+      properties:
+        startTime:
+          type: number
+          description: 开始时间（秒）
+        endTime:
+          type: number
+          description: 结束时间（秒）
+        text:
+          type: string
+          description: 原始文本
+        textZh:
+          type: string
+          description: 翻译文本（可选）
+
+    TranscriptResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            videoId:
+              type: string
+            metadata:
+              $ref: "#/components/schemas/VideoMetadata"
+            transcript:
+              type: array
+              items:
+                $ref: "#/components/schemas/TranscriptSegment"
+            cached:
+              type: boolean
+
+    VideoMetadata:
+      type: object
+      properties:
+        videoId:
+          type: string
+        title:
+          type: string
+        authorName:
+          type: string
+        thumbnailUrl:
+          type: string
+        providerUrl:
+          type: string
+
+    # --- AI 分析 ---
+    AnalysisResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            videoId:
+              type: string
+            transcript:
+              type: array
+              items:
+                $ref: "#/components/schemas/TranscriptSegment"
+            analysis:
+              $ref: "#/components/schemas/VideoAnalysis"
+            cached:
+              type: boolean
+            degraded:
+              type: boolean
+              description: 是否为降级结果
+            message:
+              type: string
+              description: 降级消息
+
+    VideoAnalysis:
+      type: object
+      properties:
+        summary:
+          type: string
+        takeaways:
+          type: array
+          items:
+            type: string
+        suggestedQuestions:
+          type: array
+          items:
+            type: string
+        highlights:
+          type: array
+          items:
+            $ref: "#/components/schemas/Highlight"
+
+    Highlight:
+      type: object
+      properties:
+        startTime:
+          type: number
+        endTime:
+          type: number
+        title:
+          type: string
+        quote:
+          type: string
+        reason:
+          type: string
+
+    # --- 关键时刻 ---
+    MomentsResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            moments:
+              type: array
+              items:
+                $ref: "#/components/schemas/KeyMoment"
+            mode:
+              type: string
+              enum: [smart, fast]
+            cached:
+              type: boolean
+
+    KeyMoment:
+      type: object
+      properties:
+        title:
+          type: string
+        title_zh:
+          type: string
+        timestamp:
+          type: string
+          pattern: "^(?:\\d{1,2}:)?\\d{1,2}:\\d{2}-(?:\\d{1,2}:)?\\d{1,2}:\\d{2}$"
+        quote:
+          type: string
+        quote_zh:
+          type: string
+        reason:
+          type: string
+        reason_zh:
+          type: string
+
+    # --- 摘要 ---
+    SummaryResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            takeaways:
+              type: array
+              items:
+                $ref: "#/components/schemas/SummaryTakeaway"
+
+    SummaryTakeaway:
+      type: object
+      properties:
+        label:
+          type: string
+        label_zh:
+          type: string
+        insight:
+          type: string
+        insight_zh:
+          type: string
+        timestamps:
+          type: array
+          items:
+            type: string
+
+    # --- 对话 ---
+    ChatResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            answer:
+              type: string
+            citations:
+              type: array
+              items:
+                $ref: "#/components/schemas/Citation"
+
+    Citation:
+      type: object
+      properties:
+        startTime:
+          type: number
+        endTime:
+          type: number
+        quote:
+          type: string
+
+    # --- 词义 ---
+    WordDefinitionsResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            definitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/WordDefinition"
+
+    WordDefinition:
+      type: object
+      properties:
+        lemma:
+          type: string
+        phonetic:
+          type: string
+        partOfSpeech:
+          type: string
+        definitionZh:
+          type: string
+        definitionEn:
+          type: string
+        exampleEn:
+          type: string
+        exampleZh:
+          type: string
+
+    # --- 笔记 ---
+    NotesResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserNote"
+
+    UserNote:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        videoId:
+          type: string
+        body:
+          type: string
+        timestampSeconds:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        videoTitle:
+          type: string
+
+    # --- 用户 ---
+    UserResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+            tier:
+              type: string
+              enum: [free, pro, max]
+            dailyUsed:
+              type: integer
+            dailyLimit:
+              type: integer
