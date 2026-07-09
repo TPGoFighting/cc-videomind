@@ -959,6 +959,7 @@ function parseJsonContent(content: string) {
   // 从 thinking 文本中智能提取 JSON（处理 LongCat 等 API 返回 thinking 块的情况）
   const thinkingJson = extractJsonFromThinking(content);
   if (thinkingJson) {
+    debugLog("[JSON] extractJsonFromThinking 提取成功, 长度: %d", thinkingJson.length);
     try {
       return JSON.parse(thinkingJson) as unknown;
     } catch {
@@ -972,6 +973,8 @@ function parseJsonContent(content: string) {
         // 最终失败
       }
     }
+  } else {
+    debugLog("[JSON] extractJsonFromThinking 未提取到 JSON, 内容预览: %s", content.slice(0, 200));
   }
 
   throw new Error("AI provider did not return valid JSON.");
