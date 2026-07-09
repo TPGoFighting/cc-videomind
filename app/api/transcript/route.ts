@@ -120,6 +120,15 @@ export async function POST(request: Request) {
 
       const [metadata, transcript] = await Promise.all([fetchMeta(), fetchTrans()]);
 
+      // Fire-and-forget: async vectorize (non-blocking)
+      if (userId && Array.isArray(transcript) && transcript.length) {
+        import("@/lib/async/task-manager")
+          .then(({ createTask }) =>
+            createTask("vectorize", videoId!, userId, { videoId, title: metadata.title })
+          )
+          .catch(() => {});
+      }
+
       return successResponse({
         videoId,
         metadata,

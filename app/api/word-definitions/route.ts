@@ -17,54 +17,57 @@ export async function POST(request: Request) {
     scope: "word-definitions",
     rateLimit: { maxRequests: 10, windowMs: 60_000 },
   }).wrap(request, async () => {
-      const userId = await getAuthenticatedUserId(request);
+    const userId = await getAuthenticatedUserId(request);
 
-  const parsed = await readJson(request, WordDefinitionsRequestSchema);
-  if (!parsed.ok) return parsed.response;
+    const parsed = await readJson(request, WordDefinitionsRequestSchema);
+    if (!parsed.ok) return parsed.response;
 
-  const { lemmas } = parsed.data;
+    const { lemmas } = parsed.data;
 
-  // 第1步：查询已缓存的定义
-  let cached: WordDefinition[] = [];
-  try {
-    cached = await getCachedWordDefinitions(lemmas);
-  } catch (err) {
-    console.error("[WordDefs] 缓存查询失败（表可能不存在）:", err);
-  }
-  const cachedLemmas = new Set(cached.map((d) => d.lemma));
-  const missing = lemmas.filter((l) => !cachedLemmas.has(l));
-
-  // 第2步：AI 批量生成缺失的词义
-  let generated: WordDefinition[] = [];
-  if (missing.length > 0) {
+    // 第1步：查询已缓存的定义
+    let cached: WordDefinition[] = [];
     try {
-      const provider = await getAiProvider(userId ?? undefined);
-      const t0 = Date.now();
-      const degradedResult = await withWordDefsDegradation(
-        () => provider.defineWords({ lemmas: missing }),
-      );
-      const { data: generatedDefs } = buildDegradedResponse(degradedResult, []);
-      generated = generatedDefs ?? [];
-      recordAiCall({
-        provider: "default", model: "default", feature: "word-definitions",
-        inputTokens: missing.length * 10,
-        outputTokens: Math.ceil(JSON.stringify(generated).length / 4),
-        elapsedMs: Date.now() - t0, success: generated.length > 0,
-        userId: userId ?? undefined,
-      });
-      // 写入缓存（非致命）
-      if (generated.length > 0) {
-        upsertWordDefinitions(generated).catch((err) =>
-          console.error("[WordDefs] 缓存写入失败（表可能不存在）:", err)
-        );
-      }
+      cached = await getCachedWordDefinitions(lemmas);
     } catch (err) {
-      console.error("[WordDefs] AI 词义生成失败:", err);
+      console.error("[WordDefs] 缓存查询失败（表可能不存在）:", err);
     }
-  }
+    const cachedLemmas = new Set(cached.map((d) => d.lemma));
+    const missing = lemmas.filter((l) => !cachedLemmas.has(l));
 
-  return successResponse({
-    definitions: [...cached, ...generated],
+    // 第2步：AI 批量生成缺失的词义
+    let generated: WordDefinition[] = [];
+    if (missing.length > 0) {
+      try {
+        const provider = await getAiProvider(userId ?? undefined);
+        const t0 = Date.now();
+        const degradedResult = await withWordDefsDegradation(
+          () => provider.defineWords({ lemmas: missing }),
+        );
+        const { data: generatedDefs } = buildDegradedResponse(degradedResult, []);
+        generated = generatedDefs ?? [];
+        recordAiCall({
+          provider: "default",
+          model: "default",
+          feature: "word-definitions",
+          inputTokens: missing.length * 10,
+          outputTokens: Math.ceil(JSON.stringify(generated).length / 4),
+          elapsedMs: Date.now() - t0,
+          success: generated.length > 0,
+          userId: userId ?? undefined,
+        });
+        // 写入缓存（非致命）
+        if (generated.length > 0) {
+          upsertWordDefinitions(generated).catch((err) =>
+            console.error("[WordDefs] 缓存写入失败（表可能不存在）:", err)
+          );
+        }
+      } catch (err) {
+        console.error("[WordDefs] AI 词义生成失败:", err);
+      }
+    }
+
+    return successResponse({
+      definitions: [...cached, ...generated],
+    });
   });
-});
 }
