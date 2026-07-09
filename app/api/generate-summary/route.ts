@@ -17,9 +17,9 @@ export async function POST(request: Request) {
     scope: "generate-summary",
     rateLimit: { maxRequests: 8, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const tStart = Date.now();
+      const tStart = Date.now();
 
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, GenerateSummaryRequestSchema);
   if (!parsed.ok) {
@@ -106,5 +106,6 @@ export async function POST(request: Request) {
     console.error("[API:Summary] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Summary] 总耗时(失败): %dms", Date.now() - tStart);
     return errorResponse("summary_failed", "Summary could not be generated from the transcript.", 502);
+  }
   });
 }

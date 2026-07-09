@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     scope: "notes",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await readJson(request, SaveRequestSchema);
+      const parsed = await readJson(request, SaveRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -124,7 +124,7 @@ export async function DELETE(request: Request) {
     scope: "notes",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await readJson(request, DeleteRequestSchema);
+      const parsed = await readJson(request, DeleteRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }

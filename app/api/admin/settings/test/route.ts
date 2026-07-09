@@ -22,36 +22,37 @@ export async function POST(request: Request) {
     scope: "admin-settings-test",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
-    if (!userId) {
-      return NextResponse.json({ error: "请先登录" }, { status: 401 });
-    }
+      const userId = await getAuthenticatedUserId(request);
+      if (!userId) {
+        return NextResponse.json({ error: "请先登录" }, { status: 401 });
+      }
 
-  const parsed = await readJson(request, TestSchema);
-  if (!parsed.ok) return parsed.response;
+      const parsed = await readJson(request, TestSchema);
+      if (!parsed.ok) return parsed.response;
 
-  const { provider, apiKey, baseUrl, model } = parsed.data;
+      const { provider, apiKey, baseUrl, model } = parsed.data;
 
-  try {
-    if (provider === "gemini") {
-      const p = new GeminiProvider(apiKey, model);
-      await p.defineWords({ lemmas: ["test"] });
-    } else {
-      // openai-compatible / deepseek / 自定义 都走 OpenAI 兼容协议
-      const p = new OpenAiCompatibleProvider(
-        apiKey,
-        baseUrl || "https://api.openai.com/v1",
-        model,
-      );
-      await p.defineWords({ lemmas: ["test"] });
-    }
+      try {
+        if (provider === "gemini") {
+          const p = new GeminiProvider(apiKey, model);
+          await p.defineWords({ lemmas: ["test"] });
+        } else {
+          // openai-compatible / deepseek / 自定义 都走 OpenAI 兼容协议
+          const p = new OpenAiCompatibleProvider(
+            apiKey,
+            baseUrl || "https://api.openai.com/v1",
+            model,
+          );
+          await p.defineWords({ lemmas: ["test"] });
+        }
 
-    return NextResponse.json({
-      ok: true,
-      message: "连接成功！AI 服务可正常访问。",
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "未知错误";
-    return NextResponse.json({ ok: false, error: `连接失败: ${msg}` });
+        return NextResponse.json({
+          ok: true,
+          message: "连接成功！AI 服务可正常访问。",
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "未知错误";
+        return NextResponse.json({ ok: false, error: `连接失败: ${msg}` });
+      }
   });
 }

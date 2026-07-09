@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     scope: "chat",
     rateLimit: { maxRequests: 20, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
@@ -44,5 +44,6 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Chat answer failed", error);
     return errorResponse("chat_failed", "Question could not be answered from the transcript.", 502);
+  }
   });
 }

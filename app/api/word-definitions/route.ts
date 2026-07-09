@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     scope: "word-definitions",
     rateLimit: { maxRequests: 10, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, WordDefinitionsRequestSchema);
   if (!parsed.ok) return parsed.response;

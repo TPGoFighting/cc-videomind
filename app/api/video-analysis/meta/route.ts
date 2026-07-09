@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     scope: "video-meta",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await request.json() as Record<string, unknown>;
+      const parsed = await request.json() as Record<string, unknown>;
   const input = String(parsed.videoId ?? "").trim();
   if (!input) {
     return errorResponse("invalid_input", "videoId is required.", 400);

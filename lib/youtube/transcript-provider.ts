@@ -1,5 +1,6 @@
 import { type TranscriptSegment } from "@/lib/types";
 import { fetchWithTimeout } from "@/lib/utils/http";
+import { YoutubeTranscriptPackageProvider } from "./youtube-transcript-pkg-provider";
 // ═══════════════════════════════════════════════════════════════════════════════
 // 类型定义
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -877,7 +878,9 @@ export function getTranscriptProvider(): TranscriptProvider {
   if (provider === "youtube") {
     return new FallbackTranscriptProvider(
       new InnertubeTranscriptProvider(),      // 主层：InnerTube API（内置 3 客户端回退）
-      new ExternalApiTranscriptProvider()     // 备选：Supadata API
+      new YouTubeTranscriptProvider(),        // 中层：HTML 页面抓取（无需 API key）
+      new YoutubeTranscriptPackageProvider(), // 中层：youtube-transcript npm 包
+      new ExternalApiTranscriptProvider()     // 底层：Supadata API（需 API key）
     );
   }
 

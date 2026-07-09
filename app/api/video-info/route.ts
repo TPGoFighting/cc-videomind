@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     scope: "video-info",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await readJson(request, RequestSchema);
+      const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[video-info] YouTube元数据解析失败:", error);
     return errorResponse("metadata_unavailable", "Could not load YouTube metadata for this video.", 502);
+  }
   });
 }
 

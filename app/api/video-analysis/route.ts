@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     scope: "video-analysis",
     rateLimit: { maxRequests: 8, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await readJson(request, RequestSchema);
+      const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -215,5 +215,6 @@ export async function POST(request: Request) {
         ? `分析失败：${error.message}`
         : "Video analysis could not be generated from the transcript.";
     return errorResponse("analysis_failed", message, 502);
+  }
   });
 }

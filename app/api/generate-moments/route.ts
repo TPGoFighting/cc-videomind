@@ -17,9 +17,9 @@ export async function POST(request: Request) {
     scope: "generate-moments",
     rateLimit: { maxRequests: 8, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const tStart = Date.now();
+      const tStart = Date.now();
 
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, GenerateMomentsRequestSchema);
   if (!parsed.ok) {
@@ -111,5 +111,6 @@ export async function POST(request: Request) {
     console.error("[API:Moments] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Moments] 总耗时(失败): %dms", Date.now() - tStart);
     return errorResponse("moments_failed", "Key moments could not be generated.", 502);
+  }
   });
 }

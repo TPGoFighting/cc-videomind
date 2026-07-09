@@ -98,7 +98,7 @@ export async function POST(request: Request) {
     scope: "video-analysis-upload",
     rateLimit: { maxRequests: 8, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
   const quota = await checkAnalysisQuota(userId, request);
   if (!quota.allowed) {
     const msg = quota.anonymous
@@ -243,5 +243,6 @@ export async function POST(request: Request) {
         ? `导入分析失败：${error.message}`
         : "Failed to import and analyze the local media file.";
     return errorResponse("analysis_failed", message, 502);
+  }
   });
 }

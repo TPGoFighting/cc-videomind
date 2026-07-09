@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     scope: "sync-notebook",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "用户鉴权失败，请重新登录。", 401);
   }

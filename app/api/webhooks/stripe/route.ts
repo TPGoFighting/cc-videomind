@@ -23,10 +23,10 @@ export async function POST(request: Request) {
     skipCsrf: true,
     maxBodySize: 256_000,
   }).wrap(request, async () => {
-    const contentLength = Number(request.headers.get("content-length") ?? 0);
-    if (contentLength > 256_000) {
-      return errorResponse("payload_too_large", "Webhook payload is too large.", 413);
-    }
+      const contentLength = Number(request.headers.get("content-length") ?? 0);
+      if (contentLength > 256_000) {
+        return errorResponse("payload_too_large", "Webhook payload is too large.", 413);
+      }
 
   const signature = request.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -62,6 +62,7 @@ export async function POST(request: Request) {
     return successResponse({ received: true, duplicate: false });
   } catch {
     return errorResponse("webhook_processing_failed", "Stripe webhook could not be processed.", 500);
+  }
   });
 }
 

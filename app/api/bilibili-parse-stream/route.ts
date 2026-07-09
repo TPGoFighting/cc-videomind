@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     scope: "bili-parse-stream",
     rateLimit: { maxRequests: 12, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const { searchParams } = new URL(request.url);
+      const { searchParams } = new URL(request.url);
   const rawVideoId = searchParams.get("videoId");
 
   if (!rawVideoId) {

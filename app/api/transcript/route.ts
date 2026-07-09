@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     scope: "transcript",
     rateLimit: { maxRequests: 12, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await readJson(request, RequestSchema);
+      const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -41,5 +41,6 @@ export async function POST(request: Request) {
         ? `转录获取失败：${error.message}`
         : "No transcript could be loaded for this video.";
     return errorResponse("transcript_unavailable", message, 502);
+  }
   });
 }

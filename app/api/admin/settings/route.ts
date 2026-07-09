@@ -113,46 +113,47 @@ export async function PUT(request: Request) {
     scope: "admin-settings",
     rateLimit: { maxRequests: 60, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
-    if (!userId) {
-      return NextResponse.json({ error: "请先登录" }, { status: 401 });
-    }
-
-  // 所有写入操作均需要管理员权限
-  const admin = await isAdmin(userId);
-  if (!admin) {
-    return errorResponse("forbidden", "仅管理员可修改配置", 403);
-  }
-
-  const parsed = await readJson(request, UpdateSchema);
-  if (!parsed.ok) {
-    return parsed.response;
-  }
-
-  const { scope, key, value, targetUserId } = parsed.data;
-
-  try {
-    if (scope === "personal") {
-      const uid = targetUserId ?? userId;
-      if (value === "") {
-        await deleteUserAiSetting(uid, key);
-      } else {
-        await updateUserAiSetting(uid, key, value);
+      const userId = await getAuthenticatedUserId(request);
+      if (!userId) {
+        return NextResponse.json({ error: "请先登录" }, { status: 401 });
       }
-    } else {
-      await updateAppSetting(key, value, userId);
-    }
 
-    // 写入后清除 provider 缓存（下次 AI 调用即生效）
-    clearAiProviderCache();
-    return NextResponse.json({ ok: true, key, scope: scope ?? "global" });
-  } catch (err) {
-    console.error("[Admin:Settings] 更新失败:", err);
-    return errorResponse(
-      "update_failed",
-      "配置保存失败，请稍后重试。",
-      500,
-    );
+      // 所有写入操作均需要管理员权限
+      const admin = await isAdmin(userId);
+      if (!admin) {
+        return errorResponse("forbidden", "仅管理员可修改配置", 403);
+      }
+
+      const parsed = await readJson(request, UpdateSchema);
+      if (!parsed.ok) {
+        return parsed.response;
+      }
+
+      const { scope, key, value, targetUserId } = parsed.data;
+
+      try {
+        if (scope === "personal") {
+          const uid = targetUserId ?? userId;
+          if (value === "") {
+            await deleteUserAiSetting(uid, key);
+          } else {
+            await updateUserAiSetting(uid, key, value);
+          }
+        } else {
+          await updateAppSetting(key, value, userId);
+        }
+
+        // 写入后清除 provider 缓存（下次 AI 调用即生效）
+        clearAiProviderCache();
+        return NextResponse.json({ ok: true, key, scope: scope ?? "global" });
+      } catch (err) {
+        console.error("[Admin:Settings] 更新失败:", err);
+        return errorResponse(
+          "update_failed",
+          "配置保存失败，请稍后重试。",
+          500,
+        );
+      }
   });
 }
 

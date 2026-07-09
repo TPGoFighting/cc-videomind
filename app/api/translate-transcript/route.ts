@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     scope: "translate-transcript",
     rateLimit: { maxRequests: 3, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, TranslateTranscriptRequestSchema);
   if (!parsed.ok) return parsed.response;

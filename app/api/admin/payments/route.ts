@@ -81,10 +81,10 @@ export async function PUT(request: Request) {
     scope: "admin-payments",
     rateLimit: { maxRequests: 60, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
-    if (!userId || !(await isAdmin(userId))) {
-      return errorResponse("forbidden", "仅管理员可访问", 403);
-    }
+      const userId = await getAuthenticatedUserId(request);
+      if (!userId || !(await isAdmin(userId))) {
+        return errorResponse("forbidden", "仅管理员可访问", 403);
+      }
 
   const parsed = await readJson(request, UpdateSchema);
   if (!parsed.ok) {

@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     scope: "payment-submit",
     rateLimit: { maxRequests: 20, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录", 401);
   }

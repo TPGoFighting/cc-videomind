@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     scope: "user-quotes",
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }
@@ -112,7 +112,7 @@ export async function DELETE(request: Request) {
     maxBodySize: 16 * 1024,
     scope: "user-quotes",
   }).wrap(request, async () => {
-    const userId = await getAuthenticatedUserId(request);
+      const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }

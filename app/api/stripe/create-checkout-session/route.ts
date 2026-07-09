@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     scope: "stripe-checkout",
     rateLimit: { maxRequests: 5, windowMs: 60_000 },
   }).wrap(request, async () => {
-    const parsed = await readJson(request, RequestSchema);
+      const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -58,6 +58,7 @@ export async function POST(request: Request) {
     return successResponse({ url: session.url });
   } catch {
     return errorResponse("checkout_failed", "Checkout session could not be created.", 502);
+  }
   });
 }
 

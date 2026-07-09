@@ -373,8 +373,214 @@ export class OpenAiCompatibleProvider implements AiProvider {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("[AI:Chat] API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
         model, errStatus ?? "N/A", errMsg, Date.now() - t0);
-      // 所有错误都返回 null，让 chatJson 继续尝试 fallback 链中的下一个模型
-      // 不要 throw — 网络错误(无status)/400/5xx 都是模型级别的失败，不该阻断整个链
+      return null;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AnthropicProvider — Anthropic 原生 API（Claude / LongCat 等）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export class AnthropicProvider implements AiProvider {
+  constructor(
+    private readonly apiKey: string,
+    private readonly baseUrl: string,
+    private readonly model: string,
+    private readonly fallbackModels: string[] = [],
+  ) {}
+
+  async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
+    const content = await this.chatJson(buildAnalysisPrompt(input.title, input.transcript));
+    const value = parseJsonContent(content);
+    const direct = VideoAnalysisSchema.safeParse(value);
+    if (direct.success) return direct.data;
+    return repairAnalysis(value, input.transcript, direct.error);
+  }
+
+  async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
+    const content = await this.chatJson(buildChatPrompt(input.question, input.transcript));
+    return parseChatAnswer(content, input.transcript);
+  }
+
+  async generateKeyMoments(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    mode: MomentsMode;
+    theme?: string;
+    targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
+  }): Promise<KeyMoment[]> {
+    const lang = input.targetLanguage ?? "zh";
+
+    if (input.mode === "fast") {
+      const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
+
+      const chunkResults = await runConcurrent(3, chunks, async (chunk) => {
+        const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
+        const content = await this.chatJson(prompt);
+        const candidates = parseKeyMoments(content).slice(0, 2);
+        return candidates;
+      });
+      const allCandidates = chunkResults.flat();
+
+      if (allCandidates.length === 0) {
+        if (input.debug) fillDebug(input.debug, { model: this.model, finalCount: 0 });
+        return [];
+      }
+
+      const reducePrompt = buildKeyMomentsReducePrompt(input.title, allCandidates, input.transcript, lang);
+      const reduceContent = await this.chatJson(reducePrompt);
+      const final = parseKeyMoments(reduceContent);
+      const validated = validateAndDedupMoments(final, input.transcript).slice(0, 5);
+      if (input.debug) {
+        fillDebug(input.debug, {
+          model: this.model,
+          promptLength: reducePrompt.length,
+          rawResponseLength: reduceContent.length,
+          rawResponsePreview: reduceContent.slice(0, 300),
+          parseCount: final.length,
+          validateCount: validated.length,
+        });
+      }
+      return validated;
+    }
+
+    // smart mode
+    const prompt = buildKeyMomentsPrompt(input.title, input.transcript, lang, input.theme);
+    const content = await this.chatJson(prompt);
+    const parsed = parseKeyMoments(content);
+    const validated = validateAndDedupMoments(parsed, input.transcript).slice(0, 8);
+    if (input.debug) {
+      fillDebug(input.debug, {
+        model: this.model,
+        promptLength: prompt.length,
+        rawResponseLength: content.length,
+        rawResponsePreview: content.slice(0, 300),
+        parseCount: parsed.length,
+        validateCount: validated.length,
+      });
+    }
+    return validated;
+  }
+
+  async generateStructuredSummary(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    targetLanguage?: "zh" | "en";
+  }): Promise<SummaryTakeaway[]> {
+    const lang = input.targetLanguage ?? "zh";
+    const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
+    const content = await this.chatJson(prompt);
+    const parsed = parseSummaryTakeaways(content);
+    return validateSummaryTakeaways(parsed, input.transcript).slice(0, 6);
+  }
+
+  async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
+    if (input.lemmas.length === 0) return [];
+
+    const BATCH_SIZE = 30;
+    const batches: string[][] = [];
+    for (let i = 0; i < input.lemmas.length; i += BATCH_SIZE) {
+      batches.push(input.lemmas.slice(i, i + BATCH_SIZE));
+    }
+
+    const batchResults = await runConcurrent(3, batches, async (batch) => {
+      const prompt = buildWordDefinitionsPrompt(batch);
+      const content = await this.chatJson(prompt);
+      const value = parseJsonContent(content);
+
+      if (isRecord(value) && Array.isArray(value.definitions)) {
+        return value.definitions
+          .filter(isRecord)
+          .map((d) => {
+            const result = WordDefinitionSchema.safeParse({
+              lemma: d.lemma ?? "",
+              phonetic: d.phonetic,
+              partOfSpeech: d.partOfSpeech,
+              definitionZh: d.definitionZh ?? "",
+              definitionEn: d.definitionEn,
+              exampleEn: d.exampleEn,
+              exampleZh: d.exampleZh,
+            });
+            return result.success ? result.data : null;
+          })
+          .filter((d): d is WordDefinition => d !== null);
+      }
+      return [];
+    });
+
+    return batchResults.flat();
+  }
+
+  async translateTranscript(input: { segments: TranscriptSegment[]; targetLanguage?: string }): Promise<TranscriptSegment[]> {
+    if (input.segments.length === 0) return [];
+
+    const targetLang = input.targetLanguage || "zh-CN";
+    const prompt = buildTranscriptTranslationPrompt(input.segments, targetLang);
+    const content = await this.chatJson(prompt);
+    const parsed = parseIndexedTranslation(content, input.segments.length);
+
+    return input.segments.map((seg, i) => ({
+      ...seg,
+      text_zh: parsed.get(i) ?? seg.text
+    }));
+  }
+
+  private async chatJson(prompt: string): Promise<string> {
+    const modelChain = [this.model, ...this.fallbackModels];
+    const lastErrorMessages: string[] = [];
+
+    for (const modelName of modelChain) {
+      const result = await this.tryChat(modelName, prompt);
+      if (result) return result;
+      lastErrorMessages.push(`${modelName}: no response`);
+    }
+
+    console.error("[AI:Chat] 所有模型均失败! chain=%s, baseUrl=%s, errors=%s",
+      modelChain.join(","), this.baseUrl, lastErrorMessages.join(" | "));
+    throw new Error(`AI provider returned no response — tried ${modelChain.length} models.`);
+  }
+
+  private async tryChat(model: string, prompt: string): Promise<string | null> {
+    const t0 = Date.now();
+    try {
+      const url = `${this.baseUrl.replace(/\/$/, "")}/v1/messages`;
+      const body = {
+        model,
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      };
+      const data = await fetchJsonWithTimeout<Record<string, unknown>>(url, {
+        method: "POST",
+        timeoutMs: 180000,
+        service: "AI provider (Anthropic)",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(body),
+      });
+
+      // Anthropic response: { content: [{ type: "text", text: "..." }] }
+      const content = data.content;
+      if (Array.isArray(content)) {
+        const textBlock = content.find((b: Record<string, unknown>) => b.type === "text");
+        if (textBlock && typeof textBlock.text === "string") {
+          debugLog("[AI:Chat] Anthropic API 调用成功, model=%s, 耗时 %dms, len=%d", model, Date.now() - t0, textBlock.text.length);
+          // Debug: log first 500 chars to see what the model returned
+          debugLog("[AI:Chat] Anthropic 响应预览: %s", textBlock.text.slice(0, 500));
+          return textBlock.text;
+        }
+      }
+      console.error("[AI:Chat] Anthropic 响应格式异常, model=%s, data=%s", model, JSON.stringify(data).slice(0, 300));
+      return null;
+    } catch (error) {
+      const errStatus = error instanceof ExternalServiceError ? error.status : undefined;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("[AI:Chat] Anthropic API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
+        model, errStatus ?? "N/A", errMsg, Date.now() - t0);
       return null;
     }
   }
@@ -687,8 +893,19 @@ export async function getAiProvider(userId?: string): Promise<AiProvider> {
     );
   }
 
+  if (config.provider === "anthropic") {
+    const { getModelFallbackChain } = await import("@/lib/ai/provider-registry");
+    const chain = getModelFallbackChain(config.model || "claude-3-5-sonnet-20241022");
+    return new AnthropicProvider(
+      config.apiKey,
+      config.baseUrl || "https://api.anthropic.com",
+      chain[0],
+      chain.slice(1),
+    );
+  }
+
   throw new Error(
-    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", or "gemini".`,
+    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", "gemini", or "anthropic".`,
   );
 }
 
