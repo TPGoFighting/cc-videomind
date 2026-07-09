@@ -4,7 +4,7 @@
 
 📺 **演示视频：** [点击观看 Bilibili 演示](https://www.bilibili.com/video/BV1nJV36KEnV/?spm_id_from=333.1387.homepage.video_card.click)
 
-🌐 **在线体验：** [https://video.tpgofighting.top](https://video.tpgofighting.top)
+🌐 **在线体验：** [https://teachplayer.tpgofighting.top](https://teachplayer.tpgofighting.top)
 
 ---
 
@@ -14,6 +14,7 @@
 |------|------|
 | **🎯 一键解析** | 粘贴 YouTube URL 自动拉取视频元数据 + 字幕 |
 | **📝 AI 摘要** | 大模型自动生成视频核心摘要和分段要点 |
+| **🔑 关键时刻** | AI 提取视频中最有价值的学习片段，双语展示 |
 | **💬 AI 对话** | 基于视频内容提问，AI 结合字幕上下文作答 |
 | **📖 单词/句子收藏** | 点击字幕中的单词/句子，一键收藏到生词本或语料库 |
 | **📒 个人笔记** | 每条视频独立笔记，支持 Markdown |
@@ -29,7 +30,7 @@
 
 | 技术 | 用途 |
 |------|------|
-| **Next.js (App Router)** | React 全栈框架 |
+| **Next.js 16 (App Router)** | React 全栈框架 |
 | **TypeScript** | 类型安全 |
 | **Tailwind CSS** | 样式系统 |
 | **shadcn/ui** | UI 组件库 |
@@ -40,16 +41,25 @@
 | 技术 | 用途 |
 |------|------|
 | **Supabase** | 数据库 + 认证 + RLS |
-| **OpenAI Compatible API** | AI 推理（支持多种模型回退） |
-| **YouTube Transcript API** | 字幕提取（Innertube → External API 回退链） |
+| **Anthropic API (LongCat)** | AI 推理（支持 thinking 块解析） |
+| **YouTube Transcript API** | 字幕提取（4 层回退链） |
 | **Supadata API** | 字幕备选来源 |
+
+### 字幕提取回退链
+
+```
+1. YouTube InnerTube API (Android/Web 并发)
+2. YouTube HTML 页面解析
+3. youtube-transcript npm 包
+4. Supadata 外部 API
+```
 
 ### 部署
 
 | 平台 | 用途 |
 |------|------|
-| **Vercel** | 前端 + API 路由（Next.js `next build`；平台自动部署） |
-| **Cloudflare Workers** | 边缘运行（通过 `@opennextjs/cloudflare`，对应 `npm run deploy`） |
+| **自建服务器** | Next.js 应用（PM2 + Nginx） |
+| **Cloudflare Tunnel** | HTTPS 反向代理 |
 | **Supabase** | 托管数据库 + 认证服务 |
 
 ---
@@ -68,23 +78,33 @@ npm run typecheck
 
 # 构建生产版本
 npm run build
+
+# 启动生产服务
+npm start
 ```
 
 ### 环境变量
 
 ```env
+# App
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
 
-# AI Provider（任选一组）
-OPENAI_API_KEY=          # OpenAI 兼容 API
-DEEPSEEK_API_KEY=        # DeepSeek
-GEMINI_API_KEY=          # Google Gemini
+# AI Provider
+AI_PROVIDER=anthropic
+AI_API_BASE_URL=https://api.longcat.chat/anthropic
+AI_API_KEY=
+AI_MODEL=LongCat-2.0
 
-# Supadata（字幕提取备选）
+# Transcript
+TRANSCRIPT_PROVIDER=supadata
 SUPADATA_API_KEY=
+
+# Debug
+DEBUG_AI=true
 ```
 
 ---
@@ -93,49 +113,107 @@ SUPADATA_API_KEY=
 
 ```
 app/
-├── api/                  # API 路由（28 个）
-├── video/[videoId]/     # 视频工作区（核心页面）
-├── review/              # SM-2 间隔复习
-├── history/             # 浏览历史
-├── vocabulary/          # 生词本
-├── quotes/              # 句子收藏
-└── notes/               # 笔记管理
+├── api/                    # API 路由（28 个）
+│   ├── transcript/         # 字幕提取
+│   ├── analyze/            # AI 视频分析
+│   ├── word-definitions/   # 词义生成
+│   ├── generate-moments/   # 关键时刻提取
+│   ├── generate-summary/   # 内容摘要
+│   ├── chat/               # AI 对话
+│   └── translate-transcript/ # 字幕翻译 (SSE)
+├── video/[videoId]/       # 视频工作区（核心页面）
+├── review/                # SM-2 间隔复习
+├── history/               # 浏览历史
+├── vocabulary/            # 生词本
+├── quotes/                # 句子收藏
+└── notes/                 # 笔记管理
 
 lib/
-├── ai/                  # AI Provider（OpenAI / Gemini / 回退链）
-├── youtube/             # YouTube 集成（解析、元数据、字幕）
-├── supabase/            # 数据库客户端 + 缓存
-├── security/            # 安全中间件（CSRF / 限速）
-└── utils/               # 工具函数
+├── ai/                    # AI Provider（支持多模型）
+│   ├── provider.ts        # Provider 核心实现
+│   ├── prompts.ts         # Prompt 模板
+│   └── prompts-learn.ts   # 学习功能 Prompt
+├── youtube/               # YouTube 集成
+│   ├── transcript-provider.ts  # 4 层字幕回退链
+│   └── metadata.ts        # 元数据获取
+├── bilibili/              # B站集成
+├── supabase/              # 数据库客户端 + 缓存
+├── security/              # 安全中间件（限速/CSRF）
+└── utils/                 # 工具函数
 
 components/
-├── video-workspace.tsx  # 视频工作区主组件
-├── transcript-viewer.tsx# 字幕查看器
-├── chat-panel.tsx       # AI 对话面板
-├── notes-panel.tsx      # 笔记面板
-├── word-card.tsx        # 单词卡片
-└── review-flashcard.tsx # 复习闪卡
+├── video-workspace.tsx    # 视频工作区主组件
+├── transcript-viewer.tsx  # 字幕查看器
+├── chat-panel.tsx         # AI 对话面板
+├── notes-panel.tsx        # 笔记面板
+├── word-card.tsx          # 单词卡片
+└── review-flashcard.tsx   # 复习闪卡
+
+docs/                      # 项目文档（151 个文件）
+├── README.md              # 文档目录索引
+├── AI模型API格式参考.md    # 主流 AI 模型 API 格式对比
+└── 项目API格式需求.md      # 项目 AI API 需求
 ```
 
 ---
 
 ## 🧠 架构亮点
 
-- **Provider/Adapter 模式**：AI 和 Transcript 都通过接口抽象，支持多实现切换回退
-- **智能回退链**：AI 模型支持通过环境变量 `AI_FALLBACK_MODELS` 配置的多模型回退、字幕提取（Innertube → External API）多层回退保障可用性
-- **7 天缓存**：Supabase 缓存视频分析结果，避免重复消耗 API
-- **API 安全**：所有变更状态的 API 路由已通过 `withSecurity`（`lib/security/middleware.ts`）统一接入方法校验 + CSRF（Origin/Referer 白名单）+ 请求体大小限制 + 限流；限流器在 Cloudflare 上走 Durable Objects 共享计数（`RATE_LIMITER`），本地开发回退内存实现
+### 双阶段分析流程
+
+```
+用户输入 URL → /api/transcript (5-30s) → /api/analyze (30-60s)
+                  ↓                           ↓
+              获取字幕                    AI 分析生成
+```
+
+每个阶段独立运行，均在 Cloudflare 100s 超时限制内。
+
+### AI Thinking 块处理
+
+LongCat API 返回 `thinking` 内容块（推理过程），项目通过 `extractJsonFromThinking()` 智能提取 JSON：
+
+1. 从最后一个 `` ```json `` 代码块提取
+2. 通过键名模式查找（`"definitions":`, `"moments":` 等）
+3. 从后向前提取最后一个完整 JSON 对象
+
+### 性能优化
+
+| 优化 | 效果 |
+|------|------|
+| InnerTube 客户端并发 | 节省 12s |
+| 视频时间轮询降频 | React 渲染减少 2.5x |
+| YouTube HTML 缓存 | 重复请求节省 8-12s |
+| 翻译并发提升 | 从 3 提升到 5 批次 |
+| AI 模型回退超时 | 从 60s 降至 30s |
+
+### 安全机制
+
+- **withSecurity 中间件**：统一接入方法校验 + CSRF + 请求体大小限制 + 限流
+- **Durable Objects 限流**：Cloudflare 上共享计数，本地回退内存实现
 - **RLS 保护**：用户数据通过 Supabase Row Level Security 隔离
 
 ---
 
 ## 📱 移动端
 
-安卓 APP 基于 Expo (React Native) 开发，代码在 [`android-app`](https://github.com/TPGoFighting/cc-videomind/tree/android-app) 分支。
+安卓 APP 基于 Expo (React Native) 开发，源码在 [`android-app`](https://github.com/TPGoFighting/cc-videomind/tree/android-app) 分支。
+
+APK 下载：[GitHub Releases](https://github.com/TPGoFighting/cc-videomind/releases)
 
 ---
 
-## 📄 许可证
+## 📚 文档
+
+完整文档见 [`docs/README.md`](docs/README.md)，包含：
+
+- **AI 模型 API 格式参考**：OpenAI / Anthropic / DeepSeek / LongCat 格式对比
+- **项目 API 格式需求**：各功能输入/输出格式说明
+- **API 端点文档**：28 个端点的请求/响应格式
+- **核心库文档**：AI / YouTube / Bilibili / Supabase 模块说明
+- **前端组件文档**：所有 UI 组件的使用说明
+
+---
 
 ## 📄 许可证
 
