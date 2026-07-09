@@ -6,6 +6,8 @@ import { getCachedSummary, upsertSummaryCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
+import { withSummaryDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
+import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { createEmptyDebug, GenerateSummaryRequestSchema } from "@/lib/types";
@@ -77,13 +79,18 @@ export async function POST(request: Request) {
     const tAiStart = Date.now();
     const debug = createEmptyDebug();
     const aiProvider = await getAiProvider(userId ?? undefined);
-    const takeaways = await aiProvider.generateStructuredSummary({
-      title,
-      transcript,
-      targetLanguage: lang,
-      debug
-    });
+    const degradedResult = await withSummaryDegradation(
+      () => aiProvider.generateStructuredSummary({ title, transcript, targetLanguage: lang, debug }),
+    );
+    const { data: takeaways = [] } = buildDegradedResponse(degradedResult, []);
     const tAiEnd = Date.now();
+    recordAiCall({
+      provider: "default", model: "default", feature: "summary",
+      inputTokens: Math.ceil(transcript.length * 50 / 4),
+      outputTokens: Math.ceil(JSON.stringify(takeaways).length / 4),
+      elapsedMs: tAiEnd - tAiStart, success: true,
+      userId: userId ?? undefined, videoId,
+    });
 
     console.log("[API:Summary] AI 生成完成:", {
       elapsedMs: tAiEnd - tAiStart,

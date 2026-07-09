@@ -1,5 +1,7 @@
 import { WordDefinitionsRequestSchema, type WordDefinition } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
+import { withWordDefsDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
+import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import {
@@ -37,7 +39,19 @@ export async function POST(request: Request) {
   if (missing.length > 0) {
     try {
       const provider = await getAiProvider(userId ?? undefined);
-      generated = await provider.defineWords({ lemmas: missing });
+      const t0 = Date.now();
+      const degradedResult = await withWordDefsDegradation(
+        () => provider.defineWords({ lemmas: missing }),
+      );
+      const { data: generatedDefs } = buildDegradedResponse(degradedResult, []);
+      generated = generatedDefs ?? [];
+      recordAiCall({
+        provider: "default", model: "default", feature: "word-definitions",
+        inputTokens: missing.length * 10,
+        outputTokens: Math.ceil(JSON.stringify(generated).length / 4),
+        elapsedMs: Date.now() - t0, success: generated.length > 0,
+        userId: userId ?? undefined,
+      });
       // 写入缓存（非致命）
       if (generated.length > 0) {
         upsertWordDefinitions(generated).catch((err) =>

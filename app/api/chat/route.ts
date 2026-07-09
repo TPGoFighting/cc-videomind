@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
+import { withChatDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
+import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis, upsertTranscriptCache } from "@/lib/supabase/cache";
@@ -35,9 +37,18 @@ export async function POST(request: Request) {
       await upsertTranscriptCache({ videoId: parsed.data.videoId, metadata, transcript });
     }
 
-    const answer = await (await getAiProvider(userId ?? undefined)).answerQuestion({
-      question: parsed.data.question,
-      transcript
+    const aiProvider = await getAiProvider(userId ?? undefined);
+    const t0 = Date.now();
+    const degradedResult = await withChatDegradation(
+      () => aiProvider.answerQuestion({ question: parsed.data.question, transcript }),
+    );
+    const { data: answer } = buildDegradedResponse(degradedResult, { answer: "暂时无法回答，请稍后再试。", citations: [] });
+    recordAiCall({
+      provider: "default", model: "default", feature: "chat",
+      inputTokens: Math.ceil(transcript.length * 50 / 4),
+      outputTokens: Math.ceil(JSON.stringify(answer).length / 4),
+      elapsedMs: Date.now() - t0, success: true,
+      userId: userId ?? undefined, videoId: parsed.data.videoId,
     });
 
     return successResponse(answer);

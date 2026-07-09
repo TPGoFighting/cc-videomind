@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
+import { withAnalysisDegradation, buildDegradedAnalysisResponse } from "@/lib/ai/degradation";
+import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
 import { upsertAnalysisCache } from "@/lib/supabase/cache";
 import { getAuthenticatedUserId, recordAnalysisUsage } from "@/lib/supabase/quota";
@@ -38,7 +40,19 @@ export async function POST(request: Request) {
       // 翻译延迟到用户切换中文模式时触发（通过 /api/translate-transcript SSE 端点）
       // 这里只做 AI 分析，不翻译
       const aiProvider = await getAiProvider(userId ?? undefined);
-      const analysis = await aiProvider.generateAnalysis({ title, transcript });
+      const t0 = Date.now();
+      const degradedResult = await withAnalysisDegradation(
+        () => aiProvider.generateAnalysis({ title, transcript }),
+        transcript,
+      );
+      const { data: analysis, degraded, message } = buildDegradedAnalysisResponse(degradedResult, transcript);
+      recordAiCall({
+        provider: "default", model: "default", feature: "analysis",
+        inputTokens: Math.ceil(JSON.stringify(transcript).length / 4),
+        outputTokens: Math.ceil(JSON.stringify(analysis).length / 4),
+        elapsedMs: Date.now() - t0, success: true,
+        userId: userId ?? undefined, videoId,
+      });
 
       // 缓存结果（保存原始字幕，不含翻译）
       await upsertAnalysisCache({
@@ -55,6 +69,8 @@ export async function POST(request: Request) {
         analysis,
         cached: false,
         preview: userId === null,
+        degraded,
+        message,
       });
     } catch (error) {
       console.error("Analysis failed", error);

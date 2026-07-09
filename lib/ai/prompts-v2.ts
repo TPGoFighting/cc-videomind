@@ -26,6 +26,26 @@ function transcriptForXmlPrompt(
     .join("\n");
 }
 
+/**
+ * 精简版字幕格式化（用于摘要提取，去掉冗余时间戳）
+ */
+function transcriptForSummaryPrompt(
+  segments: TranscriptSegment[],
+  maxChars = 20_000
+): string {
+  let totalChars = 0;
+  const selected: TranscriptSegment[] = [];
+
+  for (const segment of selectSegments(segments)) {
+    const lineLength = segment.text.length + 1;
+    if (totalChars + lineLength > maxChars) break;
+    selected.push(segment);
+    totalChars += lineLength;
+  }
+
+  return selected.map((s) => s.text).join("\n");
+}
+
 /** 段选择：头-中-尾 策略（≤250 段全选，超过则采样） */
 function selectSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
   if (segments.length <= 250) return segments;
@@ -225,7 +245,56 @@ export function buildStructuredSummaryPrompt(
     "视频: " + xmlEscape(title),
     "",
     "<transcript>",
-    "<![CDATA[" + transcriptForXmlPrompt(segments) + "]]>",
+    "<![CDATA[" + transcriptForSummaryPrompt(segments) + "]]>",
     "</transcript>"
+  ].join("\n");
+}
+
+/**
+ * Summary chunk 模式：单 chunk 分析
+ */
+export function buildStructuredSummaryChunkPrompt(
+  title: string,
+  segments: TranscriptSegment[],
+  lang: "zh" | "en" = "zh"
+): string {
+  return buildStructuredSummaryPrompt(title, segments, lang)
+    .replace("4-6 条", "2-3 条")
+    .replace("4-6 key takeaways", "2-3 key takeaways");
+}
+
+/**
+ * Summary reduce 模式：归并候选
+ */
+export function buildStructuredSummaryReducePrompt(
+  title: string,
+  candidates: Array<{
+    label: string;
+    label_zh?: string;
+    insight: string;
+    insight_zh?: string;
+    timestamps: string[];
+  }>,
+  lang: "zh" | "en" = "zh"
+): string {
+  const isZh = lang === "zh";
+  const candidatesStr = JSON.stringify(candidates, null, 2);
+
+  return [
+    isZh
+      ? "你是最终评审员。从候选摘要中选出最优质的 4-6 个核心要点。"
+      : "You are the final reviewer. Select the best 4-6 key takeaways from candidates.",
+    "",
+    isZh
+      ? "规则: 最多 6 个。优先主题多样。可微调 label/insight，禁止改 timestamp。宁缺毋滥。"
+      : "Rules: Max 6. Prioritize topic diversity. May refine label/insight, DO NOT change timestamps. Quality over quantity.",
+    "",
+    "输出纯 JSON: {\"takeaways\": [...]}",
+    "",
+    "视频: " + xmlEscape(title),
+    "",
+    "<candidates>",
+    "<![CDATA[" + candidatesStr + "]]>",
+    "</candidates>"
   ].join("\n");
 }

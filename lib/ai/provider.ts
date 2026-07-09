@@ -18,7 +18,9 @@ import {
   buildKeyMomentsPrompt,
   buildKeyMomentsChunkPrompt,
   buildKeyMomentsReducePrompt,
-  buildStructuredSummaryPrompt
+  buildStructuredSummaryPrompt,
+  buildStructuredSummaryChunkPrompt,
+  buildStructuredSummaryReducePrompt,
 } from "@/lib/ai/prompts-v2";
 import {
   buildWordDefinitionsPrompt,
@@ -470,6 +472,37 @@ export class AnthropicProvider implements AiProvider {
     targetLanguage?: "zh" | "en";
   }): Promise<SummaryTakeaway[]> {
     const lang = input.targetLanguage ?? "zh";
+
+    // Chunk-then-reduce for large transcripts
+    if (input.transcript.length > 200) {
+      const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
+      debugLog("[AI:Summary] 长字幕 chunk 模式, chunk 数量: %d", chunks.length);
+
+      const chunkResults = await runConcurrent(3, chunks, async (chunk) => {
+        const prompt = buildStructuredSummaryChunkPrompt(input.title, chunk.segments, lang);
+        const content = await this.chatJson(prompt);
+        return parseSummaryTakeaways(content);
+      });
+
+      const allCandidates = chunkResults.flat();
+      debugLog("[AI:Summary] Chunk 候选合计: %d 条", allCandidates.length);
+
+      if (allCandidates.length === 0) {
+        return [];
+      }
+
+      if (allCandidates.length <= 6) {
+        return validateSummaryTakeaways(allCandidates, input.transcript).slice(0, 6);
+      }
+
+      // Reduce: merge candidates into final summary
+      const reducePrompt = buildStructuredSummaryReducePrompt(input.title, allCandidates, lang);
+      const reducedContent = await this.chatJson(reducePrompt);
+      const reducedParsed = parseSummaryTakeaways(reducedContent);
+      return validateSummaryTakeaways(reducedParsed, input.transcript).slice(0, 6);
+    }
+
+    // Short transcript: direct single-call
     const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
     const content = await this.chatJson(prompt);
     const parsed = parseSummaryTakeaways(content);
@@ -548,7 +581,7 @@ export class AnthropicProvider implements AiProvider {
       const url = `${this.baseUrl.replace(/\/$/, "")}/v1/messages`;
       const body = {
         model,
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
       };
       const data = await fetchJsonWithTimeout<Record<string, unknown>>(url, {

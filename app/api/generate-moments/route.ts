@@ -6,6 +6,8 @@ import { getCachedMoments, upsertMomentsCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
+import { withMomentsDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
+import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { createEmptyDebug, GenerateMomentsRequestSchema } from "@/lib/types";
@@ -80,15 +82,19 @@ export async function POST(request: Request) {
     // 3. AI 生成
     const tAiStart = Date.now();
     const debug = createEmptyDebug();
-    const moments = await (await getAiProvider(userId ?? undefined)).generateKeyMoments({
-      title,
-      transcript,
-      mode,
-      theme,
-      targetLanguage: lang,
-      debug
-    });
+    const aiProvider = await getAiProvider(userId ?? undefined);
+    const degradedResult = await withMomentsDegradation(
+      () => aiProvider.generateKeyMoments({ title, transcript, mode, theme, targetLanguage: lang, debug }),
+    );
+    const { data: moments = [] } = buildDegradedResponse(degradedResult, []);
     const tAiEnd = Date.now();
+    recordAiCall({
+      provider: "default", model: "default", feature: "moments",
+      inputTokens: Math.ceil(transcript.length * 50 / 4),
+      outputTokens: Math.ceil(JSON.stringify(moments).length / 4),
+      elapsedMs: tAiEnd - tAiStart, success: true,
+      userId: userId ?? undefined, videoId,
+    });
 
     console.log("[API:Moments] AI 生成完成:", {
       elapsedMs: tAiEnd - tAiStart,

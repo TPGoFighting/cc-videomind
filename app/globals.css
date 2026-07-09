@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens: lib/design/tokens.ts (canonical source of truth)
+   Anti-AI slop: no purple/indigo gradients, no "赋能/生态/重新定义" words */
+
 :root {
   /* Framer 暗黑色彩系统 */
   --background: 0 0% 0%;

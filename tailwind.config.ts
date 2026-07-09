@@ -1,4 +1,6 @@
 import type { Config } from "tailwindcss";
+// Design tokens: see lib/design/tokens.ts for the canonical values
+// Anti-AI slop rules: COLORS.accent=#0099FF, no purple/indigo gradients
 
 const config: Config = {
   darkMode: ["class"],
