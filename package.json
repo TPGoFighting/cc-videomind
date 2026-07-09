@@ -1,0 +1,18 @@
+{
+  "name": "teach-player-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile:start": "npm --workspace apps/mobile run start",
+    "mobile:start:lan": "npm --workspace apps/mobile run start:lan",
+    "mobile:android": "npm --workspace apps/mobile run android",
+    "mobile:android:lan": "npm --workspace apps/mobile run android:lan",
+    "mobile:typecheck": "npm --workspace apps/mobile run typecheck",
+    "bridge:typecheck": "npm --workspace packages/next-auth-bridge run typecheck",
+    "typecheck": "npm run mobile:typecheck && npm run bridge:typecheck"
+  }
+}

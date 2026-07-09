@@ -1,0 +1,63 @@
+﻿# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Android native (generated folders)
+/android
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+android/.gradle/
+android/.kotlin/
+android/app/.cxx/
+android/app/build/
+android/build/
+android/local.properties
+android/app/debug.keystore
+hs_err_pid*.log
+replay_pid*.log
+
+# iOS (generated)
+/ios
+
+# Build artifacts
+*.apk
+*.aab
+*.ipa
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# Local env files
+.env
+.env.local
+.env.*.local
+.env.production.local
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+`n# Temp renamed git dir
+.git_old/
