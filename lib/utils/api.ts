@@ -4,11 +4,6 @@ import type { JsonResponse } from "@/lib/types";
 
 export async function readJson<T>(request: Request, schema: ZodSchema<T>) {
   try {
-    const contentLength = Number(request.headers.get("content-length") ?? 0);
-    if (contentLength > 128_000) {
-      return { ok: false as const, response: errorResponse("payload_too_large", "Request body is too large.", 413) };
-    }
-
     const body = (await request.json()) as unknown;
     return { ok: true as const, data: schema.parse(body) };
   } catch (error) {

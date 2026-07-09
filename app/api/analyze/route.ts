@@ -24,7 +24,7 @@ export const maxDuration = 120;
 export async function POST(request: Request) {
   return withSecurity({
     allowedMethods: ["POST"],
-    maxBodySize: 512 * 1024,
+    maxBodySize: 1024 * 1024,
     scope: "analyze",
     rateLimit: { maxRequests: 6, windowMs: 60_000 },
   }).wrap(request, async () => {
