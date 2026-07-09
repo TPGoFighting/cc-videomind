@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAppUrl, getStripe } from "@/lib/stripe/server";
@@ -23,12 +23,13 @@ const RequestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "stripe-checkout"), 5, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many checkout attempts. Try again shortly.", 429);
-  }
-
-  const parsed = await readJson(request, RequestSchema);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 32 * 1024,
+    scope: "stripe-checkout",
+    rateLimit: { maxRequests: 5, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
     return successResponse({ url: session.url });
   } catch {
     return errorResponse("checkout_failed", "Checkout session could not be created.", 502);
-  }
+  });
 }
 
 function isAllowedCheckoutRedirect(value: string) {

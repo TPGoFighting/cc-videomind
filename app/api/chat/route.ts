@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis, upsertTranscriptCache } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -14,12 +14,13 @@ const RequestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "chat"), 20, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many chat requests. Try again shortly.", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 32 * 1024,
+    scope: "chat",
+    rateLimit: { maxRequests: 20, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
@@ -43,5 +44,5 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Chat answer failed", error);
     return errorResponse("chat_failed", "Question could not be answered from the transcript.", 502);
-  }
+  });
 }

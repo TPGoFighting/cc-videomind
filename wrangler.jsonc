@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
+	"main": "./worker.ts",
 	"name": "videomind",
 	"compatibility_date": "2026-05-18",
 	"compatibility_flags": [
@@ -23,5 +23,14 @@
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image
 		"binding": "IMAGES"
-	}
+	},
+	"durable_objects": {
+		"bindings": [
+			// 限流共享计数器（见 lib/security/rate-limiter-do.ts）
+			{ "name": "RATE_LIMITER", "class_name": "RateLimiterDO" }
+		]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["RateLimiterDO"] }
+	]
 }

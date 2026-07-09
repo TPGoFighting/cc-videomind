@@ -1,6 +1,6 @@
 export const maxDuration = 120;
 
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedMoments, upsertMomentsCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
@@ -11,14 +11,15 @@ import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { createEmptyDebug, GenerateMomentsRequestSchema } from "@/lib/types";
 
 export async function POST(request: Request) {
-  const tStart = Date.now();
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 2 * 1024 * 1024,
+    scope: "generate-moments",
+    rateLimit: { maxRequests: 8, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const tStart = Date.now();
 
-  const rateLimit = checkRateLimit(getClientKey(request, "generate-moments"), 8, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many requests. Try again shortly.", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+    const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, GenerateMomentsRequestSchema);
   if (!parsed.ok) {
@@ -110,5 +111,5 @@ export async function POST(request: Request) {
     console.error("[API:Moments] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Moments] 总耗时(失败): %dms", Date.now() - tStart);
     return errorResponse("moments_failed", "Key moments could not be generated.", 502);
-  }
+  });
 }

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { withSecurity } from "@/lib/security/middleware";
 
 const SubmitSchema = z.object({
   tier: z.enum(["pro", "max"]),
@@ -45,7 +46,13 @@ export async function GET(request: Request) {
 
 /** POST — 提交付款凭证 */
 export async function POST(request: Request) {
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 16 * 1024,
+    scope: "payment-submit",
+    rateLimit: { maxRequests: 20, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录", 401);
   }
@@ -88,4 +95,5 @@ export async function POST(request: Request) {
 
   console.log("[Payment:Submit] 插入成功:", { id: inserted?.id, userId, tier });
   return successResponse({ ok: true });
+});
 }

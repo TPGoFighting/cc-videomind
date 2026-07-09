@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 
@@ -22,12 +22,13 @@ const SyncRequestSchema = z.object({
 
 /** POST /api/sync/notebook — 生词本增量水位线同步 (艾宾浩斯进度支持) */
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "sync-notebook"), 30, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "同步请求过于频繁，请稍候。", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 4 * 1024 * 1024,
+    scope: "sync-notebook",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "用户鉴权失败，请重新登录。", 401);
   }
@@ -165,4 +166,5 @@ export async function POST(request: Request) {
     mergedCount: mergedLogs.length,
     syncTimestamp: Date.now() // 返回当前时间戳作为客户端下一次同步的 lastSyncTime
   });
+});
 }

@@ -48,8 +48,8 @@
 
 | 平台 | 用途 |
 |------|------|
-| **Vercel** | 前端 + API 路由部署 |
-| **Cloudflare Workers** | 边缘运行（通过 @opennextjs/cloudflare） |
+| **Vercel** | 前端 + API 路由（Next.js `next build`；平台自动部署） |
+| **Cloudflare Workers** | 边缘运行（通过 `@opennextjs/cloudflare`，对应 `npm run deploy`） |
 | **Supabase** | 托管数据库 + 认证服务 |
 
 ---
@@ -93,7 +93,7 @@ SUPADATA_API_KEY=
 
 ```
 app/
-├── api/                  # API 路由（30+ 个）
+├── api/                  # API 路由（28 个）
 ├── video/[videoId]/     # 视频工作区（核心页面）
 ├── review/              # SM-2 间隔复习
 ├── history/             # 浏览历史
@@ -122,9 +122,9 @@ components/
 ## 🧠 架构亮点
 
 - **Provider/Adapter 模式**：AI 和 Transcript 都通过接口抽象，支持多实现切换回退
-- **智能回退链**：AI 模型（deepseek → qwen → glm → kimi）、字幕提取（Innertube → External API）多层回退保障可用性
+- **智能回退链**：AI 模型支持通过环境变量 `AI_FALLBACK_MODELS` 配置的多模型回退、字幕提取（Innertube → External API）多层回退保障可用性
 - **7 天缓存**：Supabase 缓存视频分析结果，避免重复消耗 API
-- **API 安全**：每个路由统一应用方法校验 + CSRF + 限速
+- **API 安全**：所有变更状态的 API 路由已通过 `withSecurity`（`lib/security/middleware.ts`）统一接入方法校验 + CSRF（Origin/Referer 白名单）+ 请求体大小限制 + 限流；限流器在 Cloudflare 上走 Durable Objects 共享计数（`RATE_LIMITER`），本地开发回退内存实现
 - **RLS 保护**：用户数据通过 Supabase Row Level Security 隔离
 
 ---

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -77,12 +77,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "notes"), 30, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many note updates. Try again shortly.", 429);
-  }
-
-  const parsed = await readJson(request, SaveRequestSchema);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 64 * 1024,
+    scope: "notes",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const parsed = await readJson(request, SaveRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -113,15 +114,17 @@ export async function POST(request: Request) {
   }
 
   return successResponse(data);
+});
 }
 
 export async function DELETE(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "notes"), 30, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many requests. Try again shortly.", 429);
-  }
-
-  const parsed = await readJson(request, DeleteRequestSchema);
+  return withSecurity({
+    allowedMethods: ["DELETE"],
+    maxBodySize: 16 * 1024,
+    scope: "notes",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const parsed = await readJson(request, DeleteRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -147,4 +150,5 @@ export async function DELETE(request: Request) {
   }
 
   return successResponse({ deleted: true });
+});
 }

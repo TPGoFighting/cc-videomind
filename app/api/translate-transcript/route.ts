@@ -1,6 +1,6 @@
 import { TranslateTranscriptRequestSchema, TranscriptSegmentSchema, type TranscriptSegment } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
@@ -22,16 +22,13 @@ async function translateBatch(
 }
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(
-    getClientKey(request, "translate-transcript"),
-    3,
-    60_000
-  );
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "翻译请求过于频繁。", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 8 * 1024 * 1024,
+    scope: "translate-transcript",
+    rateLimit: { maxRequests: 3, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, TranslateTranscriptRequestSchema);
   if (!parsed.ok) return parsed.response;
@@ -160,4 +157,5 @@ export async function POST(request: Request) {
       "X-Accel-Buffering": "no"
     }
   });
+});
 }

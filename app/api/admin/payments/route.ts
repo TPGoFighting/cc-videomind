@@ -5,6 +5,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/supabase/admin";
 import { errorResponse, readJson } from "@/lib/utils/api";
 import { clearAiProviderCache } from "@/lib/ai/provider";
+import { withSecurity } from "@/lib/security/middleware";
 
 const UpdateSchema = z.object({
   submissionId: z.string().uuid(),
@@ -74,10 +75,16 @@ export async function GET(request: Request) {
 
 /** PUT — 管理员审批/拒绝付款 */
 export async function PUT(request: Request) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId || !(await isAdmin(userId))) {
-    return errorResponse("forbidden", "仅管理员可访问", 403);
-  }
+  return withSecurity({
+    allowedMethods: ["PUT"],
+    maxBodySize: 16 * 1024,
+    scope: "admin-payments",
+    rateLimit: { maxRequests: 60, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId || !(await isAdmin(userId))) {
+      return errorResponse("forbidden", "仅管理员可访问", 403);
+    }
 
   const parsed = await readJson(request, UpdateSchema);
   if (!parsed.ok) {
@@ -141,4 +148,5 @@ export async function PUT(request: Request) {
   }
 
   return NextResponse.json({ ok: true, status: action === "approve" ? "approved" : "rejected" });
+});
 }

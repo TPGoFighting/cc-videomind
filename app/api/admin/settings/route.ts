@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/admin";
 import { clearAiProviderCache } from "@/lib/ai/provider";
 import { errorResponse, readJson } from "@/lib/utils/api";
+import { withSecurity } from "@/lib/security/middleware";
 
 const AI_SETTING_KEYS = [
   "ai_provider",
@@ -106,10 +107,16 @@ export async function GET(request: Request) {
  *        scope="personal" → 写入 user_ai_settings（targetUserId 指定目标用户，默认当前用户）。
  */
 export async function PUT(request: Request) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "请先登录" }, { status: 401 });
-  }
+  return withSecurity({
+    allowedMethods: ["PUT"],
+    maxBodySize: 16 * 1024,
+    scope: "admin-settings",
+    rateLimit: { maxRequests: 60, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    }
 
   // 所有写入操作均需要管理员权限
   const admin = await isAdmin(userId);
@@ -146,7 +153,7 @@ export async function PUT(request: Request) {
       "配置保存失败，请稍后重试。",
       500,
     );
-  }
+  });
 }
 
 function maskApiKey(key: string): string {

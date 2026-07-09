@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import { getAiProvider } from "@/lib/ai/provider";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { upsertAnalysisCache } from "@/lib/supabase/cache";
 import { getAuthenticatedUserId, checkAnalysisQuota, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, successResponse } from "@/lib/utils/api";
@@ -92,12 +92,13 @@ function splitTextIntoProportionalSegments(text: string, totalDuration: number):
 }
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "video-analysis-upload"), 8, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many analysis requests. Try again shortly.", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    skipBodySize: true,
+    scope: "video-analysis-upload",
+    rateLimit: { maxRequests: 8, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
   const quota = await checkAnalysisQuota(userId, request);
   if (!quota.allowed) {
     const msg = quota.anonymous
@@ -242,5 +243,5 @@ export async function POST(request: Request) {
         ? `导入分析失败：${error.message}`
         : "Failed to import and analyze the local media file.";
     return errorResponse("analysis_failed", message, 502);
-  }
+  });
 }

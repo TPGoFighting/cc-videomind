@@ -1,6 +1,6 @@
 import { SaveQuoteRequestSchema } from "@/lib/types";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 
@@ -62,12 +62,13 @@ export async function GET(request: Request) {
 
 /** POST /api/user-quotes — 收藏句子 */
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "user-quotes"), 30, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "操作过于频繁。", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 32 * 1024,
+    scope: "user-quotes",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }
@@ -101,11 +102,17 @@ export async function POST(request: Request) {
   }
 
   return successResponse({ saved: true, id: data.id });
+});
 }
 
 /** DELETE /api/user-quotes — 删除收藏的句子 */
 export async function DELETE(request: Request) {
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["DELETE"],
+    maxBodySize: 16 * 1024,
+    scope: "user-quotes",
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }
@@ -132,4 +139,5 @@ export async function DELETE(request: Request) {
   }
 
   return successResponse({ deleted: true });
+});
 }

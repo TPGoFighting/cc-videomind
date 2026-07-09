@@ -1,20 +1,20 @@
 import { NextRequest } from "next/server";
 import { resolveBilibiliUrl, extractBilibiliVideoId } from "@/lib/bilibili/id";
 import { BilibiliTranscriptProvider } from "@/lib/bilibili/transcript-provider";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { upsertTranscriptCache } from "@/lib/supabase/cache";
 import { VideoDifficultyAnalyzer } from "@/lib/bilibili/difficulty-analyzer";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  // 1. 限流校验
-  const rateLimit = checkRateLimit(getClientKey(request, "bili-parse-stream"), 12, 60_000);
-  if (!rateLimit.allowed) {
-    return new Response("Too many parsing requests. Try again shortly.", { status: 429 });
-  }
-
-  const { searchParams } = new URL(request.url);
+  return withSecurity({
+    allowedMethods: ["GET"],
+    maxBodySize: 64 * 1024,
+    scope: "bili-parse-stream",
+    rateLimit: { maxRequests: 12, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const { searchParams } = new URL(request.url);
   const rawVideoId = searchParams.get("videoId");
 
   if (!rawVideoId) {
@@ -108,4 +108,5 @@ export async function GET(request: NextRequest) {
       "Connection": "keep-alive",
     },
   });
+});
 }

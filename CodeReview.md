@@ -40,13 +40,9 @@ VideoMind 是一个 YouTube AI 学习工作区，基于 Next.js App Router + Typ
 event = getStripe().webhooks.constructEvent(await request.text(), signature, webhookSecret);
 ```
 
-Next.js App Router 默认会解析 JSON body。`request.text()` 需要在 Next.js 禁用 body parser 才能工作。**必须添加**：
+Next.js App Router 默认会解析 JSON body。`request.text()` 需要在 Next.js 禁用 body parser 才能工作。
 
-```ts
-export const dynamic = "force-dynamic";
-```
-
-并在路由配置中确保 raw body。否则 Stripe 签名验证将永远失败，支付订阅无法同步。
+**状态（2026-07-09 复核）**：`app/api/webhooks/stripe/route.ts` 当前已包含 `export const dynamic = "force-dynamic";`，raw body 解析可用，原风险已修复。
 
 ### 2. Gemini API Key 暴露在 URL 中
 
@@ -57,6 +53,8 @@ const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${enco
 ```
 
 API Key 作为查询参数会出现在服务器日志、代理日志、以及任何中间网络设备的记录中。**建议**改用 `x-goog-api-key` HTTP header 替代 URL 参数。
+
+**状态（2026-07-09 复核）**：`provider.ts` 当前已改用 `x-goog-api-key` HTTP header（见 `generateJson` / `generateTranslation`），URL 参数泄露问题已修复。
 
 ### 3. 内存中的速率限制器
 
@@ -279,7 +277,7 @@ M6 和 M7 要求将提示词放到独立文件中。当前 `prompts.ts` 是单�
 - `lib/stripe/server.ts`
 - `lib/security/rate-limit.ts`
 
-**API 路由** (8 个)：
+**API 路由** (28 个；以下为部分示例，完整列表见 `app/api`)：
 - `app/api/video-info/route.ts`
 - `app/api/transcript/route.ts`
 - `app/api/video-analysis/route.ts`
@@ -299,6 +297,20 @@ M6 和 M7 要求将提示词放到独立文件中。当前 `prompts.ts` 是单�
 - `app/layout.tsx` / `app/page.tsx` / `app/video/[videoId]/page.tsx` / `app/globals.css`
 
 ---
+
+## 🔧 整改状态（对照代码审查，2026-07-09 复核）
+
+下表对照 `REVIEW-FINDINGS.md` 各分区，状态均按当前代码核实，不臆测：
+
+| 项 | 原级别 | 代码现状（已核实） | 结论 |
+|----|--------|--------------------|------|
+| Stripe webhook raw body 解析 | 🔴 P0 | `app/api/webhooks/stripe/route.ts` 已含 `export const dynamic = "force-dynamic"`，`request.text()` 可用 | ✅ 已修复 |
+| Gemini API Key URL 泄露 | 🔴 P0 | `provider.ts` 改用 `x-goog-api-key` header | ✅ 已修复 |
+| 内存速率限制器 | 🟡 | `lib/security/rate-limit.ts` 仍为进程内存 `Map`（含 Upstash 迁移 TODO 注释） | ⏳ 待修复（分区 B1） |
+| 缺少 CSRF / 方法校验 | 🟡 | `withSecurity` 中间件已存在于 `lib/security/middleware.ts`，但未挂载到任何 `app/api` 路由；多数路由仅调用 `checkRateLimit` | ⏳ 待修复（分区 B2） |
+| 客户端 IP 取自可伪造头 | 🟡 | `getClientKey` 仍优先 `x-forwarded-for` 类头 | ⏳ 待修复（分区 B3） |
+| 模型回退链写死 | 🟡 | `provider-registry.ts` 改读 `AI_FALLBACK_MODELS` 环境变量 | ✅ 已修复（分区 C1） |
+| 生产日志打印完整 prompt / 响应 / 用户内容 | 🟡 | `provider.ts` 调试日志已加 `DEBUG_AI` / 非 production 闸门，仅 `console.error` 始终输出 | ✅ 已修复（分区 D1） |
 
 ## 总结
 

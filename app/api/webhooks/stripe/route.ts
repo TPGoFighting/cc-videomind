@@ -3,6 +3,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, successResponse } from "@/lib/utils/api";
 import { getStripe } from "@/lib/stripe/server";
 import type { SubscriptionTier } from "@/lib/plans";
+import { withSecurity } from "@/lib/security/middleware";
 
 const PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID;
 const MAX_PRICE_ID = process.env.STRIPE_MAX_PRICE_ID;
@@ -17,10 +18,15 @@ function getTierFromPriceId(priceId: string): SubscriptionTier {
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 256_000) {
-    return errorResponse("payload_too_large", "Webhook payload is too large.", 413);
-  }
+  return withSecurity({
+    allowedMethods: ["POST"],
+    skipCsrf: true,
+    maxBodySize: 256_000,
+  }).wrap(request, async () => {
+    const contentLength = Number(request.headers.get("content-length") ?? 0);
+    if (contentLength > 256_000) {
+      return errorResponse("payload_too_large", "Webhook payload is too large.", 413);
+    }
 
   const signature = request.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -56,7 +62,7 @@ export async function POST(request: Request) {
     return successResponse({ received: true, duplicate: false });
   } catch {
     return errorResponse("webhook_processing_failed", "Stripe webhook could not be processed.", 500);
-  }
+  });
 }
 
 async function handleStripeEvent(event: Stripe.Event) {

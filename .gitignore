@@ -24,3 +24,19 @@ stripe-listen.*.log
 
 .env*.local
 teach-player.apk
+
+# ===== 分区 A — 密钥与仓库卫生 (REVIEW-FINDINGS.md) =====
+# A1 (P0): 泄露的真实 API Key 调试脚本 / 明文 key 文件
+scripts/_apikey*
+scripts/extract-key.mjs
+scripts/debug-env.mjs
+
+# A2: 仓库杂物 / 调试产物（保留磁盘，仅退出版本控制）
+skills-lock.json
+test-layout-current.png
+test-layout-new.png
+*报告.html
+*-report.html
+mobile-feasibility-report.html
+debug-report.html
+AI-Provider-JSON-修复报告.html

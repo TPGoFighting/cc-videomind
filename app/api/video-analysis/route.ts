@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getCachedAnalysis, upsertAnalysisCache } from "@/lib/supabase/cache";
 import { checkAnalysisQuota, getAuthenticatedUserId, hasUserAnalyzedVideo, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -52,12 +52,13 @@ function buildQuotaMessage(quota: {
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "video-analysis"), 8, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many analysis requests. Try again shortly.", 429);
-  }
-
-  const parsed = await readJson(request, RequestSchema);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 64 * 1024,
+    scope: "video-analysis",
+    rateLimit: { maxRequests: 8, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -214,5 +215,5 @@ export async function POST(request: Request) {
         ? `分析失败：${error.message}`
         : "Video analysis could not be generated from the transcript.";
     return errorResponse("analysis_failed", message, 502);
-  }
+  });
 }

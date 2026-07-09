@@ -1,6 +1,6 @@
 export const maxDuration = 120;
 
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedSummary, upsertSummaryCache } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
@@ -11,14 +11,15 @@ import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { createEmptyDebug, GenerateSummaryRequestSchema } from "@/lib/types";
 
 export async function POST(request: Request) {
-  const tStart = Date.now();
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 2 * 1024 * 1024,
+    scope: "generate-summary",
+    rateLimit: { maxRequests: 8, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const tStart = Date.now();
 
-  const rateLimit = checkRateLimit(getClientKey(request, "generate-summary"), 8, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many summary requests. Try again shortly.", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+    const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, GenerateSummaryRequestSchema);
   if (!parsed.ok) {
@@ -105,5 +106,5 @@ export async function POST(request: Request) {
     console.error("[API:Summary] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Summary] 总耗时(失败): %dms", Date.now() - tStart);
     return errorResponse("summary_failed", "Summary could not be generated from the transcript.", 502);
-  }
+  });
 }

@@ -35,6 +35,15 @@ import {
   validateSummaryTakeaways
 } from "@/lib/utils/moments-validator";
 
+const isAiDebug =
+  process.env.DEBUG_AI === "true" || process.env.NODE_ENV !== "production";
+
+function debugLog(...args: unknown[]): void {
+  if (isAiDebug) {
+    console.log(...args);
+  }
+}
+
 export interface AiProvider {
   generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }): Promise<VideoAnalysis>;
   answerQuestion(input: { question: string; transcript: TranscriptSegment[] }): Promise<ChatAnswer>;
@@ -122,31 +131,31 @@ export class OpenAiCompatibleProvider implements AiProvider {
     // Fast 模式：切片 → 并发 AI 调用 → 归并
     if (input.mode === "fast") {
       const chunks = chunkTranscript(input.transcript, { chunkMinutes: 5, overlapSeconds: 45 });
-      console.log("[AI:Moments] Fast 模式, chunk 数量: %d", chunks.length);
+      debugLog("[AI:Moments] Fast 模式, chunk 数量: %d", chunks.length);
 
       const chunkResults = await runConcurrent(3, chunks, async (chunk) => {
         const prompt = buildKeyMomentsChunkPrompt(input.title, chunk.segments, lang, input.theme);
         const content = await this.chatJson(prompt);
         const candidates = parseKeyMoments(content).slice(0, 2);
-        console.log("[AI:Moments] Chunk 解析出 %d 候选, AI 响应前200字: %s", candidates.length, content.slice(0, 200));
+        debugLog("[AI:Moments] Chunk 解析出 %d 候选, AI 响应前200字: %s", candidates.length, content.slice(0, 200));
         return candidates;
       });
       const allCandidates = chunkResults.flat();
 
-      console.log("[AI:Moments] 全部候选: %d 条", allCandidates.length);
+      debugLog("[AI:Moments] 全部候选: %d 条", allCandidates.length);
       if (allCandidates.length === 0) {
-        console.warn("[AI:Moments] 无候选, 提前返回");
+        debugLog("[AI:Moments] 无候选, 提前返回");
         if (input.debug) fillDebug(input.debug, { model: this.model, finalCount: 0 });
         return [];
       }
 
       const reducePrompt = buildKeyMomentsReducePrompt(input.title, allCandidates, input.transcript, lang);
       const reduceContent = await this.chatJson(reducePrompt);
-      console.log("[AI:Moments] Reduce 响应前200字: %s", reduceContent.slice(0, 200));
+      debugLog("[AI:Moments] Reduce 响应前200字: %s", reduceContent.slice(0, 200));
       const final = parseKeyMoments(reduceContent);
-      console.log("[AI:Moments] Reduce 解析出 %d 条", final.length);
+      debugLog("[AI:Moments] Reduce 解析出 %d 条", final.length);
       const validated = validateAndDedupMoments(final, input.transcript).slice(0, 5);
-      console.log("[AI:Moments] 校验去重后: %d 条, 耗时 %dms", validated.length, Date.now() - t0);
+      debugLog("[AI:Moments] 校验去重后: %d 条, 耗时 %dms", validated.length, Date.now() - t0);
       if (input.debug) {
         fillDebug(input.debug, {
           model: this.model,
@@ -163,19 +172,19 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
     // Smart 模式：全文单次分析
     const prompt = buildKeyMomentsPrompt(input.title, input.transcript, lang, input.theme);
-    console.log("[AI:Moments] Smart 模式, prompt 长度: %d 字符", prompt.length);
+    debugLog("[AI:Moments] Smart 模式, prompt 长度: %d 字符", prompt.length);
     const content = await this.chatJson(prompt);
-    console.log("[AI:Moments] AI 原始响应长度: %d 字符", content.length);
-    console.log("[AI:Moments] AI 原始响应(前500字): %s", content.slice(0, 500));
+    debugLog("[AI:Moments] AI 原始响应长度: %d 字符", content.length);
+    debugLog("[AI:Moments] AI 原始响应(前500字): %s", content.slice(0, 500));
     const moments = parseKeyMoments(content);
-    console.log("[AI:Moments] parseKeyMoments 解析出 %d 条", moments.length);
+    debugLog("[AI:Moments] parseKeyMoments 解析出 %d 条", moments.length);
     if (moments.length > 0) {
-      console.log("[AI:Moments] 解析结果:", moments.map(m => ({ title: m.title, timestamp: m.timestamp, quoteLen: m.quote.length })));
+      debugLog("[AI:Moments] 解析结果:", moments.map(m => ({ title: m.title, timestamp: m.timestamp, quoteLen: m.quote.length })));
     } else {
-      console.warn("[AI:Moments] parseKeyMoments 返回空数组! 原始响应可能是无效 JSON 或不满足 schema");
+      debugLog("[AI:Moments] parseKeyMoments 返回空数组! 原始响应可能是无效 JSON 或不满足 schema");
     }
     const validated = validateAndDedupMoments(moments, input.transcript).slice(0, 5);
-    console.log("[AI:Moments] validateAndDedupMoments: %d 条 → %d 条, 耗时 %dms", moments.length, validated.length, Date.now() - t0);
+    debugLog("[AI:Moments] validateAndDedupMoments: %d 条 → %d 条, 耗时 %dms", moments.length, validated.length, Date.now() - t0);
     if (input.debug) {
       fillDebug(input.debug, {
         model: this.model,
@@ -199,19 +208,19 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const lang = input.targetLanguage ?? "zh";
     const t0 = Date.now();
     const prompt = buildStructuredSummaryPrompt(input.title, input.transcript, lang);
-    console.log("[AI:Summary] prompt 长度: %d 字符", prompt.length);
+    debugLog("[AI:Summary] prompt 长度: %d 字符", prompt.length);
     const content = await this.chatJson(prompt);
-    console.log("[AI:Summary] AI 原始响应长度: %d 字符", content.length);
-    console.log("[AI:Summary] AI 原始响应(前500字): %s", content.slice(0, 500));
+    debugLog("[AI:Summary] AI 原始响应长度: %d 字符", content.length);
+    debugLog("[AI:Summary] AI 原始响应(前500字): %s", content.slice(0, 500));
     const takeaways = parseSummaryTakeaways(content);
-    console.log("[AI:Summary] parseSummaryTakeaways 解析出 %d 条", takeaways.length);
+    debugLog("[AI:Summary] parseSummaryTakeaways 解析出 %d 条", takeaways.length);
     if (takeaways.length > 0) {
-      console.log("[AI:Summary] 解析结果:", takeaways.map(t => ({ label: t.label, insightLen: t.insight.length, timestamps: t.timestamps })));
+      debugLog("[AI:Summary] 解析结果:", takeaways.map(t => ({ label: t.label, insightLen: t.insight.length, timestamps: t.timestamps })));
     } else {
-      console.warn("[AI:Summary] parseSummaryTakeaways 返回空数组! 原始响应可能是无效 JSON 或不满足 schema");
+      debugLog("[AI:Summary] parseSummaryTakeaways 返回空数组! 原始响应可能是无效 JSON 或不满足 schema");
     }
     const validated = validateSummaryTakeaways(takeaways, input.transcript);
-    console.log("[AI:Summary] validateSummaryTakeaways: %d 条 → %d 条, 耗时 %dms", takeaways.length, validated.length, Date.now() - t0);
+    debugLog("[AI:Summary] validateSummaryTakeaways: %d 条 → %d 条, 耗时 %dms", takeaways.length, validated.length, Date.now() - t0);
     if (input.debug) {
       fillDebug(input.debug, {
         model: this.model,
@@ -292,7 +301,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     // 直接调 tryChat，不强制 JSON mode
     const content = await this.tryChat(body);
     if (content) {
-      console.log("[AI:Translation] 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
+      debugLog("[AI:Translation] 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
       return content;
     }
 
@@ -316,16 +325,16 @@ export class OpenAiCompatibleProvider implements AiProvider {
       // 先尝试带 response_format
       const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
       if (withFormat) {
-        if (modelName !== this.model) console.log("[AI:Fallback] 切换到 %s 成功", modelName);
-        console.log("[AI:Chat] model=%s, 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withFormat.length);
+        if (modelName !== this.model) debugLog("[AI:Fallback] 切换到 %s 成功", modelName);
+        debugLog("[AI:Chat] model=%s, 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withFormat.length);
         return withFormat;
       }
 
       // 不带 response_format 再试
       const withoutFormat = await this.tryChat(body);
       if (withoutFormat) {
-        if (modelName !== this.model) console.log("[AI:Fallback] 切换到 %s 成功 (no-format)", modelName);
-        console.log("[AI:Chat] model=%s (no-format), 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withoutFormat.length);
+        if (modelName !== this.model) debugLog("[AI:Fallback] 切换到 %s 成功 (no-format)", modelName);
+        debugLog("[AI:Chat] model=%s (no-format), 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withoutFormat.length);
         return withoutFormat;
       }
 
@@ -357,7 +366,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
           body: JSON.stringify(body)
         })
       );
-      console.log("[AI:Chat] API 调用成功, model=%s, 耗时 %dms", model, Date.now() - t0);
+      debugLog("[AI:Chat] API 调用成功, model=%s, 耗时 %dms", model, Date.now() - t0);
       return response.choices[0]?.message.content ?? null;
     } catch (error) {
       const errStatus = error instanceof ExternalServiceError ? error.status : undefined;

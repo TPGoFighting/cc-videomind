@@ -2,6 +2,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, successResponse } from "@/lib/utils/api";
 import type { CheckinStatus } from "@/lib/types";
+import { withSecurity } from "@/lib/security/middleware";
 
 export async function GET(request: Request) {
   const userId = await getAuthenticatedUserId(request);
@@ -55,8 +56,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) return errorResponse("unauthorized", "登录后可打卡。", 401);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 16 * 1024,
+    scope: "checkin",
+    rateLimit: { maxRequests: 60, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId) return errorResponse("unauthorized", "登录后可打卡。", 401);
 
   const supabase = createSupabaseServiceClient();
   if (!supabase) return errorResponse("database_error", "数据库配置有误。", 503);
@@ -139,5 +146,5 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error("Checkin POST error:", err);
     return errorResponse("internal_error", err.message ?? "打卡失败，请重试。", 500);
-  }
+  });
 }

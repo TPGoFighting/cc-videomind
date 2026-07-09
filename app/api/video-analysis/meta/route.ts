@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { errorResponse, successResponse } from "@/lib/utils/api";
 import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 
 const RequestSchema = z.object({
@@ -14,12 +14,13 @@ const RequestSchema = z.object({
  * 如果缓存中有完整分析结果，一并返回 transcript 和 analysis
  */
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "video-meta"), 30, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "请求过于频繁，请稍后再试。", 429);
-  }
-
-  const parsed = await request.json() as Record<string, unknown>;
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 16 * 1024,
+    scope: "video-meta",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const parsed = await request.json() as Record<string, unknown>;
   const input = String(parsed.videoId ?? "").trim();
   if (!input) {
     return errorResponse("invalid_input", "videoId is required.", 400);
@@ -92,4 +93,5 @@ export async function POST(request: Request) {
     cached: false,
     preview: false,
   });
+});
 }

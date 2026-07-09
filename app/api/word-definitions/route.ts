@@ -1,6 +1,6 @@
 import { WordDefinitionsRequestSchema, type WordDefinition } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import {
   getCachedWordDefinitions,
@@ -9,16 +9,13 @@ import {
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(
-    getClientKey(request, "word-definitions"),
-    10,
-    60_000
-  );
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "请求过于频繁，请稍后再试。", 429);
-  }
-
-  const userId = await getAuthenticatedUserId(request);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 256 * 1024,
+    scope: "word-definitions",
+    rateLimit: { maxRequests: 10, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, WordDefinitionsRequestSchema);
   if (!parsed.ok) return parsed.response;
@@ -55,4 +52,5 @@ export async function POST(request: Request) {
   return successResponse({
     definitions: [...cached, ...generated],
   });
+});
 }

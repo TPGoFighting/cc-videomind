@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { extractYouTubeVideoId } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 
@@ -9,12 +9,13 @@ const RequestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "video-info"), 30, 60_000);
-  if (!rateLimit.allowed) {
-    return errorResponse("rate_limited", "Too many requests. Try again shortly.", 429);
-  }
-
-  const parsed = await readJson(request, RequestSchema);
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 16 * 1024,
+    scope: "video-info",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
@@ -59,6 +60,6 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[video-info] YouTube元数据解析失败:", error);
     return errorResponse("metadata_unavailable", "Could not load YouTube metadata for this video.", 502);
-  }
+  });
 }
 

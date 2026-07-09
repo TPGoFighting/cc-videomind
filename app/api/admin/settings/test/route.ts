@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { OpenAiCompatibleProvider, GeminiProvider } from "@/lib/ai/provider";
 import { readJson } from "@/lib/utils/api";
+import { withSecurity } from "@/lib/security/middleware";
 
 const TestSchema = z.object({
   provider: z.string().min(1, "请选择 AI 提供商"),
@@ -15,10 +16,16 @@ const TestSchema = z.object({
  * POST — 测试 AI 连接。用 defineWords(["test"]) 发一条轻量请求验证连通性。
  */
 export async function POST(request: Request) {
-  const userId = await getAuthenticatedUserId(request);
-  if (!userId) {
-    return NextResponse.json({ error: "请先登录" }, { status: 401 });
-  }
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 16 * 1024,
+    scope: "admin-settings-test",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    }
 
   const parsed = await readJson(request, TestSchema);
   if (!parsed.ok) return parsed.response;
@@ -46,5 +53,5 @@ export async function POST(request: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "未知错误";
     return NextResponse.json({ ok: false, error: `连接失败: ${msg}` });
-  }
+  });
 }

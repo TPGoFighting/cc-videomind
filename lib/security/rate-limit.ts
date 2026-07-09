@@ -1,15 +1,24 @@
 /*
- * 速率限制器（内存实现）
+ * 速率限制器
  *
- * TODO(prod): 生产环境迁移到 Upstash Redis
- *   当前内存实现的问题：
- *   1. 服务重启后计数器丢失
- *   2. 多实例（Vercel 边缘函数）各自独立计数，无法共享状态
- *   3. Map 在极端流量下可能内存膨胀（已有定期清理逻辑缓解）
- *   Upstash Redis 兼容 Vercel Edge，迁移成本低：@upstash/redis + @upstash/ratelimit
+ * 部署目标为 Cloudflare Workers（@opennextjs/cloudflare）。进程内存 Map 在 Workers
+ * 的多实例/重启场景下不共享，限流会失效、AI 接口可被刷爆。因此生产环境改用
+ * Durable Objects（RATE_LIMITER 绑定）做跨实例共享计数；本地 dev 或绑定缺失时
+ * 回退到内存 Map 实现，保证本地开发照常工作。
  *
- *   免费额度: Upstash Redis 每天 10,000 条，MVP 阶段够用。
+ * 公共签名保持向后兼容（现有直接调用点仍可工作）：
+ *   checkRateLimit(key, limit, windowMs)        -> { allowed, remaining, resetAt? }   (同步, 内存兜底)
+ *   getClientKey(request, scope)                -> string
+ * 新增 checkRateLimitAsync(...) 为 Durable Object 赋能的异步版本，供 withSecurity 使用。
  */
+
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetAt?: number;
+}
+
+// ───────────────────────── 内存实现（本地 dev / 兜底 / 向后兼容） ─────────────────────────
 
 type Bucket = {
   count: number;
@@ -34,7 +43,12 @@ function cleanExpiredBuckets(now: number) {
   }
 }
 
-export function checkRateLimit(key: string, limit: number, windowMs: number) {
+/**
+ * 内存版限流（同步）。
+ * 用于：本地开发、以及 Durable Object 不可用时的兜底。
+ * 保留此签名以满足向后兼容——仍可能有路由直接调用 checkRateLimit。
+ */
+export function checkRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
   const now = Date.now();
   const bucket = buckets.get(key);
 
@@ -52,28 +66,104 @@ export function checkRateLimit(key: string, limit: number, windowMs: number) {
   return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
 }
 
-/*
- * 从请求头提取客户端标识。
- *
- * 注意：x-forwarded-for 可被客户端伪造。
- * 生产环境必须确保反向代理（Vercel/Cloudflare）覆盖此 header，
- * 或使用平台提供的真实 IP（如 Vercel 的 request.headers.get("x-vercel-forwarded-for")）。
+// ───────────────────────── Durable Object 绑定类型（避免硬性依赖 workers-types） ─────────────────────────
+
+interface RateLimiterStub {
+  fetch(input: string | URL, init?: RequestInit): Promise<Response>;
+}
+
+interface RateLimiterNamespace {
+  idFromName(name: string): { get(): RateLimiterStub };
+}
+
+declare global {
+  interface CloudflareEnv {
+    RATE_LIMITER?: RateLimiterNamespace;
+  }
+}
+
+/**
+ * 是否应尝试走 Durable Object：
+ * - 仅在生产（NODE_ENV === 'production'，由 Next 构建产物保证）尝试；
+ * - 绑定缺失时由调用方回退到内存实现。
+ * 这样本地 dev（NODE_ENV !== 'production'）永远走内存，不会触碰不存在的绑定。
  */
-export function getClientKey(request: Request, scope: string) {
-  // Vercel 提供的真实客户端 IP（优先级最高）
+function shouldUseDurableObject(): boolean {
+  return typeof process !== "undefined" && process.env.NODE_ENV === "production";
+}
+
+async function getRateLimiterNamespace(): Promise<RateLimiterNamespace | undefined> {
+  if (!shouldUseDurableObject()) return undefined;
+  try {
+    const mod = await import("@opennextjs/cloudflare");
+    const ctx = mod.getCloudflareContext({ async: false });
+    return ctx?.env?.RATE_LIMITER;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 生产版限流：通过 Durable Object 共享计数。
+ * 若 Durable Object 绑定不可用（本地 / 异常），自动回退到内存实现。
+ */
+export async function checkRateLimitAsync(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  const ns = await getRateLimiterNamespace();
+  if (!ns) {
+    return checkRateLimit(key, limit, windowMs);
+  }
+  try {
+    const id = ns.idFromName(key);
+    const stub = id.get();
+    const res = await stub.fetch(
+      `https://rate-limiter.internal/check?key=${encodeURIComponent(key)}&limit=${limit}&window=${windowMs}`
+    );
+    if (!res.ok) {
+      return checkRateLimit(key, limit, windowMs);
+    }
+    const data = (await res.json()) as RateLimitResult;
+    return data;
+  } catch {
+    return checkRateLimit(key, limit, windowMs);
+  }
+}
+
+// ───────────────────────── 客户端标识（B3：优先平台真实 IP） ─────────────────────────
+
+/**
+ * 从请求头提取限流 key 的「身份」部分。
+ *
+ * 优先级（只信任平台注入的真实客户端 IP 头）：
+ *   1. cf-connecting-ip   —— Cloudflare 注入，最可靠，不可被客户端伪造
+ *   2. x-vercel-forwarded-for —— Vercel 注入
+ *   3. x-real-ip          —— 受信任反代注入
+ *
+ * 若以上平台真实 IP 头都不存在（本地 dev、或请求未经过可信平台）：
+ *   不信任 x-forwarded-for（客户端可伪造），降级为统一的共享 key `untrusted`，
+ *   使攻击者无法通过伪造 IP 头绕过限流。此时整条路由共享一个 bucket。
+ *
+ * scope 用于区分不同路由，避免互相影响计数。
+ */
+export function getClientKey(request: Request, scope: string): string {
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) {
+    return `${scope}:${cfIp.trim()}`;
+  }
+
   const vercelIp = request.headers.get("x-vercel-forwarded-for");
   if (vercelIp) {
-    return `${scope}:${vercelIp}`;
+    return `${scope}:${vercelIp.split(",")[0]?.trim()}`;
   }
 
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const realIp = request.headers.get("x-real-ip");
-  const ip = forwarded || realIp || "local";
-
-  // 基本校验：拒绝明显无效的 IP 格式
-  if (ip.length > 45 || ip.includes("<") || ip.includes(">")) {
-    return `${scope}:invalid`;
+  if (realIp) {
+    return `${scope}:${realIp.trim()}`;
   }
 
-  return `${scope}:${ip}`;
+  // 无平台真实 IP：宁可降级为统一共享 key，也不使用可伪造的 x-forwarded-for
+  return `${scope}:untrusted`;
 }

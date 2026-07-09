@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { checkRateLimit, getClientKey } from "@/lib/security/rate-limit";
+import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -123,10 +123,13 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(getClientKey(request, "review"), 30, 60_000);
-  if (!rateLimit.allowed) return errorResponse("rate_limited", "请求过于频繁。", 429);
-
-  const now = new Date().toISOString();
+  return withSecurity({
+    allowedMethods: ["POST"],
+    maxBodySize: 32 * 1024,
+    scope: "review",
+    rateLimit: { maxRequests: 30, windowMs: 60_000 },
+  }).wrap(request, async () => {
+    const now = new Date().toISOString();
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) return parsed.response;
 
@@ -168,4 +171,5 @@ export async function POST(request: Request) {
   }, { onConflict: "user_id,checkin_date" });
 
   return successResponse({ ok: true });
+});
 }
