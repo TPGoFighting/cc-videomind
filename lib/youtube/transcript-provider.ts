@@ -884,8 +884,12 @@ export function getTranscriptProvider(): TranscriptProvider {
     );
   }
 
+  if (provider === "supadata") {
+    return new ExternalApiTranscriptProvider();
+  }
+
   throw new Error(
-    `TRANSCRIPT_PROVIDER "${provider}" is invalid. Set to "youtube".`
+    `TRANSCRIPT_PROVIDER "${provider}" is invalid. Set to "youtube" or "supadata".`
   );
 }
 

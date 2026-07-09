@@ -23,9 +23,15 @@ import type {
   VideoMetadata,
 } from "@/lib/types";
 
-type AnalysisPayload = {
+type TranscriptPayload = {
   videoId: string;
   metadata: VideoMetadata;
+  transcript: TranscriptSegment[];
+  cached: boolean;
+};
+
+type AnalyzePayload = {
+  videoId: string;
   transcript: TranscriptSegment[];
   analysis: VideoAnalysis;
   cached: boolean;
@@ -100,25 +106,68 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       setError(null);
 
       try {
-        const response = await fetch("/api/video-analysis", {
+        // Step 1: 获取字幕（快速，<30s）
+        const transcriptRes = await fetch("/api/transcript", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ videoId }),
         });
-        const payload = (await response.json()) as JsonResponse<AnalysisPayload>;
+        const transcriptPayload = (await transcriptRes.json()) as JsonResponse<TranscriptPayload>;
 
         if (cancelled) return false;
 
-        if (!payload.ok) {
-          setError(payload.error.message);
-          setErrorCode(payload.error.code ?? null);
+        if (!transcriptPayload.ok) {
+          setError(transcriptPayload.error.message);
+          setErrorCode(transcriptPayload.error.code ?? null);
           setLoading(false);
           return false;
         }
 
-        setMetadata(payload.data.metadata);
-        setTranscript(payload.data.transcript);
-        setAnalysis(payload.data.analysis);
+        // 立即展示字幕和元数据
+        setMetadata(transcriptPayload.data.metadata);
+        setTranscript(transcriptPayload.data.transcript);
+
+        // 如果字幕已缓存（含分析结果），直接使用
+        if (transcriptPayload.data.cached) {
+          // 尝试从缓存获取分析结果
+          const analyzeRes = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              videoId,
+              title: transcriptPayload.data.metadata.title,
+              transcript: transcriptPayload.data.transcript,
+            }),
+          });
+          const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
+          if (analyzePayload.ok) {
+            setAnalysis(analyzePayload.data.analysis);
+          }
+        } else {
+          // Step 2: AI 分析（可能较慢，<180s）
+          const analyzeRes = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              videoId,
+              title: transcriptPayload.data.metadata.title,
+              transcript: transcriptPayload.data.transcript,
+            }),
+          });
+          const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
+
+          if (cancelled) return false;
+
+          if (!analyzePayload.ok) {
+            setError(analyzePayload.error.message);
+            setErrorCode(analyzePayload.error.code ?? null);
+            setLoading(false);
+            return false;
+          }
+
+          setAnalysis(analyzePayload.data.analysis);
+        }
+
         setLoading(false);
         return true;
       } catch {

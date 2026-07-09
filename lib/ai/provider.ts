@@ -564,14 +564,23 @@ export class AnthropicProvider implements AiProvider {
       });
 
       // Anthropic response: { content: [{ type: "text", text: "..." }] }
+      // Some APIs (like LongCat) return { type: "thinking" } blocks before text
       const content = data.content;
       if (Array.isArray(content)) {
+        // First try: find a text block
         const textBlock = content.find((b: Record<string, unknown>) => b.type === "text");
-        if (textBlock && typeof textBlock.text === "string") {
+        if (textBlock && typeof textBlock.text === "string" && textBlock.text.trim().length > 0) {
           debugLog("[AI:Chat] Anthropic API 调用成功, model=%s, 耗时 %dms, len=%d", model, Date.now() - t0, textBlock.text.length);
-          // Debug: log first 500 chars to see what the model returned
           debugLog("[AI:Chat] Anthropic 响应预览: %s", textBlock.text.slice(0, 500));
           return textBlock.text;
+        }
+        // Fallback: some APIs return thinking blocks without text — extract thinking content
+        const thinkingBlocks = content.filter((b: Record<string, unknown>) => b.type === "thinking" && typeof b.thinking === "string");
+        if (thinkingBlocks.length > 0) {
+          const thinkingText = thinkingBlocks.map((b: Record<string, unknown>) => b.thinking as string).join("\n");
+          debugLog("[AI:Chat] Anthropic API (thinking-only), model=%s, 耗时 %dms, len=%d", model, Date.now() - t0, thinkingText.length);
+          debugLog("[AI:Chat] Anthropic 响应预览 (thinking): %s", thinkingText.slice(0, 500));
+          return thinkingText;
         }
       }
       console.error("[AI:Chat] Anthropic 响应格式异常, model=%s, data=%s", model, JSON.stringify(data).slice(0, 300));
