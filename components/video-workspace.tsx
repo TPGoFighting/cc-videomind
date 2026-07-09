@@ -78,11 +78,11 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     playerRef.current?.seekTo(seconds);
   }, []);
 
-  // 每 100ms 轮询播放器当前时间，确保转录文本跟随精准对齐
+  // 每 250ms 轮询播放器当前时间（从 100ms 降低，减少 React 重渲染）
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(playerRef.current?.getCurrentTime() ?? 0);
-    }, 100);
+    }, 250);
     return () => clearInterval(interval);
   }, []);
 
@@ -101,12 +101,12 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   useEffect(() => {
     let cancelled = false;
 
-    async function load(): Promise<boolean> {
+    // Step 1: 获取字幕（快速，<30s）
+    async function loadTranscript(): Promise<{ metadata: VideoMetadata; transcript: TranscriptSegment[] } | null> {
       setLoading(true);
       setError(null);
 
       try {
-        // Step 1: 获取字幕（快速，<30s）
         const transcriptRes = await fetch("/api/transcript", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -114,71 +114,60 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         });
         const transcriptPayload = (await transcriptRes.json()) as JsonResponse<TranscriptPayload>;
 
-        if (cancelled) return false;
+        if (cancelled) return null;
 
         if (!transcriptPayload.ok) {
           setError(transcriptPayload.error.message);
           setErrorCode(transcriptPayload.error.code ?? null);
           setLoading(false);
-          return false;
+          return null;
         }
 
         // 立即展示字幕和元数据
         setMetadata(transcriptPayload.data.metadata);
         setTranscript(transcriptPayload.data.transcript);
-
-        // 如果字幕已缓存（含分析结果），直接使用
-        if (transcriptPayload.data.cached) {
-          // 尝试从缓存获取分析结果
-          const analyzeRes = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              videoId,
-              title: transcriptPayload.data.metadata.title,
-              transcript: transcriptPayload.data.transcript,
-            }),
-          });
-          const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
-          if (analyzePayload.ok) {
-            setAnalysis(analyzePayload.data.analysis);
-          }
-        } else {
-          // Step 2: AI 分析（可能较慢，<180s）
-          const analyzeRes = await fetch("/api/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              videoId,
-              title: transcriptPayload.data.metadata.title,
-              transcript: transcriptPayload.data.transcript,
-            }),
-          });
-          const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
-
-          if (cancelled) return false;
-
-          if (!analyzePayload.ok) {
-            setError(analyzePayload.error.message);
-            setErrorCode(analyzePayload.error.code ?? null);
-            setLoading(false);
-            return false;
-          }
-
-          setAnalysis(analyzePayload.data.analysis);
-        }
-
         setLoading(false);
-        return true;
+
+        return { metadata: transcriptPayload.data.metadata, transcript: transcriptPayload.data.transcript };
       } catch {
         if (!cancelled) {
           setError("无法解析此视频，请确认链接有效后重试。");
           setLoading(false);
         }
-        return false;
+        return null;
       }
     }
 
+    // Step 2: AI 分析（可能较慢，<120s）
+    async function loadAnalysis(metadata: VideoMetadata, transcript: TranscriptSegment[]) {
+      try {
+        const analyzeRes = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoId,
+            title: metadata.title,
+            transcript,
+          }),
+        });
+        const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
+
+        if (cancelled) return;
+
+        if (analyzePayload.ok) {
+          setAnalysis(analyzePayload.data.analysis);
+        } else {
+          setError(analyzePayload.error.message);
+          setErrorCode(analyzePayload.error.code ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("AI 分析失败，请重试。");
+        }
+      }
+    }
+
+    // Step 3: 要点 + 摘要（与分析并行）
     async function loadMomentsAndSummary() {
       setMomentsLoading(true);
       setSummaryLoading(true);
@@ -204,20 +193,12 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             moments: KeyMoment[];
             _debug?: GenerationDebug;
           }>;
-          console.log("[Frontend:Moments] 收到响应:", {
-            ok: payload.ok,
-            status: momentsRes.value.status,
-            momentCount: payload.ok ? payload.data.moments.length : "N/A",
-            error: payload.ok ? null : payload.error?.message,
-          });
           if (payload.ok) {
             setMoments(payload.data.moments);
           }
-        } catch (err) {
-          console.error("[Frontend:Moments] JSON 解析失败:", err instanceof Error ? err.message : err);
+        } catch {
+          // ignore
         }
-      } else {
-        console.error("[Frontend:Moments] 请求失败(rejected):", momentsRes.reason);
       }
       setMomentsLoading(false);
 
@@ -227,33 +208,30 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             takeaways: SummaryTakeaway[];
             _debug?: GenerationDebug;
           }>;
-          console.log("[Frontend:Summary] 收到响应:", {
-            ok: payload.ok,
-            status: summaryRes.value.status,
-            takeawayCount: payload.ok ? payload.data.takeaways.length : "N/A",
-            error: payload.ok ? null : payload.error?.message,
-          });
           if (payload.ok) {
             setTakeaways(payload.data.takeaways);
           }
-        } catch (err) {
-          console.error("[Frontend:Summary] JSON 解析失败:", err instanceof Error ? err.message : err);
+        } catch {
+          // ignore
         }
-      } else {
-        console.error("[Frontend:Summary] 请求失败(rejected):", summaryRes.reason);
       }
       setSummaryLoading(false);
     }
 
-    // 先加载主分析（含字幕缓存写入），成功后再加载要点/摘要
+    // 编排：字幕 → [分析 ‖ 要点+摘要] 并行
     async function loadAll() {
-      const ok = await load();
-      if (cancelled || !ok) {
+      const result = await loadTranscript();
+      if (cancelled || !result) {
         setMomentsLoading(false);
         setSummaryLoading(false);
         return;
       }
-      await loadMomentsAndSummary();
+
+      // 分析和要点+摘要并行执行
+      await Promise.all([
+        loadAnalysis(result.metadata, result.transcript),
+        loadMomentsAndSummary(),
+      ]);
     }
 
     void loadAll();

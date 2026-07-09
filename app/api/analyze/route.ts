@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
 import { withSecurity } from "@/lib/security/middleware";
-import { upsertAnalysisCache, getCachedAnalysis } from "@/lib/supabase/cache";
+import { upsertAnalysisCache } from "@/lib/supabase/cache";
 import { getAuthenticatedUserId, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import type { TranscriptSegment } from "@/lib/types";
@@ -19,7 +19,7 @@ const RequestSchema = z.object({
   transcript: z.array(TranscriptSegmentSchema).min(1).max(10000),
 });
 
-export const maxDuration = 180;
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   return withSecurity({
@@ -35,57 +35,23 @@ export async function POST(request: Request) {
     const userId = await getAuthenticatedUserId(request);
 
     try {
-      const containsChinese = (text: string) => /[\u4e00-\u9fa5]/.test(text);
-      const hasTranslation = transcript.some((s) => s.text_zh?.trim());
-      let finalTranscript: TranscriptSegment[] = transcript;
+      // 翻译延迟到用户切换中文模式时触发（通过 /api/translate-transcript SSE 端点）
+      // 这里只做 AI 分析，不翻译
+      const aiProvider = await getAiProvider(userId ?? undefined);
+      const analysis = await aiProvider.generateAnalysis({ title, transcript });
 
-      // 自动翻译文稿
-      if (!hasTranslation && transcript.length > 0) {
-        try {
-          console.log(`[Translate] 启动自动翻译, 视频ID: ${videoId}...`);
-          const textSample = transcript.slice(0, 15).map((s) => s.text).join(" ");
-          const targetLanguage = containsChinese(textSample) ? "English" : "zh-CN";
-          console.log(`[Translate] 语言检测: ${containsChinese(textSample) ? "中文->英文" : "英文->中文"}`);
-
-          const aiProvider = await getAiProvider(userId ?? undefined);
-
-          const BATCH_SIZE = 30;
-          const chunks: TranscriptSegment[][] = [];
-          for (let i = 0; i < transcript.length; i += BATCH_SIZE) {
-            chunks.push(transcript.slice(i, i + BATCH_SIZE));
-          }
-
-          // 限制并发数为3，避免AI provider限流
-          const CONCURRENCY = 3;
-          const translatedChunks: TranscriptSegment[][] = [];
-          for (let i = 0; i < chunks.length; i += CONCURRENCY) {
-            const batch = chunks.slice(i, i + CONCURRENCY);
-            const results = await Promise.all(
-              batch.map((chunk) => aiProvider.translateTranscript({ segments: chunk, targetLanguage }))
-            );
-            translatedChunks.push(...results);
-          }
-
-          finalTranscript = translatedChunks.flat();
-          console.log(`[Translate] 翻译完成, 总段数: ${finalTranscript.length}`);
-        } catch (err) {
-          console.error(`[Translate] 翻译失败，使用原文字幕:`, err);
-        }
-      }
-
-      // AI 分析
-      const analysis = await (await getAiProvider(userId ?? undefined)).generateAnalysis({
-        title,
-        transcript: finalTranscript,
+      // 缓存结果（保存原始字幕，不含翻译）
+      await upsertAnalysisCache({
+        videoId,
+        metadata: { videoId, title, authorName: "", thumbnailUrl: "", providerUrl: "" },
+        transcript,
+        analysis,
       });
-
-      // 缓存结果
-      await upsertAnalysisCache({ videoId, metadata: { videoId, title, authorName: "", thumbnailUrl: "", providerUrl: "" }, transcript: finalTranscript, analysis });
       await recordAnalysisUsage({ userId, videoId, request });
 
       return successResponse({
         videoId,
-        transcript: finalTranscript,
+        transcript,
         analysis,
         cached: false,
         preview: userId === null,

@@ -322,16 +322,16 @@ export class OpenAiCompatibleProvider implements AiProvider {
     for (const modelName of this.modelChain) {
       const body = { model: modelName, messages };
 
-      // 先尝试带 response_format
-      const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } });
+      // 先尝试带 response_format（快速失败，30s 超时）
+      const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } }, 30_000);
       if (withFormat) {
         if (modelName !== this.model) debugLog("[AI:Fallback] 切换到 %s 成功", modelName);
         debugLog("[AI:Chat] model=%s, 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withFormat.length);
         return withFormat;
       }
 
-      // 不带 response_format 再试
-      const withoutFormat = await this.tryChat(body);
+      // 不带 response_format 再试（30s 超时）
+      const withoutFormat = await this.tryChat(body, 30_000);
       if (withoutFormat) {
         if (modelName !== this.model) debugLog("[AI:Fallback] 切换到 %s 成功 (no-format)", modelName);
         debugLog("[AI:Chat] model=%s (no-format), 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withoutFormat.length);
@@ -350,14 +350,14 @@ export class OpenAiCompatibleProvider implements AiProvider {
     return this.baseUrl.includes("deepseek");
   }
 
-  private async tryChat(body: Record<string, unknown>): Promise<string | null> {
+  private async tryChat(body: Record<string, unknown>, timeoutMs = 60_000): Promise<string | null> {
     const t0 = Date.now();
     const model = body.model ?? this.model;
     try {
       const response = OpenAiChatResponseSchema.parse(
         await fetchJsonWithTimeout<unknown>(`${this.baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          timeoutMs: 60000,
+          timeoutMs,
           service: "AI provider",
           headers: {
             "Content-Type": "application/json",

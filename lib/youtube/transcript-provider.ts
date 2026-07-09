@@ -63,19 +63,35 @@ export class InnertubeTranscriptProvider implements TranscriptProvider {
     const apiKey = await this.getApiKey();
     if (!apiKey) throw new TranscriptError("PAGE_FETCH_FAILED", "无法获取 YouTube API key");
 
-    // 多客户端重试：Android → Web → iOS
-    const clientErrors: string[] = [];
-    for (const client of INNERTUBE_CLIENTS) {
-      try {
-        const result = await this.tryWithClient(videoId, apiKey, client, preferredLang);
-        if (result.length > 0) return result;
-        clientErrors.push(`${client.name}: 字幕内容为空`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        clientErrors.push(`${client.name}: ${msg}`);
+    // 竞速策略：Android 和 Web 并行尝试，取最快成功的结果
+    const primaryClients = INNERTUBE_CLIENTS.filter(c => c.name === "ANDROID" || c.name === "WEB");
+    const fallbackClient = INNERTUBE_CLIENTS.find(c => c.name === "IOS");
+
+    const primaryResults = await Promise.allSettled(
+      primaryClients.map(client => this.tryWithClient(videoId, apiKey, client, preferredLang))
+    );
+
+    // 取第一个成功的结果
+    for (const result of primaryResults) {
+      if (result.status === "fulfilled" && result.value.length > 0) {
+        return result.value;
       }
     }
-    throw new TranscriptError("ALL_TRACKS_FAILED", `所有客户端均失败（${INNERTUBE_CLIENTS.length}个）：${clientErrors.join(" | ")}`);
+
+    // 主客户端全部失败，尝试 iOS 作为降级
+    if (fallbackClient) {
+      try {
+        const result = await this.tryWithClient(videoId, apiKey, fallbackClient, preferredLang);
+        if (result.length > 0) return result;
+      } catch {
+        // ignore
+      }
+    }
+
+    const errors = primaryResults.map((r, i) =>
+      r.status === "fulfilled" ? `${primaryClients[i].name}: 字幕为空` : `${primaryClients[i].name}: ${r.reason}`
+    );
+    throw new TranscriptError("ALL_TRACKS_FAILED", `所有客户端均失败：${errors.join(" | ")}`);
   }
 
   private async tryWithClient(videoId: string, apiKey: string, client: typeof INNERTUBE_CLIENTS[number], preferredLang?: string): Promise<TranscriptSegment[]> {
@@ -158,11 +174,15 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
 export class YouTubeTranscriptProvider implements TranscriptProvider {
+  // 页面 HTML 缓存（30 分钟 TTL，避免重复抓取）
+  private static _htmlCache = new Map<string, { html: string; ts: number }>();
+  private static HTML_CACHE_TTL = 30 * 60 * 1000;
+
   async getTranscript(
     videoId: string,
     preferredLang?: string
   ): Promise<TranscriptSegment[]> {
-    // 第1步：获取页面 HTML
+    // 第1步：获取页面 HTML（带缓存）
     const html = await this.fetchPageHtml(videoId);
 
     // 第2步：提取 ytInitialPlayerResponse
@@ -210,6 +230,12 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
   // ─── 第1步：获取页面 HTML ──────────────────────────────────────────────
 
   private async fetchPageHtml(videoId: string): Promise<string> {
+    // 检查缓存
+    const cached = YouTubeTranscriptProvider._htmlCache.get(videoId);
+    if (cached && Date.now() - cached.ts < YouTubeTranscriptProvider.HTML_CACHE_TTL) {
+      return cached.html;
+    }
+
     const url = `${YOUTUBE_WATCH_URL}?v=${encodeURIComponent(videoId)}`;
     let response: Response;
 
@@ -259,6 +285,9 @@ export class YouTubeTranscriptProvider implements TranscriptProvider {
         );
       }
     }
+
+    // 缓存 HTML
+    YouTubeTranscriptProvider._htmlCache.set(videoId, { html, ts: Date.now() });
 
     // 检测年龄限制 — 终端错误，不可恢复
     if (html.includes("Sign in to confirm your age")) {

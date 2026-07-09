@@ -7,9 +7,13 @@ export class YoutubeTranscriptPackageProvider implements TranscriptProvider {
     const { YoutubeTranscript } = await import("youtube-transcript");
 
     try {
-      const result = await YoutubeTranscript.fetchTranscript(videoId, {
-        lang: preferredLang ?? "en",
-      });
+      // 添加 15s 超时，防止永久挂起
+      const result = await Promise.race([
+        YoutubeTranscript.fetchTranscript(videoId, { lang: preferredLang ?? "en" }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("youtube-transcript 超时 (15s)")), 15_000)
+        ),
+      ]);
 
       if (!result || result.length === 0) {
         throw new TranscriptError("CAPTION_DOWNLOAD_FAILED", "youtube-transcript 未返回字幕。");

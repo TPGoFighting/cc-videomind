@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   const untranslated = segments.filter((s) => !s.text_zh);
 
   const BATCH_SIZE = 25;
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 5;
 
   const chunks: TranscriptSegment[][] = [];
   for (let i = 0; i < untranslated.length; i += BATCH_SIZE) {
