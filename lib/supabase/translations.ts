@@ -1,4 +1,4 @@
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 import type { TranscriptSegment } from "@/lib/types";
 
 interface TranslationRecord {
@@ -18,25 +18,13 @@ export async function getLatestTranslation(
   videoId: string,
   language: string
 ): Promise<{ segments: TranscriptSegment[]; version: number } | null> {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return null;
-
-  const { data, error } = await supabase
-    .from("video_translations")
-    .select("segments, version")
-    .eq("video_id", videoId)
-    .eq("language", language)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[Translations] getLatest error:", error.message);
-    return null;
-  }
-  if (!data) return null;
-
-  return { segments: data.segments as TranscriptSegment[], version: data.version };
+  const { rows } = await query<{ segments: TranscriptSegment[]; version: number }>(
+    `SELECT segments, version FROM video_translations
+     WHERE video_id = $1 AND language = $2
+     ORDER BY version DESC LIMIT 1`,
+    [videoId, language]
+  );
+  return rows[0] ?? null;
 }
 
 /** Get a specific version translation */
@@ -45,56 +33,27 @@ export async function getTranslation(
   language: string,
   version: number
 ): Promise<TranslationRecord | null> {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return null;
-
-  const { data, error } = await supabase
-    .from("video_translations")
-    .select("*")
-    .eq("video_id", videoId)
-    .eq("language", language)
-    .eq("version", version)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[Translations] getTranslation error:", error.message);
-    return null;
-  }
-  if (!data) return null;
-
-  return {
-    id: data.id,
-    video_id: data.video_id,
-    language: data.language,
-    version: data.version,
-    segments: data.segments as TranscriptSegment[],
-    provider: data.provider,
-    model: data.model,
-    quality_score: data.quality_score,
-    created_at: data.created_at,
-  };
+  const { rows } = await query<TranslationRecord>(
+    `SELECT * FROM video_translations
+     WHERE video_id = $1 AND language = $2 AND version = $3`,
+    [videoId, language, version]
+  );
+  return rows[0] ?? null;
 }
 
-/** Get all versions metadata (without full segments) for a video + language */
+/** Get all versions metadata for a video + language */
 export async function getAllTranslations(
   videoId: string,
   language: string
 ): Promise<Pick<TranslationRecord, "id" | "version" | "provider" | "model" | "quality_score" | "created_at">[]> {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return [];
-
-  const { data, error } = await supabase
-    .from("video_translations")
-    .select("id, version, provider, model, quality_score, created_at")
-    .eq("video_id", videoId)
-    .eq("language", language)
-    .order("version", { ascending: false });
-
-  if (error) {
-    console.error("[Translations] getAll error:", error.message);
-    return [];
-  }
-  return data ?? [];
+  const { rows } = await query(
+    `SELECT id, version, provider, model, quality_score, created_at
+     FROM video_translations
+     WHERE video_id = $1 AND language = $2
+     ORDER BY version DESC`,
+    [videoId, language]
+  );
+  return rows;
 }
 
 /** Upsert a new translation version (always creates a new version) */
@@ -105,38 +64,23 @@ export async function upsertTranslation(
   provider?: string,
   model?: string
 ): Promise<number | null> {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return null;
+  // Find max version
+  const { rows: existing } = await query<{ version: number }>(
+    `SELECT version FROM video_translations
+     WHERE video_id = $1 AND language = $2
+     ORDER BY version DESC LIMIT 1`,
+    [videoId, language]
+  );
+  const nextVersion = (existing[0]?.version ?? 0) + 1;
 
-  // Find max version for this video + language
-  const { data: existing } = await supabase
-    .from("video_translations")
-    .select("version")
-    .eq("video_id", videoId)
-    .eq("language", language)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { rows } = await query<{ version: number }>(
+    `INSERT INTO video_translations (video_id, language, version, segments, provider, model)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING version`,
+    [videoId, language, nextVersion, JSON.stringify(segments), provider ?? null, model ?? null]
+  );
 
-  const nextVersion = (existing?.version ?? 0) + 1;
-
-  const { error } = await supabase
-    .from("video_translations")
-    .insert({
-      video_id: videoId,
-      language,
-      version: nextVersion,
-      segments,
-      provider: provider ?? null,
-      model: model ?? null,
-    });
-
-  if (error) {
-    console.error("[Translations] upsert error:", error.message);
-    return null;
-  }
-
-  return nextVersion;
+  return rows[0]?.version ?? null;
 }
 
 /** Delete a specific translation version */
@@ -145,19 +89,10 @@ export async function deleteTranslation(
   language: string,
   version: number
 ): Promise<boolean> {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return false;
-
-  const { error } = await supabase
-    .from("video_translations")
-    .delete()
-    .eq("video_id", videoId)
-    .eq("language", language)
-    .eq("version", version);
-
-  if (error) {
-    console.error("[Translations] delete error:", error.message);
-    return false;
-  }
-  return true;
+  const { rowCount } = await query(
+    `DELETE FROM video_translations
+     WHERE video_id = $1 AND language = $2 AND version = $3`,
+    [videoId, language, version]
+  );
+  return (rowCount ?? 0) > 0;
 }

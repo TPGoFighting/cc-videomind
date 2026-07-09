@@ -1,4 +1,4 @@
-import { createSupabaseServiceClient, createSupabaseServerClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 
 export type TaskType = "bilibili_asr" | "translate" | "vectorize" | "comprehensive_analysis";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
@@ -17,36 +17,19 @@ export interface AsyncTask {
   completed_at: string | null;
 }
 
-function getClient() {
-  const serviceClient = createSupabaseServiceClient();
-  if (serviceClient) return serviceClient;
-  // Fallback to server client (requires cookies — works in API routes)
-  return null;
-}
-
-function requireClient() {
-  const client = getClient();
-  if (!client) {
-    throw new Error("Supabase client is not configured. Set SUPABASE_SERVICE_ROLE_KEY.");
-  }
-  return client;
-}
-
 export async function createTask(
   type: TaskType,
   videoId: string,
   userId: string | null,
   input?: Record<string, unknown>,
 ): Promise<string> {
-  const client = requireClient();
-  const { data, error } = await client
-    .from("async_tasks")
-    .insert({ task_type: type, video_id: videoId, user_id: userId, input: input ?? null })
-    .select("id")
-    .single();
-
-  if (error) throw new Error(`Failed to create task: ${error.message}`);
-  return data.id as string;
+  const { rows } = await query<{ id: string }>(
+    `INSERT INTO async_tasks (task_type, video_id, user_id, input)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    [type, videoId, userId, input ? JSON.stringify(input) : null]
+  );
+  return rows[0].id;
 }
 
 export async function updateTask(
@@ -55,57 +38,55 @@ export async function updateTask(
   output?: Record<string, unknown>,
   error?: string,
 ): Promise<void> {
-  const client = requireClient();
-  const update: Record<string, unknown> = { status };
+  const sets: string[] = ["status = $1"];
+  const params: unknown[] = [status];
+  let idx = 2;
 
-  if (status === "running") update.started_at = new Date().toISOString();
-  if (status === "completed" || status === "failed") update.completed_at = new Date().toISOString();
-  if (output !== undefined) update.output = output;
-  if (error !== undefined) update.error = error;
+  if (status === "running") {
+    sets.push(`started_at = NOW()`);
+  }
+  if (status === "completed" || status === "failed") {
+    sets.push(`completed_at = NOW()`);
+  }
+  if (output !== undefined) {
+    sets.push(`output = $${idx++}`);
+    params.push(JSON.stringify(output));
+  }
+  if (error !== undefined) {
+    sets.push(`error = $${idx++}`);
+    params.push(error);
+  }
 
-  const { error: updateError } = await client
-    .from("async_tasks")
-    .update(update)
-    .eq("id", taskId);
-
-  if (updateError) throw new Error(`Failed to update task: ${updateError.message}`);
+  params.push(taskId);
+  await query(`UPDATE async_tasks SET ${sets.join(", ")} WHERE id = $${idx}`, params);
 }
 
 export async function getTask(taskId: string): Promise<AsyncTask | null> {
-  const client = requireClient();
-  const { data, error } = await client
-    .from("async_tasks")
-    .select("*")
-    .eq("id", taskId)
-    .single();
-
-  if (error) return null;
-  return data as AsyncTask;
+  const { rows } = await query<AsyncTask>(
+    `SELECT * FROM async_tasks WHERE id = $1`,
+    [taskId]
+  );
+  return rows[0] ?? null;
 }
 
 export async function getTasksByVideo(videoId: string): Promise<AsyncTask[]> {
-  const client = requireClient();
-  const { data, error } = await client
-    .from("async_tasks")
-    .select("*")
-    .eq("video_id", videoId)
-    .order("created_at", { ascending: false });
-
-  if (error) return [];
-  return (data ?? []) as AsyncTask[];
+  const { rows } = await query<AsyncTask>(
+    `SELECT * FROM async_tasks WHERE video_id = $1 ORDER BY created_at DESC`,
+    [videoId]
+  );
+  return rows;
 }
 
 export async function getPendingTasks(taskType?: TaskType): Promise<AsyncTask[]> {
-  const client = requireClient();
-  let query = client
-    .from("async_tasks")
-    .select("*")
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
-
-  if (taskType) query = query.eq("task_type", taskType);
-
-  const { data, error } = await query;
-  if (error) return [];
-  return (data ?? []) as AsyncTask[];
+  if (taskType) {
+    const { rows } = await query<AsyncTask>(
+      `SELECT * FROM async_tasks WHERE status = 'pending' AND task_type = $1 ORDER BY created_at ASC`,
+      [taskType]
+    );
+    return rows;
+  }
+  const { rows } = await query<AsyncTask>(
+    `SELECT * FROM async_tasks WHERE status = 'pending' ORDER BY created_at ASC`
+  );
+  return rows;
 }

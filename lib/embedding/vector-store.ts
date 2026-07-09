@@ -1,4 +1,4 @@
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { query } from "@/lib/db";
 
 export interface StoredChunk {
   id: string;
@@ -9,12 +9,15 @@ export interface StoredChunk {
   similarity?: number;
 }
 
-function getClient() {
-  const client = createSupabaseServiceClient();
-  if (!client) {
-    throw new Error("Supabase service client is not configured.");
+/** Cosine similarity between two vectors */
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
   }
-  return client;
+  return normA === 0 || normB === 0 ? 0 : dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
 export async function storeChunks(
@@ -22,23 +25,18 @@ export async function storeChunks(
   chunks: Array<{ chunkIndex: number; segmentStart: number; segmentEnd: number; text: string }>,
   embeddings: number[][],
 ): Promise<void> {
-  const client = getClient();
-
-  const rows = chunks.map((chunk, i) => ({
-    video_id: videoId,
-    chunk_index: chunk.chunkIndex,
-    segment_start: chunk.segmentStart,
-    segment_end: chunk.segmentEnd,
-    text: chunk.text,
-    embedding: `[${embeddings[i].join(",")}]`,
-  }));
-
-  const { error } = await client
-    .from("video_chunks")
-    .upsert(rows, { onConflict: "video_id,chunk_index" });
-
-  if (error) {
-    throw new Error(`Failed to store chunks: ${error.message}`);
+  for (let i = 0; i < chunks.length; i++) {
+    const c = chunks[i];
+    await query(
+      `INSERT INTO video_chunks (video_id, chunk_index, segment_start, segment_end, text, embedding)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (video_id, chunk_index) DO UPDATE SET
+         segment_start = EXCLUDED.segment_start,
+         segment_end = EXCLUDED.segment_end,
+         text = EXCLUDED.text,
+         embedding = EXCLUDED.embedding`,
+      [videoId, c.chunkIndex, c.segmentStart, c.segmentEnd, c.text, JSON.stringify(embeddings[i])]
+    );
   }
 }
 
@@ -47,46 +45,38 @@ export async function searchChunks(
   queryEmbedding: number[],
   topK: number = 5,
 ): Promise<StoredChunk[]> {
-  const client = getClient();
+  // Fetch all chunks for the video, compute similarity in JS (pgvector not available yet)
+  const { rows } = await query<StoredChunk & { embedding: string }>(
+    `SELECT id, chunk_index, segment_start, segment_end, text, embedding
+     FROM video_chunks WHERE video_id = $1`,
+    [videoId]
+  );
 
-  const { data, error } = await client.rpc("match_video_chunks", {
-    p_video_id: videoId,
-    p_query_embedding: `[${queryEmbedding.join(",")}]`,
-    p_match_count: topK,
+  const scored = rows.map((row) => {
+    const emb: number[] = row.embedding ? JSON.parse(row.embedding) : [];
+    return {
+      id: row.id,
+      chunk_index: row.chunk_index,
+      segment_start: row.segment_start,
+      segment_end: row.segment_end,
+      text: row.text,
+      similarity: cosineSimilarity(queryEmbedding, emb),
+    };
   });
 
-  if (error) {
-    throw new Error(`Failed to search chunks: ${error.message}`);
-  }
-
-  return (data ?? []) as StoredChunk[];
+  scored.sort((a, b) => b.similarity - a.similarity);
+  return scored.slice(0, topK);
 }
 
 export async function getChunksByVideo(videoId: string): Promise<StoredChunk[]> {
-  const client = getClient();
-
-  const { data, error } = await client
-    .from("video_chunks")
-    .select("*")
-    .eq("video_id", videoId)
-    .order("chunk_index", { ascending: true });
-
-  if (error) {
-    throw new Error(`Failed to get chunks: ${error.message}`);
-  }
-
-  return (data ?? []) as StoredChunk[];
+  const { rows } = await query<StoredChunk>(
+    `SELECT id, chunk_index, segment_start, segment_end, text
+     FROM video_chunks WHERE video_id = $1 ORDER BY chunk_index ASC`,
+    [videoId]
+  );
+  return rows;
 }
 
 export async function deleteChunksByVideo(videoId: string): Promise<void> {
-  const client = getClient();
-
-  const { error } = await client
-    .from("video_chunks")
-    .delete()
-    .eq("video_id", videoId);
-
-  if (error) {
-    throw new Error(`Failed to delete chunks: ${error.message}`);
-  }
+  await query(`DELETE FROM video_chunks WHERE video_id = $1`, [videoId]);
 }
