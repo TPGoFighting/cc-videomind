@@ -13,7 +13,8 @@ import {
   type VideoAnalysis,
   type WordDefinition
 } from "@/lib/types";
-import { buildAnalysisPrompt, buildChatPrompt } from "@/lib/ai/prompts";
+import { buildAnalysisPrompt, buildChatPrompt, buildRagChatPrompt } from "@/lib/ai/prompts";
+import type { RetrievedChunk } from "@/lib/embedding/retriever";
 import {
   buildKeyMomentsPrompt,
   buildKeyMomentsChunkPrompt,
@@ -22,6 +23,7 @@ import {
   buildStructuredSummaryChunkPrompt,
   buildStructuredSummaryReducePrompt,
 } from "@/lib/ai/prompts-v2";
+import { buildComprehensivePrompt } from "@/lib/ai/prompts-comprehensive";
 import {
   buildWordDefinitionsPrompt,
   buildTranscriptTranslationPrompt,
@@ -48,7 +50,7 @@ function debugLog(...args: unknown[]): void {
 
 export interface AiProvider {
   generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }): Promise<VideoAnalysis>;
-  answerQuestion(input: { question: string; transcript: TranscriptSegment[] }): Promise<ChatAnswer>;
+  answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }): Promise<ChatAnswer>;
   generateKeyMoments(input: {
     title: string;
     transcript: TranscriptSegment[];
@@ -63,6 +65,11 @@ export interface AiProvider {
     targetLanguage?: "zh" | "en";
     debug?: GenerationDebug;
   }): Promise<SummaryTakeaway[]>;
+
+  generateComprehensiveAnalysis(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+  }): Promise<ComprehensiveAnalysis>;
 
   /** 批量生成词义定义 */
   defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]>;
@@ -91,6 +98,36 @@ const GeminiResponseSchema = z.object({
   )
 });
 
+export const ComprehensiveAnalysisSchema = z.object({
+  summary: z.string(),
+  takeaways: z.array(z.object({
+    label: z.string(),
+    label_zh: z.string().optional(),
+    insight: z.string(),
+    insight_zh: z.string().optional(),
+    timestamps: z.array(z.string()).optional(),
+  })),
+  moments: z.array(z.object({
+    title: z.string(),
+    title_zh: z.string().optional(),
+    timestamp: z.string(),
+    quote: z.string(),
+    quote_zh: z.string().optional(),
+    reason: z.string(),
+    reason_zh: z.string().optional(),
+  })),
+  highlights: z.array(z.object({
+    startTime: z.number(),
+    endTime: z.number(),
+    title: z.string(),
+    quote: z.string(),
+    reason: z.string(),
+  })),
+  suggestedQuestions: z.array(z.string()),
+});
+
+export type ComprehensiveAnalysis = z.infer<typeof ComprehensiveAnalysisSchema>;
+
 export class OpenAiCompatibleProvider implements AiProvider {
   private readonly modelChain: string[];
 
@@ -114,8 +151,11 @@ export class OpenAiCompatibleProvider implements AiProvider {
     return repairAnalysis(value, input.transcript, direct.error);
   }
 
-  async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
-    const content = await this.chatJson(buildChatPrompt(input.question, input.transcript));
+  async answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }) {
+    const prompt = input.chunks?.length
+      ? buildRagChatPrompt(input.question, input.chunks)
+      : buildChatPrompt(input.question, input.transcript);
+    const content = await this.chatJson(prompt);
     return parseChatAnswer(content, input.transcript);
   }
 
@@ -235,6 +275,34 @@ export class OpenAiCompatibleProvider implements AiProvider {
       });
     }
     return validated;
+  }
+
+  async generateComprehensiveAnalysis(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+  }): Promise<ComprehensiveAnalysis> {
+    const t0 = Date.now();
+    const prompt = buildComprehensivePrompt(input.title, input.transcript);
+    debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
+    const content = await this.chatJson(prompt);
+    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符", content.length);
+    debugLog("[AI:Comprehensive] AI 原始响应(前500字): %s", content.slice(0, 500));
+    const value = parseJsonContent(content);
+    const result = ComprehensiveAnalysisSchema.safeParse(value);
+    if (result.success) {
+      debugLog("[AI:Comprehensive] 解析成功, takeaways=%d, moments=%d, highlights=%d, 耗时 %dms",
+        result.data.takeaways.length, result.data.moments.length, result.data.highlights.length, Date.now() - t0);
+      return result.data;
+    }
+    debugLog("[AI:Comprehensive] Schema 校验失败, 尝试修复...", result.error.message);
+    const repaired = repairComprehensive(value);
+    const repairedResult = ComprehensiveAnalysisSchema.safeParse(repaired);
+    if (repairedResult.success) {
+      debugLog("[AI:Comprehensive] 修复后解析成功, 耗时 %dms", Date.now() - t0);
+      return repairedResult.data;
+    }
+    debugLog("[AI:Comprehensive] 修复后仍失败, 使用 fallback");
+    return buildFallbackComprehensive(input.title, input.transcript);
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -400,8 +468,11 @@ export class AnthropicProvider implements AiProvider {
     return repairAnalysis(value, input.transcript, direct.error);
   }
 
-  async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
-    const content = await this.chatJson(buildChatPrompt(input.question, input.transcript));
+  async answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }) {
+    const prompt = input.chunks?.length
+      ? buildRagChatPrompt(input.question, input.chunks)
+      : buildChatPrompt(input.question, input.transcript);
+    const content = await this.chatJson(prompt);
     return parseChatAnswer(content, input.transcript);
   }
 
@@ -507,6 +578,31 @@ export class AnthropicProvider implements AiProvider {
     const content = await this.chatJson(prompt);
     const parsed = parseSummaryTakeaways(content);
     return validateSummaryTakeaways(parsed, input.transcript).slice(0, 6);
+  }
+
+  async generateComprehensiveAnalysis(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+  }): Promise<ComprehensiveAnalysis> {
+    const t0 = Date.now();
+    const prompt = buildComprehensivePrompt(input.title, input.transcript);
+    debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
+    const content = await this.chatJson(prompt);
+    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符", content.length);
+    const value = parseJsonContent(content);
+    const result = ComprehensiveAnalysisSchema.safeParse(value);
+    if (result.success) {
+      debugLog("[AI:Comprehensive] 解析成功, 耗时 %dms", Date.now() - t0);
+      return result.data;
+    }
+    debugLog("[AI:Comprehensive] Schema 校验失败, 尝试修复...");
+    const repaired = repairComprehensive(value);
+    const repairedResult = ComprehensiveAnalysisSchema.safeParse(repaired);
+    if (repairedResult.success) {
+      debugLog("[AI:Comprehensive] 修复后解析成功, 耗时 %dms", Date.now() - t0);
+      return repairedResult.data;
+    }
+    return buildFallbackComprehensive(input.title, input.transcript);
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -642,8 +738,11 @@ export class GeminiProvider implements AiProvider {
     return repairAnalysis(value, input.transcript, direct.error);
   }
 
-  async answerQuestion(input: { question: string; transcript: TranscriptSegment[] }) {
-    const content = await this.generateJson(buildChatPrompt(input.question, input.transcript));
+  async answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }) {
+    const prompt = input.chunks?.length
+      ? buildRagChatPrompt(input.question, input.chunks)
+      : buildChatPrompt(input.question, input.transcript);
+    const content = await this.generateJson(prompt);
     return parseChatAnswer(content, input.transcript);
   }
 
@@ -732,6 +831,31 @@ export class GeminiProvider implements AiProvider {
       });
     }
     return validated;
+  }
+
+  async generateComprehensiveAnalysis(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+  }): Promise<ComprehensiveAnalysis> {
+    const t0 = Date.now();
+    const prompt = buildComprehensivePrompt(input.title, input.transcript);
+    debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
+    const content = await this.generateJson(prompt);
+    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符", content.length);
+    const value = parseJsonContent(content);
+    const result = ComprehensiveAnalysisSchema.safeParse(value);
+    if (result.success) {
+      debugLog("[AI:Comprehensive] 解析成功, 耗时 %dms", Date.now() - t0);
+      return result.data;
+    }
+    debugLog("[AI:Comprehensive] Schema 校验失败, 尝试修复...");
+    const repaired = repairComprehensive(value);
+    const repairedResult = ComprehensiveAnalysisSchema.safeParse(repaired);
+    if (repairedResult.success) {
+      debugLog("[AI:Comprehensive] 修复后解析成功, 耗时 %dms", Date.now() - t0);
+      return repairedResult.data;
+    }
+    return buildFallbackComprehensive(input.title, input.transcript);
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -1285,4 +1409,59 @@ function normalizeOpenAiCompatibleBaseUrl(value: string) {
   }
 
   return trimmed;
+}
+
+function repairComprehensive(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {};
+
+  const summary = getString(value, ["summary", "description", "overview"]) ?? "";
+  const rawTakeaways = Array.isArray(value.takeaways) ? value.takeaways : [];
+  const takeaways = rawTakeaways.filter(isRecord).map((t) => ({
+    label: getString(t, ["label"]) ?? "",
+    label_zh: getString(t, ["label_zh"]) ?? getString(t, ["label"]) ?? "",
+    insight: getString(t, ["insight"]) ?? "",
+    insight_zh: getString(t, ["insight_zh"]) ?? getString(t, ["insight"]) ?? "",
+    timestamps: Array.isArray(t.timestamps) ? t.timestamps.filter((x): x is string => typeof x === "string") : [],
+  }));
+  const rawMoments = Array.isArray(value.moments) ? value.moments : [];
+  const moments = rawMoments.filter(isRecord).map((m) => ({
+    title: getString(m, ["title"]) ?? "",
+    title_zh: getString(m, ["title_zh"]) ?? getString(m, ["title"]) ?? "",
+    timestamp: getString(m, ["timestamp"]) ?? "",
+    quote: getString(m, ["quote"]) ?? "",
+    quote_zh: getString(m, ["quote_zh"]) ?? getString(m, ["quote"]) ?? "",
+    reason: getString(m, ["reason"]) ?? "",
+    reason_zh: getString(m, ["reason_zh"]) ?? getString(m, ["reason"]) ?? "",
+  }));
+  const rawHighlights = Array.isArray(value.highlights) ? value.highlights : [];
+  const highlights = rawHighlights.filter(isRecord).map((h) => ({
+    startTime: getNumber(h, ["startTime", "start"]) ?? 0,
+    endTime: getNumber(h, ["endTime", "end"]) ?? (getNumber(h, ["startTime", "start"]) ?? 0) + 10,
+    title: getString(h, ["title"]) ?? "",
+    quote: getString(h, ["quote"]) ?? "",
+    reason: getString(h, ["reason"]) ?? "",
+  }));
+  const rawQuestions = Array.isArray(value.suggestedQuestions) ? value.suggestedQuestions : [];
+  const suggestedQuestions = rawQuestions.filter((q): q is string => typeof q === "string");
+
+  return { summary, takeaways, moments, highlights, suggestedQuestions };
+}
+
+function buildFallbackComprehensive(
+  title: string,
+  transcript: TranscriptSegment[]
+): ComprehensiveAnalysis {
+  return {
+    summary: `Video analysis for "${title}". AI comprehensive generation failed; falling back to basic summary.`,
+    takeaways: [],
+    moments: [],
+    highlights: generateDefaultHighlights(transcript).map((h) => ({
+      startTime: h.startTime as number,
+      endTime: h.endTime as number,
+      title: h.title as string,
+      quote: h.quote as string,
+      reason: h.reason as string,
+    })),
+    suggestedQuestions: ["What is the main topic of this video?", "What are the key points discussed?"],
+  };
 }

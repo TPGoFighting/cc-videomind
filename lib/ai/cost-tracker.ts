@@ -116,7 +116,7 @@ export interface AiCallRecord {
   model: string;
 
   /** 功能类型 */
-  feature: "analysis" | "chat" | "moments" | "summary" | "word-definitions" | "translation";
+  feature: "analysis" | "chat" | "moments" | "summary" | "word-definitions" | "translation" | "comprehensive";
 
   /** 输入 token 数 */
   inputTokens: number;

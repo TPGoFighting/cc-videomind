@@ -34,6 +34,33 @@ type AnalyzePayload = {
   videoId: string;
   transcript: TranscriptSegment[];
   analysis: VideoAnalysis;
+  comprehensive?: {
+    summary: string;
+    takeaways: Array<{
+      label: string;
+      label_zh?: string;
+      insight: string;
+      insight_zh?: string;
+      timestamps?: string[];
+    }>;
+    moments: Array<{
+      title: string;
+      title_zh?: string;
+      timestamp: string;
+      quote: string;
+      quote_zh?: string;
+      reason: string;
+      reason_zh?: string;
+    }>;
+    highlights: Array<{
+      startTime: number;
+      endTime: number;
+      title: string;
+      quote: string;
+      reason: string;
+    }>;
+    suggestedQuestions: string[];
+  };
   cached: boolean;
   preview: boolean;
 };
@@ -139,7 +166,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     }
 
     // Step 2: AI 分析（可能较慢，<120s）
-    async function loadAnalysis(metadata: VideoMetadata, transcript: TranscriptSegment[]) {
+    async function loadAnalysis(metadata: VideoMetadata, transcript: TranscriptSegment[]): Promise<AnalyzePayload | null> {
       try {
         const analyzeRes = await fetch("/api/analyze", {
           method: "POST",
@@ -152,26 +179,59 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         });
         const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
 
-        if (cancelled) return;
+        if (cancelled) return null;
 
         if (analyzePayload.ok) {
           setAnalysis(analyzePayload.data.analysis);
+          return analyzePayload.data;
         } else {
           setError(analyzePayload.error.message);
           setErrorCode(analyzePayload.error.code ?? null);
+          return null;
         }
       } catch {
         if (!cancelled) {
           setError("AI 分析失败，请重试。");
         }
+        return null;
       }
     }
 
-    // Step 3: 要点 + 摘要（与分析并行）
-    async function loadMomentsAndSummary() {
+    // Step 3: 从 analyze 结果提取 moments + takeaways，或 fallback 到独立 API
+    async function loadMomentsAndSummary(analyzeData: AnalyzePayload | null) {
       setMomentsLoading(true);
       setSummaryLoading(true);
 
+      // 优先从 comprehensive 结果直接提取
+      if (analyzeData?.comprehensive) {
+        const c = analyzeData.comprehensive;
+        if (c.moments && c.moments.length > 0) {
+          setMoments(c.moments.map((m) => ({
+            title: m.title,
+            title_zh: m.title_zh ?? m.title,
+            timestamp: m.timestamp,
+            quote: m.quote,
+            quote_zh: m.quote_zh ?? m.quote,
+            reason: m.reason,
+            reason_zh: m.reason_zh ?? m.reason,
+          })));
+        }
+        setMomentsLoading(false);
+
+        if (c.takeaways && c.takeaways.length > 0) {
+          setTakeaways(c.takeaways.map((t) => ({
+            label: t.label,
+            label_zh: t.label_zh ?? t.label,
+            insight: t.insight,
+            insight_zh: t.insight_zh ?? t.insight,
+            timestamps: t.timestamps ?? [],
+          })));
+        }
+        setSummaryLoading(false);
+        return;
+      }
+
+      // Fallback：并行请求独立 API
       const [momentsRes, summaryRes] = await Promise.allSettled([
         fetch("/api/generate-moments", {
           method: "POST",
@@ -218,7 +278,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       setSummaryLoading(false);
     }
 
-    // 编排：字幕 → [分析 ‖ 要点+摘要] 并行
+    // 编排：字幕 → 分析 → 从分析结果提取或 fallback
     async function loadAll() {
       const result = await loadTranscript();
       if (cancelled || !result) {
@@ -227,11 +287,13 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         return;
       }
 
-      // 分析和要点+摘要并行执行
-      await Promise.all([
-        loadAnalysis(result.metadata, result.transcript),
-        loadMomentsAndSummary(),
-      ]);
+      // Step 2: 分析
+      const analyzeData = await loadAnalysis(result.metadata, result.transcript);
+
+      if (cancelled) return;
+
+      // Step 3: 从分析结果提取 moments/summary，或 fallback
+      await loadMomentsAndSummary(analyzeData);
     }
 
     void loadAll();

@@ -2,7 +2,7 @@ export const maxDuration = 120;
 
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { getCachedMoments, upsertMomentsCache } from "@/lib/supabase/cache-v2";
+import { getCachedMoments, upsertMomentsCache, getCachedComprehensive } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
@@ -36,7 +36,24 @@ export async function POST(request: Request) {
   console.log("[API:Moments] 参数:", { videoId, mode, lang, theme: theme ?? "(无)" });
 
   try {
-    // 1. 查缓存
+    // 0. 先检查 comprehensive 缓存（一次生成的所有内容）
+    const comprehensiveCached = await getCachedComprehensive(videoId);
+    if (comprehensiveCached && comprehensiveCached.moments && comprehensiveCached.moments.length > 0) {
+      // 将 comprehensive.moments 转换为 KeyMoment[] 格式
+      const momentsFromComprehensive = comprehensiveCached.moments.map((m) => ({
+        title: m.title,
+        title_zh: m.title_zh ?? m.title,
+        timestamp: m.timestamp,
+        quote: m.quote,
+        quote_zh: m.quote_zh ?? m.quote,
+        reason: m.reason,
+        reason_zh: m.reason_zh ?? m.reason,
+      }));
+      console.log("[API:Moments] 从 comprehensive 缓存提取 moments, 返回 %d 条", momentsFromComprehensive.length);
+      return successResponse({ moments: momentsFromComprehensive, mode, cached: true, _debug: { comprehensive: true } });
+    }
+
+    // 1. 查 moments 专属缓存
     const cached = await getCachedMoments(videoId, lang, mode, theme);
     if (cached) {
       console.log("[API:Moments] 命中缓存, 返回 %d 条", cached.length);

@@ -1,5 +1,6 @@
 import type { TranscriptSegment } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils/time";
+import type { RetrievedChunk } from "@/lib/embedding/retriever";
 
 export function transcriptForPrompt(segments: TranscriptSegment[]) {
   const maxChars = 60_000;
@@ -111,5 +112,39 @@ export function buildChatPrompt(question: string, segments: TranscriptSegment[])
     "",
     "【字幕内容】",
     transcriptForPrompt(segments)
+  ].join("\n");
+}
+
+export function buildRagChatPrompt(question: string, chunks: RetrievedChunk[]) {
+  const schemaExample = {
+    answer: "基于字幕内容的详细回答，包含具体数据和论据，避免泛泛而谈",
+    citations: [
+      { startTime: 12.0, endTime: 18.0, quote: "字幕中支持该回答的原文引用" },
+      { startTime: 45.5, endTime: 52.0, quote: "另一段相关的原文引用" }
+    ]
+  };
+
+  const contextBlocks = chunks
+    .map((c) => {
+      const segLabel = `Segment ${c.segmentStart}-${c.segmentEnd}`;
+      return `[${segLabel}] ${c.text}`;
+    })
+    .join("\n\n");
+
+  return [
+    "你是一个基于视频字幕的问答助手。严格基于字幕内容回答问题，禁止编造任何信息。",
+    "",
+    "返回纯 JSON（不要加 markdown、代码块标记或额外说明文字）：",
+    JSON.stringify(schemaExample, null, 2),
+    "",
+    "字段要求：",
+    "- answer：详细的回答，包含字幕中的具体信息和论据",
+    "- citations：1-5 条引用，每条含 startTime(秒)、endTime(秒)、quote(字幕原文，需能在字幕中找到)",
+    "- 引用的 startTime/endTime 应从提供的 Segment 标签中取，直接使用 segment 范围即可",
+    "",
+    `【问题】${question}`,
+    "",
+    "【检索到的相关字幕片段】",
+    contextBlocks
   ].join("\n");
 }

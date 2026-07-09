@@ -4,6 +4,7 @@ import { withAnalysisDegradation, buildDegradedAnalysisResponse } from "@/lib/ai
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
 import { upsertAnalysisCache } from "@/lib/supabase/cache";
+import { upsertComprehensiveCache } from "@/lib/supabase/cache-v2";
 import { getAuthenticatedUserId, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import type { TranscriptSegment } from "@/lib/types";
@@ -41,16 +42,46 @@ export async function POST(request: Request) {
       // 这里只做 AI 分析，不翻译
       const aiProvider = await getAiProvider(userId ?? undefined);
       const t0 = Date.now();
-      const degradedResult = await withAnalysisDegradation(
-        () => aiProvider.generateAnalysis({ title, transcript }),
-        transcript,
-      );
-      const { data: analysis, degraded, message } = buildDegradedAnalysisResponse(degradedResult, transcript);
+
+      // 先尝试 comprehensive 生成（一次 AI 调用生成全部内容）
+      let comprehensiveData: Awaited<ReturnType<typeof aiProvider.generateComprehensiveAnalysis>> | null = null;
+      let analysis: Awaited<ReturnType<typeof aiProvider.generateAnalysis>> | null = null;
+      let degraded = false;
+      let message: string | undefined;
+
+      try {
+        comprehensiveData = await aiProvider.generateComprehensiveAnalysis({ title, transcript });
+        // 从 comprehensive 结果构建 VideoAnalysis（用于兼容现有缓存和前端）
+        analysis = {
+          summary: comprehensiveData.summary,
+          takeaways: comprehensiveData.suggestedQuestions.slice(0, 8),
+          suggestedQuestions: comprehensiveData.suggestedQuestions,
+          highlights: comprehensiveData.highlights,
+        };
+        // 存 comprehensive 缓存
+        try {
+          await upsertComprehensiveCache({ videoId, result: comprehensiveData });
+        } catch { /* 缓存写入失败不影响正常响应 */ }
+      } catch (comprehensiveError) {
+        console.warn("[Analyze] Comprehensive generation failed, falling back to basic analysis:", comprehensiveError);
+        comprehensiveData = null;
+        // fallback 到原始 analyze
+        const degradedResult = await withAnalysisDegradation(
+          () => aiProvider.generateAnalysis({ title, transcript }),
+          transcript,
+        );
+        const degradedResponse = buildDegradedAnalysisResponse(degradedResult, transcript);
+        analysis = degradedResponse.data;
+        degraded = degradedResponse.degraded ?? false;
+        message = degradedResponse.message;
+      }
+
+      const t1 = Date.now();
       recordAiCall({
-        provider: "default", model: "default", feature: "analysis",
+        provider: "default", model: "default", feature: comprehensiveData ? "comprehensive" : "analysis",
         inputTokens: Math.ceil(JSON.stringify(transcript).length / 4),
         outputTokens: Math.ceil(JSON.stringify(analysis).length / 4),
-        elapsedMs: Date.now() - t0, success: true,
+        elapsedMs: t1 - t0, success: true,
         userId: userId ?? undefined, videoId,
       });
 
@@ -67,6 +98,7 @@ export async function POST(request: Request) {
         videoId,
         transcript,
         analysis,
+        comprehensive: comprehensiveData ?? undefined,
         cached: false,
         preview: userId === null,
         degraded,

@@ -2,7 +2,7 @@ export const maxDuration = 120;
 
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { getCachedSummary, upsertSummaryCache } from "@/lib/supabase/cache-v2";
+import { getCachedSummary, upsertSummaryCache, getCachedComprehensive } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
@@ -35,7 +35,22 @@ export async function POST(request: Request) {
   console.log("[API:Summary] 参数:", { videoId, lang });
 
   try {
-    // 1. 查缓存
+    // 0. 先检查 comprehensive 缓存（一次生成的所有内容）
+    const comprehensiveCached = await getCachedComprehensive(videoId);
+    if (comprehensiveCached && comprehensiveCached.takeaways && comprehensiveCached.takeaways.length > 0) {
+      // 将 comprehensive.takeaways 转换为 SummaryTakeaway[] 格式
+      const takeawaysFromComprehensive = comprehensiveCached.takeaways.map((t) => ({
+        label: t.label,
+        label_zh: t.label_zh ?? t.label,
+        insight: t.insight,
+        insight_zh: t.insight_zh ?? t.insight,
+        timestamps: t.timestamps ?? [],
+      }));
+      console.log("[API:Summary] 从 comprehensive 缓存提取 takeaways, 返回 %d 条", takeawaysFromComprehensive.length);
+      return successResponse({ takeaways: takeawaysFromComprehensive, cached: true, _debug: { comprehensive: true } });
+    }
+
+    // 1. 查 summary 专属缓存
     const cached = await getCachedSummary(videoId, lang);
     if (cached) {
       console.log("[API:Summary] 命中缓存, 返回 %d 条", cached.length);

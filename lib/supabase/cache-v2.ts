@@ -5,6 +5,7 @@ import {
   type KeyMoment,
   type SummaryTakeaway
 } from "@/lib/types";
+import type { ComprehensiveAnalysis } from "@/lib/ai/provider";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 // ─── TTL 配置 ──────────────────────────────────────────────────────────────────
@@ -161,6 +162,73 @@ export async function upsertSummaryCache(input: {
     result_type: "structured_summary",
     language: input.lang,
     result: input.takeaways,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+}
+
+// ─── Comprehensive 缓存 ──────────────────────────────────────────────────────────
+
+export async function getCachedComprehensive(
+  videoId: string
+): Promise<ComprehensiveAnalysis | null> {
+  const supabase = createSupabaseServiceClient();
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("ai_results_cache")
+      .select("result, created_at")
+      .eq("video_id", videoId)
+      .eq("result_type", "comprehensive")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+
+    const age = Date.now() - new Date(data[0].created_at).getTime();
+    if (age > SUCCESS_TTL_MS) return null;
+
+    const result = data[0].result;
+    if (!result || typeof result !== "object") return null;
+
+    // 验证必要字段存在
+    const r = result as Record<string, unknown>;
+    if (
+      typeof r.summary !== "string" ||
+      !Array.isArray(r.takeaways) ||
+      !Array.isArray(r.moments) ||
+      !Array.isArray(r.highlights) ||
+      !Array.isArray(r.suggestedQuestions)
+    ) {
+      return null;
+    }
+
+    return result as unknown as ComprehensiveAnalysis;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertComprehensiveCache(input: {
+  videoId: string;
+  result: ComprehensiveAnalysis;
+}) {
+  const supabase = createSupabaseServiceClient();
+  if (!supabase) return;
+
+  // 先删旧记录
+  await supabase
+    .from("ai_results_cache")
+    .delete()
+    .eq("video_id", input.videoId)
+    .eq("result_type", "comprehensive");
+
+  await supabase.from("ai_results_cache").insert({
+    video_id: input.videoId,
+    result_type: "comprehensive",
+    language: "en", // comprehensive 结果包含双语
+    result: input.result,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   });

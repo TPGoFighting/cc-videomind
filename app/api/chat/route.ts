@@ -9,11 +9,27 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
+import { retrieveRelevantChunks, type RetrievedChunk } from "@/lib/embedding/retriever";
 
 const RequestSchema = z.object({
   videoId: VideoIdSchema,
   question: z.string().min(3).max(800)
 });
+
+function chunksToSegments(chunks: RetrievedChunk[]) {
+  // Build minimal TranscriptSegment[] from retrieved chunks for the provider
+  const segments: { startTime: number; endTime: number; text: string }[] = [];
+  for (const c of chunks) {
+    // Use segment range as a synthetic timestamp reference
+    // The actual timestamps aren't available from chunks, so we use segment indices * 10 as rough estimates
+    segments.push({
+      startTime: c.segmentStart * 10,
+      endTime: (c.segmentEnd + 1) * 10,
+      text: c.text,
+    });
+  }
+  return segments;
+}
 
 export async function POST(request: Request) {
   return withSecurity({
@@ -37,11 +53,35 @@ export async function POST(request: Request) {
       await upsertTranscriptCache({ videoId: parsed.data.videoId, metadata, transcript });
     }
 
+    // RAG retrieval: try vector search first, fall back to full transcript
+    let ragChunks: RetrievedChunk[] = [];
+    try {
+      ragChunks = await retrieveRelevantChunks(parsed.data.videoId, parsed.data.question, 5);
+    } catch {
+      // Vector search failed (e.g. no chunks vectorized yet) — fall back silently
+    }
+
     const aiProvider = await getAiProvider(userId ?? undefined);
     const t0 = Date.now();
-    const degradedResult = await withChatDegradation(
-      () => aiProvider.answerQuestion({ question: parsed.data.question, transcript }),
-    );
+
+    let degradedResult;
+    if (ragChunks.length > 0) {
+      // RAG mode: use retrieved chunks as context
+      const segmentsFromChunks = chunksToSegments(ragChunks);
+      degradedResult = await withChatDegradation(
+        () => aiProvider.answerQuestion({
+          question: parsed.data.question,
+          transcript: segmentsFromChunks as any,
+          chunks: ragChunks,
+        }),
+      );
+    } else {
+      // Fallback: existing behavior with full transcript
+      degradedResult = await withChatDegradation(
+        () => aiProvider.answerQuestion({ question: parsed.data.question, transcript }),
+      );
+    }
+
     const { data: answer } = buildDegradedResponse(degradedResult, { answer: "暂时无法回答，请稍后再试。", citations: [] });
     recordAiCall({
       provider: "default", model: "default", feature: "chat",

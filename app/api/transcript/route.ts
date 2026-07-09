@@ -122,9 +122,9 @@ export async function POST(request: Request) {
 
       // Fire-and-forget: async vectorize (non-blocking)
       if (userId && Array.isArray(transcript) && transcript.length) {
-        import("@/lib/async/task-manager")
-          .then(({ createTask }) =>
-            createTask("vectorize", videoId!, userId, { videoId, title: metadata.title })
+        import("@/lib/embedding/vectorizer")
+          .then(({ vectorizeTranscript }) =>
+            vectorizeTranscript(videoId!, transcript as any)
           )
           .catch(() => {});
       }
