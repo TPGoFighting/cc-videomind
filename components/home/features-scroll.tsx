@@ -13,6 +13,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { ACCENT_POINTS } from "@/lib/design/tokens";
 
 interface FeatureCard {
   icon: LucideIcon;
@@ -187,6 +188,29 @@ export function FeaturesScroll() {
     });
   }, { scope: sectionRef, dependencies: [isMobile], revertOnUpdate: true });
 
+  // 移动端卡片进入视口时的细腻 stagger + 形变
+  useGSAP(() => {
+    if (!isMobile) return;
+    const cards = gsap.utils.toArray<HTMLElement>(".feature-card-mobile");
+    gsap.fromTo(
+      cards,
+      { opacity: 0, y: 28, scale: 0.94 },
+      {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        duration: 0.6,
+        ease: "power3.out",
+        stagger: 0.08,
+        scrollTrigger: {
+          trigger: sectionRef.current,
+          start: "top 70%",
+          toggleActions: "play none none none",
+        },
+      }
+    );
+  }, { scope: sectionRef, dependencies: [isMobile] });
+
   return (
     <section
       ref={sectionRef}
@@ -214,16 +238,20 @@ export function FeaturesScroll() {
               className="flex gap-6 py-6"
               style={{ willChange: "transform" }}
             >
-              {FEATURES.map((feature) => {
+              {FEATURES.map((feature, i) => {
                 const Icon = feature.icon;
+                const accent = ACCENT_POINTS[i % ACCENT_POINTS.length];
                 return (
                   <div
                     key={feature.title}
-                    className="feature-card flex-shrink-0 w-[340px] lg:w-[380px] rounded-2xl border border-white/6 bg-[#0a0a0a] p-8"
+                    className="feature-card card-lift flex-shrink-0 w-[340px] lg:w-[380px] rounded-2xl border border-white/6 bg-[#0a0a0a] p-8"
                   >
                     <div className="mb-6">{feature.illustration}</div>
-                    <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/8 bg-white/[0.03]">
-                      <Icon className="h-5 w-5 text-[#0099ff]/70" />
+                    <div
+                      className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl border"
+                      style={{ borderColor: `${accent}40`, backgroundColor: `${accent}12` }}
+                    >
+                      <Icon className="h-5 w-5" style={{ color: accent }} />
                     </div>
                     <h3 className="text-[11px] font-semibold tracking-widest uppercase text-[#0099ff]/60 mb-1">
                       {feature.title}
@@ -253,16 +281,20 @@ export function FeaturesScroll() {
       {/* 移动端：纵向网格 */}
       {isMobile && (
         <div className="md:hidden px-4 pb-20 grid gap-4 sm:grid-cols-2">
-          {FEATURES.map((feature) => {
+          {FEATURES.map((feature, i) => {
             const Icon = feature.icon;
+            const accent = ACCENT_POINTS[i % ACCENT_POINTS.length];
             return (
               <div
                 key={feature.title}
-                className="rounded-2xl border border-white/6 bg-[#0a0a0a] p-6"
+                className="feature-card-mobile rounded-2xl border border-white/6 bg-[#0a0a0a] p-6"
               >
                 <div className="mb-4">{feature.illustration}</div>
-                <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/8 bg-white/[0.03]">
-                  <Icon className="h-4 w-4 text-[#0099ff]/70" />
+                <div
+                  className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border"
+                  style={{ borderColor: `${accent}40`, backgroundColor: `${accent}12` }}
+                >
+                  <Icon className="h-4 w-4" style={{ color: accent }} />
                 </div>
                 <h4 className="text-[16px] font-bold tracking-tight mb-2">
                   {feature.titleZh}

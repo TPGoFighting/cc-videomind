@@ -43,8 +43,17 @@ export const COLORS = {
   /** 次要文字色 */
   textSecondary: "#888888",
 
-  /** 强调色 - Framer Blue */
+  /** 强调色 - Framer Blue（主强调，保留现有引用） */
   accent: "#0099FF",
+
+  /** 鲜艳点缀色 — 红（CTA / 强调 / 危险态） */
+  accentRed: "#FF3B30",
+
+  /** 鲜艳点缀色 — 黄（高亮 / 标记 / 警示强调） */
+  accentYellow: "#FFCC00",
+
+  /** 鲜艳点缀色 — 蓝（次级强调，与 accent 一致，便于语义化引用） */
+  accentBlue: "#0099FF",
 
   /** 成功色 */
   success: "#00CC66",
@@ -58,6 +67,14 @@ export const COLORS = {
   /** 渐变色 - 禁止在 AI 生成内容中使用紫色渐变 */
   gradient: "linear-gradient(135deg, #0099FF 0%, #00CCFF 100%)",
 } as const;
+
+// 鲜艳点缀色序列：用于需要「红/黄/蓝」节奏感的地方（卡片图标、滚动进度等），
+// 避免单一蓝色带来的单调，同时保持克制、高级。
+export const ACCENT_POINTS = [
+  COLORS.accentRed,
+  COLORS.accentYellow,
+  COLORS.accentBlue,
+] as const;
 
 // ============================================================================
 // 3. 字体系统

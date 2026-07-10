@@ -1,3 +1,5 @@
+import { ProxyAgent, fetch as undiciFetch } from "undici";
+
 export class ExternalServiceError extends Error {
   constructor(
     message: string,
@@ -9,6 +11,17 @@ export class ExternalServiceError extends Error {
   }
 }
 
+let _proxyAgent: ProxyAgent | null = null;
+
+function getProxyAgent(): ProxyAgent | null {
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  if (!proxyUrl) return null;
+  if (!_proxyAgent) {
+    _proxyAgent = new ProxyAgent(proxyUrl);
+  }
+  return _proxyAgent;
+}
+
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit & { timeoutMs?: number; service?: string } = {}
@@ -18,10 +31,16 @@ export async function fetchWithTimeout(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, {
+    const proxyAgent = getProxyAgent();
+    const fetchOptions: RequestInit & { dispatcher?: ProxyAgent } = {
       ...requestInit,
-      signal: controller.signal
-    });
+      signal: controller.signal,
+    };
+    if (proxyAgent) {
+      fetchOptions.dispatcher = proxyAgent;
+    }
+
+    const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
       throw new ExternalServiceError(

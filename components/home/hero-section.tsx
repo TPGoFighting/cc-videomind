@@ -69,6 +69,39 @@ export function HeroSection() {
     return () => window.removeEventListener("mousemove", onMove);
   }, { scope });
 
+  // 滚动驱动实时视差 / 内容重组
+  useGSAP(() => {
+    const trigger = {
+      trigger: scope.current,
+      start: "top top",
+      end: "bottom top",
+      scrub: true,
+    };
+
+    // 左文内容随滚动上移 + 轻微淡出（重组感）
+    gsap.to(".hero-content", {
+      yPercent: -14,
+      opacity: 0.55,
+      ease: "none",
+      scrollTrigger: trigger,
+    });
+
+    // 右侧预览卡以不同速率下沉，制造纵深视差
+    gsap.to(".hero-visual", {
+      yPercent: 22,
+      scale: 0.96,
+      ease: "none",
+      scrollTrigger: trigger,
+    });
+
+    // 聚光灯随滚动反向缓动
+    gsap.to(glowRef.current, {
+      yPercent: 35,
+      ease: "none",
+      scrollTrigger: trigger,
+    });
+  }, { scope });
+
   // 预览卡片 3D 倾斜
   useGSAP(() => {
     const card = previewRef.current;
@@ -135,7 +168,7 @@ export function HeroSection() {
 
       <div className="relative z-10 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-20 items-center">
         {/* 左侧文字区 */}
-        <div className="flex flex-col justify-center space-y-8">
+        <div className="hero-content flex flex-col justify-center space-y-8">
           {/* Badge */}
           <div className="hero-badge">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#0099ff]/20 bg-[#0099ff]/6 px-4 py-1.5 text-[13px] font-medium text-[#0099ff] backdrop-blur-sm">
@@ -179,6 +212,7 @@ export function HeroSection() {
           <div className="hero-cta-row flex flex-wrap items-center gap-3">
             <Link
               href="/subscribe"
+              data-magnetic
               className="inline-flex items-center gap-2 rounded-full border border-[#0099ff]/30 bg-[#0099ff]/10 px-5 py-2.5 text-[14px] font-medium text-[#0099ff] transition-all duration-300 hover:bg-[#0099ff]/20 hover:border-[#0099ff]/50 hover:shadow-[0_0_20px_rgba(0,153,255,0.15)]"
             >
               <Crown className="h-4 w-4" />
@@ -188,7 +222,7 @@ export function HeroSection() {
         </div>
 
         {/* 右侧预览卡片 — 3D 倾斜 */}
-        <div ref={previewRef} className="hidden lg:block" style={{ perspective: "1000px" }}>
+        <div ref={previewRef} className="hero-visual hidden lg:block" style={{ perspective: "1000px" }}>
           <PreviewCard />
         </div>
       </div>

@@ -1,0 +1,36 @@
+[package]
+name = "teachplayer"
+version = "0.1.0"
+description = "TeachPlayer desktop — local YouTube AI learning tool"
+authors = ["TeachPlayer"]
+edition = "2021"
+
+# The library is what Tauri (desktop + mobile) consumes; main.rs is a thin shim.
+[lib]
+name = "teachplayer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-store = "2"
+tauri-plugin-updater = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client for the AI proxy. rustls avoids a system OpenSSL dependency so the
+# build works the same on macOS / Windows / Linux without extra native libs.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+thiserror = "1"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

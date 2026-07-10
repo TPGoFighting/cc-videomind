@@ -2,6 +2,10 @@ import { createSupabaseAuthClient, createSupabaseServerClient, createSupabaseSer
 import { isAdmin } from "@/lib/supabase/admin";
 import type { User } from "@supabase/supabase-js";
 import { type SubscriptionTier, getPlanConfig } from "@/lib/plans";
+import { isLocalMode } from "@/lib/local-mode";
+
+/** LOCAL_MODE 下的固定本地用户 id */
+export const LOCAL_USER_ID = "local";
 
 export type { SubscriptionTier };
 
@@ -37,6 +41,11 @@ export async function getAuthenticatedUser(request?: Request): Promise<User | nu
 }
 
 export async function getAuthenticatedUserId(request?: Request) {
+  // LOCAL_MODE：单机本地工具无远程账号，始终视为同一个本地用户
+  if (isLocalMode()) {
+    return LOCAL_USER_ID;
+  }
+
   const user = await getAuthenticatedUser(request);
   return user?.id ?? null;
 }
@@ -60,6 +69,12 @@ export async function getProfileTier(userId: string): Promise<SubscriptionTier> 
 
 /** 检查用户（或匿名IP）是否已经解析过某个视频 */
 export async function hasUserAnalyzedVideo(userId: string | null, videoId: string, request?: Request): Promise<boolean> {
+  // LOCAL_MODE：本地存储由数据层 Agent 通过 lib/db/local-store.ts 实现，此处先返回 false（未分析）
+  // TODO(local-store): 改为查询 lib/db/local-store.ts 的本地 usage 记录
+  if (isLocalMode()) {
+    return false;
+  }
+
   const supabase = createSupabaseServiceClient();
   if (!supabase) return false;
 
@@ -86,6 +101,11 @@ export async function hasUserAnalyzedVideo(userId: string | null, videoId: strin
 }
 
 export async function checkAnalysisQuota(userId: string | null, request?: Request) {
+  // LOCAL_MODE：本地工具无配额限制，始终放行
+  if (isLocalMode()) {
+    return { allowed: true, anonymous: false, limit: Infinity, used: 0 };
+  }
+
   const supabase = createSupabaseServiceClient();
 
   // 匿名用户：最多 1 条
@@ -174,6 +194,12 @@ function getClientIp(request?: Request): string {
 }
 
 export async function recordAnalysisUsage(input: { userId: string | null; videoId: string; request?: Request }) {
+  // LOCAL_MODE：本地存储由数据层 Agent 通过 lib/db/local-store.ts 实现，此处先 no-op
+  // TODO(local-store): 改为写入 lib/db/local-store.ts 的本地 usage 记录
+  if (isLocalMode()) {
+    return;
+  }
+
   const supabase = createSupabaseServiceClient();
   if (!supabase) return;
 

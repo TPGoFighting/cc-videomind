@@ -11,6 +11,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { SubscriptionTier } from "@/lib/plans";
+import { isLocalMode } from "@/lib/local-mode";
 
 type AuthContextType = {
   user: User | null;
@@ -29,6 +30,16 @@ type Profile = {
   email: string | null;
   subscription_tier: string;
 };
+
+/** LOCAL_MODE 下的固定本地用户（无远程账号） */
+const LOCAL_USER = {
+  id: "local",
+  email: "local@local",
+  app_metadata: {},
+  user_metadata: {},
+  aud: "local",
+  created_at: new Date(0).toISOString(),
+} as unknown as User;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -52,6 +63,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // LOCAL_MODE：单机本地工具，无远程登录态，始终视为固定本地用户
+    if (isLocalMode()) {
+      setUser(LOCAL_USER);
+      setSession(null);
+      setIsAdmin(false);
+      setSubscriptionTier("free");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
 
     // 获取初始会话
@@ -83,6 +104,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchProfile]);
 
   const signOut = async () => {
+    // LOCAL_MODE：无远程会话，仅重置本地态
+    if (isLocalMode()) {
+      setUser(LOCAL_USER);
+      setIsAdmin(false);
+      setSubscriptionTier("free");
+      return;
+    }
+
     const supabase = createClient();
     await supabase.auth.signOut();
     setIsAdmin(false);

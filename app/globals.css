@@ -286,3 +286,36 @@ button, input, textarea, select {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ══════════════════════════════════════════
+   磁吸光标（Magnetic Cursor）
+   仅在启用自定义光标时由 JS 给 <html> 加 .cursor-none
+   ══════════════════════════════════════════ */
+
+.cursor-none,
+.cursor-none * {
+  cursor: none !important;
+}
+
+/* 外环悬停可交互元素时放大、反色 */
+.cursor-ring {
+  transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              border-color 0.25s ease,
+              background-color 0.25s ease;
+}
+
+.cursor-ring--hover {
+  width: 64px;
+  height: 64px;
+  background-color: #ffffff;
+  border-color: #ffffff;
+}
+
+/* 触屏 / 减少动画时彻底隐藏自定义光标，回退系统光标 */
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .cursor-dot,
+  .cursor-ring {
+    display: none !important;
+  }
+}

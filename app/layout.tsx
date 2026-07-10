@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth-context";
 import { GsapProvider } from "@/components/gsap-provider";
 import { MobileTabBarClient } from "@/components/mobile-tab-bar-client";
+import { MagneticCursor } from "@/components/magnetic-cursor";
+import { ScrollProgress } from "@/components/scroll-progress";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,6 +25,8 @@ export default function RootLayout({
             <MobileTabBarClient />
           </GsapProvider>
         </AuthProvider>
+        <ScrollProgress />
+        <MagneticCursor />
       </body>
     </html>
   );

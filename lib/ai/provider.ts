@@ -281,28 +281,9 @@ export class OpenAiCompatibleProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
   }): Promise<ComprehensiveAnalysis> {
-    const t0 = Date.now();
     const prompt = buildComprehensivePrompt(input.title, input.transcript);
     debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
-    const content = await this.chatJson(prompt);
-    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符", content.length);
-    debugLog("[AI:Comprehensive] AI 原始响应(前500字): %s", content.slice(0, 500));
-    const value = parseJsonContent(content);
-    const result = ComprehensiveAnalysisSchema.safeParse(value);
-    if (result.success) {
-      debugLog("[AI:Comprehensive] 解析成功, takeaways=%d, moments=%d, highlights=%d, 耗时 %dms",
-        result.data.takeaways.length, result.data.moments.length, result.data.highlights.length, Date.now() - t0);
-      return result.data;
-    }
-    debugLog("[AI:Comprehensive] Schema 校验失败, 尝试修复...", result.error.message);
-    const repaired = repairComprehensive(value);
-    const repairedResult = ComprehensiveAnalysisSchema.safeParse(repaired);
-    if (repairedResult.success) {
-      debugLog("[AI:Comprehensive] 修复后解析成功, 耗时 %dms", Date.now() - t0);
-      return repairedResult.data;
-    }
-    debugLog("[AI:Comprehensive] 修复后仍失败, 使用 fallback");
-    return buildFallbackComprehensive(input.title, input.transcript);
+    return generateComprehensiveWithRetry(() => this.chatJson(prompt), input.title, input.transcript);
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -584,25 +565,9 @@ export class AnthropicProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
   }): Promise<ComprehensiveAnalysis> {
-    const t0 = Date.now();
     const prompt = buildComprehensivePrompt(input.title, input.transcript);
     debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
-    const content = await this.chatJson(prompt);
-    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符", content.length);
-    const value = parseJsonContent(content);
-    const result = ComprehensiveAnalysisSchema.safeParse(value);
-    if (result.success) {
-      debugLog("[AI:Comprehensive] 解析成功, 耗时 %dms", Date.now() - t0);
-      return result.data;
-    }
-    debugLog("[AI:Comprehensive] Schema 校验失败, 尝试修复...");
-    const repaired = repairComprehensive(value);
-    const repairedResult = ComprehensiveAnalysisSchema.safeParse(repaired);
-    if (repairedResult.success) {
-      debugLog("[AI:Comprehensive] 修复后解析成功, 耗时 %dms", Date.now() - t0);
-      return repairedResult.data;
-    }
-    return buildFallbackComprehensive(input.title, input.transcript);
+    return generateComprehensiveWithRetry(() => this.chatJson(prompt), input.title, input.transcript);
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -837,25 +802,9 @@ export class GeminiProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
   }): Promise<ComprehensiveAnalysis> {
-    const t0 = Date.now();
     const prompt = buildComprehensivePrompt(input.title, input.transcript);
     debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
-    const content = await this.generateJson(prompt);
-    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符", content.length);
-    const value = parseJsonContent(content);
-    const result = ComprehensiveAnalysisSchema.safeParse(value);
-    if (result.success) {
-      debugLog("[AI:Comprehensive] 解析成功, 耗时 %dms", Date.now() - t0);
-      return result.data;
-    }
-    debugLog("[AI:Comprehensive] Schema 校验失败, 尝试修复...");
-    const repaired = repairComprehensive(value);
-    const repairedResult = ComprehensiveAnalysisSchema.safeParse(repaired);
-    if (repairedResult.success) {
-      debugLog("[AI:Comprehensive] 修复后解析成功, 耗时 %dms", Date.now() - t0);
-      return repairedResult.data;
-    }
-    return buildFallbackComprehensive(input.title, input.transcript);
+    return generateComprehensiveWithRetry(() => this.generateJson(prompt), input.title, input.transcript);
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -1409,6 +1358,51 @@ function normalizeOpenAiCompatibleBaseUrl(value: string) {
   }
 
   return trimmed;
+}
+
+/** 判断 comprehensive 结果是否实际为空（缺 summary 且缺 takeaways/moments） */
+function isEmptyComprehensive(c: ComprehensiveAnalysis): boolean {
+  return c.summary.trim().length < 10 && c.takeaways.length === 0 && c.moments.length === 0;
+}
+
+/** 解析并校验 comprehensive 内容：直解失败则走 repair，都失败返回 null（不抛异常） */
+function parseComprehensiveResult(content: string): ComprehensiveAnalysis | null {
+  let value: unknown;
+  try {
+    value = parseJsonContent(content);
+  } catch {
+    return null;
+  }
+  const direct = ComprehensiveAnalysisSchema.safeParse(value);
+  if (direct.success) return direct.data;
+  const repaired = ComprehensiveAnalysisSchema.safeParse(repairComprehensive(value));
+  return repaired.success ? repaired.data : null;
+}
+
+/**
+ * 统一的 comprehensive 生成逻辑，带空结果重试。
+ * LongCat-2.0 等模型偶发只返回 thinking 块、缺最终 JSON，解析出的对象虽能通过 schema
+ * 但字段全空。此时重试一次（新的一次请求几乎总能拿到正常的 text 块），仍空才回退。
+ */
+async function generateComprehensiveWithRetry(
+  fetchContent: () => Promise<string>,
+  title: string,
+  transcript: TranscriptSegment[]
+): Promise<ComprehensiveAnalysis> {
+  const t0 = Date.now();
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const content = await fetchContent();
+    debugLog("[AI:Comprehensive] AI 原始响应长度: %d 字符 (第 %d 次)", content.length, attempt);
+    const parsed = parseComprehensiveResult(content);
+    if (parsed && !isEmptyComprehensive(parsed)) {
+      debugLog("[AI:Comprehensive] 解析成功, takeaways=%d, moments=%d, highlights=%d, 耗时 %dms",
+        parsed.takeaways.length, parsed.moments.length, parsed.highlights.length, Date.now() - t0);
+      return parsed;
+    }
+    debugLog("[AI:Comprehensive] 第 %d 次结果为空, %s", attempt, attempt < maxAttempts ? "重试" : "使用 fallback");
+  }
+  return buildFallbackComprehensive(title, transcript);
 }
 
 function repairComprehensive(value: unknown): Record<string, unknown> {

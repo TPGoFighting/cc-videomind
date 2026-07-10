@@ -53,7 +53,7 @@ export function VideoUrlInput() {
           <p className="mt-1.5 text-[13px] font-medium text-red-400">{error}</p>
         ) : null}
       </div>
-      <Button type="submit" disabled={loading} size="lg" className="h-16 shrink-0 px-8 text-[16px]">
+      <Button type="submit" disabled={loading} size="lg" data-magnetic className="h-16 shrink-0 px-8 text-[16px]">
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
         ) : (

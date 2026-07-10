@@ -1,6 +1,7 @@
 import { type TranscriptSegment } from "@/lib/types";
 import { fetchWithTimeout } from "@/lib/utils/http";
 import { YoutubeTranscriptPackageProvider } from "./youtube-transcript-pkg-provider";
+import { YtDlpTranscriptProvider } from "./yt-dlp-provider";
 // ═══════════════════════════════════════════════════════════════════════════════
 // 类型定义
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -904,6 +905,16 @@ export class FallbackTranscriptProvider implements TranscriptProvider {
 
 export function getTranscriptProvider(): TranscriptProvider {
   const provider = (process.env.TRANSCRIPT_PROVIDER ?? "youtube").trim();
+
+  // 本地优先模式：用户本机直连 YouTube，用 yt-dlp（带浏览器 cookie）取字幕，
+  // 失败时回退 HTML 抓取。适用于本地桌面工具（Tauri / next dev）。
+  if (provider === "local") {
+    return new FallbackTranscriptProvider(
+      new YtDlpTranscriptProvider(),
+      new YouTubeTranscriptProvider()
+    );
+  }
+
   if (provider === "youtube") {
     return new FallbackTranscriptProvider(
       new InnertubeTranscriptProvider(),      // 主层：InnerTube API（内置 3 客户端回退）
