@@ -3,6 +3,8 @@ import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { isLocalMode } from "@/lib/local-mode";
+import { getDueReviewWords, getReviewState, saveReviewState } from "@/lib/db/local-store";
 
 // SM-2 算法参数
 function sm2(quality: number, repetitions: number, easeFactor: number, intervalDays: number) {
@@ -60,6 +62,25 @@ function buildWords(reviewRows: Record<string, unknown>[], defRows: Record<strin
 }
 
 export async function GET(request: Request) {
+  if (isLocalMode()) {
+    const words = await getDueReviewWords();
+    return successResponse({
+      words: words.map((word) => ({
+        lemma: word.lemma,
+        phonetic: word.phonetic ?? undefined,
+        partOfSpeech: word.partOfSpeech ?? undefined,
+        definitionZh: word.definitionZh ?? word.lemma,
+        definitionEn: word.definitionEn ?? undefined,
+        exampleEn: word.exampleEn ?? undefined,
+        exampleZh: word.exampleZh ?? undefined,
+        repetitions: word.repetitions,
+        easeFactor: word.easeFactor,
+        intervalDays: word.intervalDays,
+        status: word.status,
+      })),
+    });
+  }
+
   const userId = await getAuthenticatedUserId(request);
   if (!userId) return errorResponse("unauthorized", "登录后可复习。", 401);
 
@@ -132,6 +153,29 @@ export async function POST(request: Request) {
       const now = new Date().toISOString();
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) return parsed.response;
+
+  if (isLocalMode()) {
+    for (const { lemma, quality } of parsed.data.reviews) {
+      const previous = await getReviewState(lemma);
+      const next = sm2(
+        quality,
+        previous?.repetitions ?? 0,
+        previous?.easeFactor ?? 2.5,
+        previous?.intervalDays ?? 0,
+      );
+      await saveReviewState({
+        lemma,
+        repetitions: next.repetitions,
+        easeFactor: next.easeFactor,
+        intervalDays: next.intervalDays,
+        nextReviewAt: next.nextReviewAt.toISOString(),
+        status: next.intervalDays >= 30
+          ? "mastered"
+          : next.repetitions > 0 ? "reviewing" : "learning",
+      });
+    }
+    return successResponse({ ok: true, reviewedAt: now });
+  }
 
   const userId = await getAuthenticatedUserId(request);
   if (!userId) return errorResponse("unauthorized", "登录后可复习。", 401);

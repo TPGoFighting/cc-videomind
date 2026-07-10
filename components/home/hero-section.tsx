@@ -3,8 +3,7 @@
 import { useRef, useState } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { Crown, ChevronDown } from "lucide-react";
-import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import { VideoUrlInput } from "@/components/video-url-input";
 import { GlbDecoration } from "@/components/glb-decoration";
 import { GLB_MODELS } from "@/lib/glb-models";
@@ -45,7 +44,6 @@ export function HeroSection() {
       )
       .fromTo(".hero-subtitle", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5 }, "-=0.2")
       .fromTo(".hero-input", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.5 }, "-=0.2")
-      .fromTo(".hero-cta-row", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4 }, "-=0.15")
       .fromTo(".hero-scroll", { opacity: 0, y: -8 }, { opacity: 0.4, y: 0, duration: 0.6 }, "-=0.1");
 
     // 滚动提示弹跳
@@ -208,17 +206,6 @@ export function HeroSection() {
             </p>
           </div>
 
-          {/* CTA */}
-          <div className="hero-cta-row flex flex-wrap items-center gap-3">
-            <Link
-              href="/subscribe"
-              data-magnetic
-              className="inline-flex items-center gap-2 rounded-full border border-[#0099ff]/30 bg-[#0099ff]/10 px-5 py-2.5 text-[14px] font-medium text-[#0099ff] transition-all duration-300 hover:bg-[#0099ff]/20 hover:border-[#0099ff]/50 hover:shadow-[0_0_20px_rgba(0,153,255,0.15)]"
-            >
-              <Crown className="h-4 w-4" />
-              查看订阅方案
-            </Link>
-          </div>
         </div>
 
         {/* 右侧预览卡片 — 3D 倾斜 */}

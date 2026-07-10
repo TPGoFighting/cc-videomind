@@ -1,4 +1,6 @@
 import { query } from "@/lib/db";
+import { isLocalMode } from "@/lib/local-mode";
+import * as localStore from "@/lib/db/local-store";
 
 export type TaskType = "bilibili_asr" | "translate" | "vectorize" | "comprehensive_analysis";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
@@ -23,6 +25,7 @@ export async function createTask(
   userId: string | null,
   input?: Record<string, unknown>,
 ): Promise<string> {
+  if (isLocalMode()) return localStore.createTask(type, videoId, userId, input);
   const { rows } = await query<{ id: string }>(
     `INSERT INTO async_tasks (task_type, video_id, user_id, input)
      VALUES ($1, $2, $3, $4)
@@ -38,6 +41,7 @@ export async function updateTask(
   output?: Record<string, unknown>,
   error?: string,
 ): Promise<void> {
+  if (isLocalMode()) return localStore.updateTask(taskId, status, output, error);
   const sets: string[] = ["status = $1"];
   const params: unknown[] = [status];
   let idx = 2;
@@ -62,6 +66,7 @@ export async function updateTask(
 }
 
 export async function getTask(taskId: string): Promise<AsyncTask | null> {
+  if (isLocalMode()) return localStore.getTask(taskId);
   const { rows } = await query<AsyncTask>(
     `SELECT * FROM async_tasks WHERE id = $1`,
     [taskId]
@@ -70,6 +75,7 @@ export async function getTask(taskId: string): Promise<AsyncTask | null> {
 }
 
 export async function getTasksByVideo(videoId: string): Promise<AsyncTask[]> {
+  if (isLocalMode()) return localStore.getTasksByVideo(videoId);
   const { rows } = await query<AsyncTask>(
     `SELECT * FROM async_tasks WHERE video_id = $1 ORDER BY created_at DESC`,
     [videoId]
@@ -78,6 +84,7 @@ export async function getTasksByVideo(videoId: string): Promise<AsyncTask[]> {
 }
 
 export async function getPendingTasks(taskType?: TaskType): Promise<AsyncTask[]> {
+  if (isLocalMode()) return localStore.getPendingTasks(taskType);
   if (taskType) {
     const { rows } = await query<AsyncTask>(
       `SELECT * FROM async_tasks WHERE status = 'pending' AND task_type = $1 ORDER BY created_at ASC`,

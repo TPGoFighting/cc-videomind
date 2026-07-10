@@ -3,9 +3,32 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { isLocalMode } from "@/lib/local-mode";
+import { deleteVocabulary, loadVocabulary, saveVocabulary } from "@/lib/db/local-store";
 
 /** GET /api/user-vocabulary — 获取用户收藏的单词 */
 export async function GET(request: Request) {
+  if (isLocalMode()) {
+    const videoId = new URL(request.url).searchParams.get("videoId");
+    const entries = await loadVocabulary();
+    const vocabulary = entries
+      .filter((entry) => !videoId || entry.videoId === videoId)
+      .map((entry) => ({
+        id: entry.id,
+        wordId: entry.id,
+        lemma: entry.word,
+        phonetic: entry.phonetic ?? undefined,
+        partOfSpeech: entry.partOfSpeech ?? undefined,
+        definitionZh: entry.definitionZh ?? entry.word,
+        definitionEn: entry.definitionEn ?? undefined,
+        exampleEn: entry.exampleEn ?? undefined,
+        exampleZh: entry.exampleZh ?? undefined,
+        videoId: entry.videoId,
+        createdAt: entry.createdAt,
+      }));
+    return successResponse({ vocabulary });
+  }
+
   const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
@@ -59,6 +82,16 @@ export async function POST(request: Request) {
     rateLimit: { maxRequests: 30, windowMs: 60_000 },
   }).wrap(request, async () => {
       const userId = await getAuthenticatedUserId(request);
+  if (isLocalMode()) {
+    const parsed = await readJson(request, SaveWordRequestSchema);
+    if (!parsed.ok) return parsed.response;
+    await saveVocabulary([{
+      word: parsed.data.lemma,
+      videoId: parsed.data.videoId,
+      definitionZh: parsed.data.lemma,
+    }]);
+    return successResponse({ saved: true, lemma: parsed.data.lemma, wordId: parsed.data.lemma });
+  }
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }
@@ -123,6 +156,12 @@ export async function DELETE(request: Request) {
     scope: "user-vocabulary",
   }).wrap(request, async () => {
       const userId = await getAuthenticatedUserId(request);
+  if (isLocalMode()) {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return errorResponse("invalid_request", "缺少 id 参数。", 400);
+    await deleteVocabulary(id);
+    return successResponse({ deleted: true });
+  }
   if (!userId) {
     return errorResponse("unauthorized", "请先登录。", 401);
   }

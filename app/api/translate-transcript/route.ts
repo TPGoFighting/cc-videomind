@@ -5,6 +5,9 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getLatestTranslation, upsertTranslation } from "@/lib/supabase/translations";
+import { isLocalMode } from "@/lib/local-mode";
+import { saveTranslationVersion } from "@/lib/db/local-store";
+import { upsertTranscriptCache } from "@/lib/supabase/cache";
 import { errorResponse, readJson } from "@/lib/utils/api";
 
 export const maxDuration = 300;
@@ -137,6 +140,12 @@ export async function POST(request: Request) {
 
         // 保存到数据库
         if (translatedCount > 0) {
+          if (isLocalMode()) {
+            await Promise.all([
+              saveTranslationVersion(videoId, lang, segments, { provider: "ai", model: "default" }),
+              upsertTranscriptCache({ videoId, transcript: segments }),
+            ]);
+          } else {
           const supabase = createSupabaseServiceClient();
 
           // 写入 video_translations 表（新版本化系统）
@@ -155,6 +164,7 @@ export async function POST(request: Request) {
               .then(({ error }) => {
                 if (error) console.error("[Translate] 回写翻译失败:", error.message);
               });
+          }
           }
         }
 

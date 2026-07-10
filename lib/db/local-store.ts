@@ -266,6 +266,17 @@ export function getLatestTranslation(
   }, null);
 }
 
+export function getTranslation(
+  videoId: string,
+  language: string,
+  version: number,
+): Promise<TranslationVersion | null> {
+  return safeRead(async () => {
+    const rows = await getTranslationVersions(videoId, language);
+    return rows.find((record) => record.version === version) ?? null;
+  }, null);
+}
+
 // ---------------------------------------------------------------------------
 // vector chunks (RAG) — cosine computed in JS, embedding stored as JSON array
 // ---------------------------------------------------------------------------
@@ -460,6 +471,126 @@ export function loadVocabulary(): Promise<VocabularyEntry[]> {
       exampleEn: r.example_en,
       exampleZh: r.example_zh,
       createdAt: r.created_at,
+    }));
+  }, []);
+}
+
+export async function deleteVocabulary(id: string): Promise<boolean> {
+  const database = await getDb();
+  const before = database.getRowsModified();
+  await mutate("deleteVocabulary", `DELETE FROM user_vocabulary WHERE id = ?`, [id]);
+  return database.getRowsModified() > before;
+}
+
+export async function deleteVocabularyByWord(word: string): Promise<void> {
+  await mutate("deleteVocabularyByWord", `DELETE FROM user_vocabulary WHERE word = ?`, [word]);
+}
+
+// ---------------------------------------------------------------------------
+// SM-2 review state (local, single-user)
+// ---------------------------------------------------------------------------
+
+export interface ReviewState {
+  lemma: string;
+  repetitions: number;
+  easeFactor: number;
+  intervalDays: number;
+  nextReviewAt: string;
+  status: string;
+}
+
+export interface ReviewWord extends VocabularyEntry, ReviewState {}
+
+export function getReviewState(lemma: string): Promise<ReviewState | null> {
+  return safeRead(async () => {
+    const rows = await queryRows<{
+      lemma: string;
+      repetitions: number;
+      ease_factor: number;
+      interval_days: number;
+      next_review_at: string;
+      status: string;
+    }>(`SELECT * FROM user_word_reviews WHERE lemma = ?`, [lemma]);
+    const row = rows[0];
+    return row ? {
+      lemma: row.lemma,
+      repetitions: row.repetitions,
+      easeFactor: row.ease_factor,
+      intervalDays: row.interval_days,
+      nextReviewAt: row.next_review_at,
+      status: row.status,
+    } : null;
+  }, null);
+}
+
+export async function saveReviewState(state: ReviewState): Promise<void> {
+  await mutate(
+    "saveReviewState",
+    `INSERT INTO user_word_reviews
+       (lemma, repetitions, ease_factor, interval_days, next_review_at, status, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(lemma) DO UPDATE SET
+       repetitions = excluded.repetitions,
+       ease_factor = excluded.ease_factor,
+       interval_days = excluded.interval_days,
+       next_review_at = excluded.next_review_at,
+       status = excluded.status,
+       updated_at = excluded.updated_at`,
+    [
+      state.lemma,
+      state.repetitions,
+      state.easeFactor,
+      state.intervalDays,
+      state.nextReviewAt,
+      state.status,
+      nowIso(),
+    ],
+  );
+}
+
+export function getDueReviewWords(limit = 20): Promise<ReviewWord[]> {
+  return safeRead(async () => {
+    const rows = await queryRows<{
+      id: string;
+      word: string;
+      video_id: string;
+      definition_zh: string | null;
+      definition_en: string | null;
+      phonetic: string | null;
+      part_of_speech: string | null;
+      example_en: string | null;
+      example_zh: string | null;
+      created_at: string;
+      repetitions: number | null;
+      ease_factor: number | null;
+      interval_days: number | null;
+      next_review_at: string | null;
+      status: string | null;
+    }>(
+      `SELECT v.*, r.repetitions, r.ease_factor, r.interval_days, r.next_review_at, r.status
+       FROM user_vocabulary v
+       LEFT JOIN user_word_reviews r ON r.lemma = v.word
+       WHERE r.next_review_at IS NULL OR r.next_review_at <= ?
+       ORDER BY COALESCE(r.next_review_at, v.created_at) ASC LIMIT ?`,
+      [nowIso(), limit],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      word: row.word,
+      videoId: row.video_id,
+      definitionZh: row.definition_zh,
+      definitionEn: row.definition_en,
+      phonetic: row.phonetic,
+      partOfSpeech: row.part_of_speech,
+      exampleEn: row.example_en,
+      exampleZh: row.example_zh,
+      createdAt: row.created_at,
+      lemma: row.word,
+      repetitions: row.repetitions ?? 0,
+      easeFactor: row.ease_factor ?? 2.5,
+      intervalDays: row.interval_days ?? 0,
+      nextReviewAt: row.next_review_at ?? nowIso(),
+      status: row.status ?? "learning",
     }));
   }, []);
 }

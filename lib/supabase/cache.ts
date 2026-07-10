@@ -9,6 +9,7 @@ import {
 } from "@/lib/types";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isLocalMode } from "@/lib/local-mode";
+import { getAnalysis, saveAnalysis } from "@/lib/db/local-store";
 
 const CachedAnalysisSchema = z.object({
   video_id: z.string(),
@@ -18,10 +19,16 @@ const CachedAnalysisSchema = z.object({
 });
 
 export async function getCachedAnalysis(videoId: string) {
-  // LOCAL_MODE：本地缓存由数据层 Agent 通过 lib/db/local-store.ts 实现，此处先返回 null（无缓存）
-  // TODO(local-store): 改为读取 lib/db/local-store.ts 的本地 video_analyses 缓存
   if (isLocalMode()) {
-    return null;
+    const record = await getAnalysis(videoId);
+    if (!record) return null;
+    const parsed = CachedAnalysisSchema.safeParse({
+      video_id: record.videoId,
+      metadata: record.metadata,
+      transcript: record.transcript,
+      analysis: record.analysis,
+    });
+    return parsed.success ? parsed.data : null;
   }
 
   const supabase = createSupabaseServiceClient();
@@ -47,9 +54,14 @@ export async function upsertTranscriptCache(input: {
   metadata?: VideoMetadata;
   transcript: TranscriptSegment[];
 }) {
-  // LOCAL_MODE：本地缓存由数据层 Agent 通过 lib/db/local-store.ts 实现，此处先 no-op
-  // TODO(local-store): 改为写入 lib/db/local-store.ts 的本地 video_analyses 缓存
   if (isLocalMode()) {
+    const existing = await getAnalysis(input.videoId);
+    await saveAnalysis(
+      input.videoId,
+      input.metadata ?? existing?.metadata ?? null,
+      input.transcript,
+      existing?.analysis ?? null,
+    );
     return;
   }
 
@@ -75,9 +87,8 @@ export async function upsertAnalysisCache(input: {
   transcript: TranscriptSegment[];
   analysis: VideoAnalysis;
 }) {
-  // LOCAL_MODE：本地缓存由数据层 Agent 通过 lib/db/local-store.ts 实现，此处先 no-op
-  // TODO(local-store): 改为写入 lib/db/local-store.ts 的本地 video_analyses 缓存
   if (isLocalMode()) {
+    await saveAnalysis(input.videoId, input.metadata, input.transcript, input.analysis);
     return;
   }
 

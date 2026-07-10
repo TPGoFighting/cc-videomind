@@ -23,7 +23,11 @@ import {
   buildStructuredSummaryChunkPrompt,
   buildStructuredSummaryReducePrompt,
 } from "@/lib/ai/prompts-v2";
-import { buildComprehensivePrompt } from "@/lib/ai/prompts-comprehensive";
+import {
+  buildComprehensiveChunkPrompt,
+  buildComprehensivePrompt,
+  buildComprehensiveReducePrompt,
+} from "@/lib/ai/prompts-comprehensive";
 import {
   buildWordDefinitionsPrompt,
   buildTranscriptTranslationPrompt,
@@ -281,9 +285,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
   }): Promise<ComprehensiveAnalysis> {
-    const prompt = buildComprehensivePrompt(input.title, input.transcript);
-    debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
-    return generateComprehensiveWithRetry(() => this.chatJson(prompt), input.title, input.transcript);
+    return generateComprehensiveInStages(input, (prompt) => this.chatJson(prompt));
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -565,9 +567,7 @@ export class AnthropicProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
   }): Promise<ComprehensiveAnalysis> {
-    const prompt = buildComprehensivePrompt(input.title, input.transcript);
-    debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
-    return generateComprehensiveWithRetry(() => this.chatJson(prompt), input.title, input.transcript);
+    return generateComprehensiveInStages(input, (prompt) => this.chatJson(prompt));
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -802,9 +802,7 @@ export class GeminiProvider implements AiProvider {
     title: string;
     transcript: TranscriptSegment[];
   }): Promise<ComprehensiveAnalysis> {
-    const prompt = buildComprehensivePrompt(input.title, input.transcript);
-    debugLog("[AI:Comprehensive] prompt 长度: %d 字符", prompt.length);
-    return generateComprehensiveWithRetry(() => this.generateJson(prompt), input.title, input.transcript);
+    return generateComprehensiveInStages(input, (prompt) => this.generateJson(prompt));
   }
 
   async defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
@@ -1343,6 +1341,34 @@ async function runConcurrent<T, R>(
     Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
   );
   return results;
+}
+
+const COMPREHENSIVE_CHUNK_THRESHOLD = 220;
+const COMPREHENSIVE_CONCURRENCY = 3;
+
+async function generateComprehensiveInStages(
+  input: { title: string; transcript: TranscriptSegment[] },
+  generateJson: (prompt: string) => Promise<string>,
+): Promise<ComprehensiveAnalysis> {
+  if (input.transcript.length <= COMPREHENSIVE_CHUNK_THRESHOLD) {
+    const prompt = buildComprehensivePrompt(input.title, input.transcript);
+    debugLog("[AI:Comprehensive] single-pass prompt length: %d", prompt.length);
+    return generateComprehensiveWithRetry(() => generateJson(prompt), input.title, input.transcript);
+  }
+
+  const chunks = chunkTranscript(input.transcript, {
+    chunkMinutes: 8,
+    overlapSeconds: 30,
+  });
+  debugLog("[AI:Comprehensive] staged mode: %d chunks, concurrency=%d", chunks.length, COMPREHENSIVE_CONCURRENCY);
+
+  const notes = await runConcurrent(COMPREHENSIVE_CONCURRENCY, chunks, async (chunk) => {
+    const prompt = buildComprehensiveChunkPrompt(input.title, chunk.segments);
+    return generateJson(prompt);
+  });
+  const reducePrompt = buildComprehensiveReducePrompt(input.title, notes);
+  debugLog("[AI:Comprehensive] reduce prompt length: %d", reducePrompt.length);
+  return generateComprehensiveWithRetry(() => generateJson(reducePrompt), input.title, input.transcript);
 }
 
 function normalizeOpenAiCompatibleBaseUrl(value: string) {

@@ -6,10 +6,10 @@ import initSqlJs, {
 import path from "node:path";
 
 const DB_PATH =
-  process.env.SQLITE_PATH ?? path.resolve(process.cwd(), "teachplayer.sqlite");
+  process.env.SQLITE_PATH ?? path.resolve(/* turbopackIgnore: true */ process.cwd(), "teachplayer.sqlite");
 
 const DEFAULT_WASM = path.resolve(
-  process.cwd(),
+  /* turbopackIgnore: true */ process.cwd(),
   "node_modules",
   "sql.js",
   "dist",
@@ -124,6 +124,18 @@ const SCHEMA: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS user_vocabulary_word_idx ON user_vocabulary(word)`,
+
+  `CREATE TABLE IF NOT EXISTS user_word_reviews (
+    lemma TEXT PRIMARY KEY,
+    repetitions INTEGER NOT NULL DEFAULT 0,
+    ease_factor REAL NOT NULL DEFAULT 2.5,
+    interval_days INTEGER NOT NULL DEFAULT 0,
+    next_review_at TEXT NOT NULL,
+    last_reviewed_at TEXT,
+    status TEXT NOT NULL DEFAULT 'learning',
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_word_reviews_due_idx ON user_word_reviews(next_review_at)`,
 
   `CREATE TABLE IF NOT EXISTS notes (
     id TEXT PRIMARY KEY,

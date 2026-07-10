@@ -136,14 +136,6 @@ export function Navbar() {
                   </Link>
                   <div className="mx-3 border-t border-white/6" />
                   <Link
-                    href="/subscribe"
-                    onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#0099ff] transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff] min-h-[44px]"
-                  >
-                    <GameIcon name="crown" size={14} />
-                    订阅方案
-                  </Link>
-                  <Link
                     href="/history"
                     onClick={() => setOpen(false)}
                     className="flex items-center gap-2 px-4 py-3 text-[13px] text-white/70 transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
@@ -200,13 +192,6 @@ export function Navbar() {
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <Link
-                href="/subscribe"
-                className="inline-flex items-center gap-1.5 rounded-full px-3 sm:px-4 py-1.5 text-[13px] font-medium text-[#0099ff] whitespace-nowrap transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff]"
-              >
-                <GameIcon name="crown" size={14} />
-                订阅
-              </Link>
               <Link
                 href="/register"
                 className="inline-flex items-center gap-1.5 rounded-full px-3 sm:px-4 py-1.5 text-[13px] font-medium text-white/60 whitespace-nowrap transition-colors hover:bg-white/8 hover:text-white"

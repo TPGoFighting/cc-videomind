@@ -446,9 +446,6 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
                     <Link href="/register" className="inline-flex items-center gap-1.5 rounded-full bg-[#0099ff]/15 px-5 py-2.5 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/25">
                       免费注册
                     </Link>
-                    <Link href="/subscribe" className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-5 py-2.5 text-[13px] font-medium text-amber-400 transition-colors hover:bg-amber-500/20">
-                      ⚡ 升级订阅
-                    </Link>
                   </div>
                 )}
               </div>

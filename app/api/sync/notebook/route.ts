@@ -3,6 +3,13 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { withSecurity } from "@/lib/security/middleware";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { isLocalMode } from "@/lib/local-mode";
+import {
+  deleteVocabularyByWord,
+  loadVocabulary,
+  saveReviewState,
+  saveVocabulary,
+} from "@/lib/db/local-store";
 
 // 校验客户端上传的数据格式 (扩展支持艾宾浩斯复习参数)
 const LocalChangeSchema = z.object({
@@ -36,6 +43,48 @@ export async function POST(request: Request) {
   const parsed = await readJson(request, SyncRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
+  }
+
+  if (isLocalMode()) {
+    for (const change of parsed.data.localChanges) {
+      if (change.isDeleted) {
+        await deleteVocabularyByWord(change.lemma);
+        continue;
+      }
+      await saveVocabulary([{
+        word: change.lemma,
+        videoId: change.videoId ?? "local",
+        definitionZh: change.lemma,
+      }]);
+      if (change.reviewLevel !== undefined || change.nextReviewAt !== undefined) {
+        await saveReviewState({
+          lemma: change.lemma,
+          repetitions: change.reviewLevel ?? 0,
+          easeFactor: change.easeFactor ?? 2.5,
+          intervalDays: 0,
+          nextReviewAt: change.nextReviewAt
+            ? new Date(change.nextReviewAt).toISOString()
+            : new Date().toISOString(),
+          status: "learning",
+        });
+      }
+    }
+    const vocabulary = await loadVocabulary();
+    return successResponse({
+      success: true,
+      serverChanges: vocabulary
+        .filter((entry) => new Date(entry.createdAt).getTime() > parsed.data.lastSyncTime)
+        .map((entry) => ({
+          id: entry.id,
+          lemma: entry.word,
+          definitionZh: entry.definitionZh ?? entry.word,
+          videoId: entry.videoId,
+          createdAt: new Date(entry.createdAt).getTime(),
+          isDeleted: false,
+        })),
+      mergedCount: parsed.data.localChanges.length,
+      syncTimestamp: Date.now(),
+    });
   }
 
   const { lastSyncTime, localChanges } = parsed.data;

@@ -9,7 +9,6 @@ const SECTIONS = [
   { id: "why", label: "为什么" },
   { id: "features", label: "功能" },
   { id: "stats", label: "数据" },
-  { id: "pricing", label: "方案" },
   { id: "roadmap", label: "路线图" },
 ];
 

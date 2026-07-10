@@ -4,6 +4,8 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { VideoIdSchema } from "@/lib/youtube/id";
+import { isLocalMode } from "@/lib/local-mode";
+import { deleteNote, getAnalysis, getNotes, saveNote } from "@/lib/db/local-store";
 
 const SaveRequestSchema = z.object({
   videoId: VideoIdSchema,
@@ -18,6 +20,21 @@ const DeleteRequestSchema = z.object({
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const videoId = searchParams.get("videoId");
+
+  if (isLocalMode()) {
+    if (videoId && !VideoIdSchema.safeParse(videoId).success) {
+      return errorResponse("invalid_video_id", "Invalid videoId.", 400);
+    }
+    const notes = await getNotes(videoId ?? undefined);
+    return successResponse(notes.map((note) => ({
+      id: note.id,
+      video_id: note.videoId,
+      body: note.body,
+      timestamp_seconds: note.timestampSeconds,
+      created_at: note.createdAt,
+      video_title: note.videoTitle ?? undefined,
+    })));
+  }
 
   const userId = await getAuthenticatedUserId(request);
   if (!userId) {
@@ -88,6 +105,25 @@ export async function POST(request: Request) {
     return parsed.response;
   }
 
+  if (isLocalMode()) {
+    const cached = await getAnalysis(parsed.data.videoId);
+    const id = await saveNote({
+      videoId: parsed.data.videoId,
+      body: parsed.data.body,
+      timestampSeconds: parsed.data.timestampSeconds,
+      videoTitle: cached?.metadata?.title ?? null,
+    });
+    const createdAt = new Date().toISOString();
+    return successResponse({
+      id,
+      video_id: parsed.data.videoId,
+      body: parsed.data.body,
+      timestamp_seconds: parsed.data.timestampSeconds ?? null,
+      created_at: createdAt,
+      video_title: cached?.metadata?.title ?? undefined,
+    });
+  }
+
   const userId = await getAuthenticatedUserId(request);
   if (!userId) {
     return errorResponse("unauthorized", "Sign in to save notes.", 401);
@@ -127,6 +163,11 @@ export async function DELETE(request: Request) {
       const parsed = await readJson(request, DeleteRequestSchema);
   if (!parsed.ok) {
     return parsed.response;
+  }
+
+  if (isLocalMode()) {
+    await deleteNote(parsed.data.noteId);
+    return successResponse({ deleted: true });
   }
 
   const userId = await getAuthenticatedUserId(request);

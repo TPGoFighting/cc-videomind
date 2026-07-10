@@ -1,6 +1,11 @@
 import { withSecurity } from "@/lib/security/middleware";
 import { getLatestTranslation, getTranslation } from "@/lib/supabase/translations";
 import { errorResponse } from "@/lib/utils/api";
+import { isLocalMode } from "@/lib/local-mode";
+import {
+  getLatestTranslation as getLocalLatestTranslation,
+  getTranslation as getLocalTranslation,
+} from "@/lib/db/local-store";
 
 export async function GET(request: Request) {
   return withSecurity({
@@ -23,7 +28,10 @@ export async function GET(request: Request) {
       if (isNaN(version) || version < 1) {
         return errorResponse("invalid_version", "version must be a positive integer.", 400);
       }
-      const record = await getTranslation(videoId, language, version);
+      const local = isLocalMode();
+      const record = local
+        ? await getLocalTranslation(videoId, language, version)
+        : await getTranslation(videoId, language, version);
       if (!record) {
         return errorResponse("not_found", "Translation not found.", 404);
       }
@@ -33,10 +41,15 @@ export async function GET(request: Request) {
         language: record.language,
         provider: record.provider,
         model: record.model,
-        createdAt: record.created_at,
+        createdAt: local
+          ? (record as NonNullable<Awaited<ReturnType<typeof getLocalTranslation>>>).createdAt
+          : (record as NonNullable<Awaited<ReturnType<typeof getTranslation>>>).created_at,
       };
     } else {
-      const latest = await getLatestTranslation(videoId, language);
+      const local = isLocalMode();
+      const latest = local
+        ? await getLocalLatestTranslation(videoId, language)
+        : await getLatestTranslation(videoId, language);
       if (!latest) {
         return errorResponse("not_found", "No translation found for this video and language.", 404);
       }
@@ -44,7 +57,9 @@ export async function GET(request: Request) {
         segments: latest.segments,
         version: latest.version,
         language,
-        createdAt: null,
+        createdAt: local
+          ? (latest as NonNullable<Awaited<ReturnType<typeof getLocalLatestTranslation>>>).createdAt
+          : null,
       };
     }
 

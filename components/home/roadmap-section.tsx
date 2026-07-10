@@ -32,8 +32,8 @@ const MILESTONES: Milestone[] = [
   {
     status: "done",
     date: "2026 Q2",
-    title: "AI 并发优化 + 订阅体系",
-    body: "多 AI Provider 并发调用提速，Stripe + 手动支付双通道，管理员全局/个人 AI 配置。",
+    title: "AI 并发优化 + 本地优先",
+    body: "多 AI Provider 并发调用提速，字幕、分析与学习资料默认保存在本机。",
   },
   {
     status: "wip",

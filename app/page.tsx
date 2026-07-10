@@ -6,7 +6,6 @@ import { HeroSection } from "@/components/home/hero-section";
 import { WhySection } from "@/components/home/why-section";
 import { BentoFeatures } from "@/components/home/bento-features";
 import { MarqueeStrip } from "@/components/home/marquee-strip";
-import { PricingSection } from "@/components/home/pricing-section";
 import { RoadmapSection } from "@/components/home/roadmap-section";
 import { ScrollNav } from "@/components/home/scroll-nav";
 import { StatsSection } from "@/components/stats-section";
@@ -52,20 +51,7 @@ export default function HomePage() {
           <StatsSectionWithFlamingo />
         </div>
 
-        {/* 6. 订阅方案 — 3D 倾斜定价卡 + Coin 3D 装饰 */}
-        <div data-section="pricing" className="relative">
-          {/* Coin 金币 — 右上角，呼应订阅主题 */}
-          <div className="absolute right-[8%] top-[8%] w-[180px] h-[180px] hidden md:block z-10 opacity-50 pointer-events-none">
-            <GlbDecoration model={GLB_MODELS.coin} targetSize={1.8} rotateSpeed={0.006} floatAmount={0.1} mouseFollow={0.2} />
-          </div>
-          {/* Coin B 变体 — 左下角 */}
-          <div className="absolute left-[5%] bottom-[12%] w-[150px] h-[150px] hidden md:block z-10 opacity-40 pointer-events-none">
-            <GlbDecoration model={GLB_MODELS.coinB} targetSize={1.5} rotateSpeed={-0.004} floatAmount={0.08} mouseFollow={0.15} />
-          </div>
-          <PricingSection />
-        </div>
-
-        {/* 7. 路线图 — 贝塞尔曲线时间线 + 3D SittingBox 左侧装饰 */}
+        {/* 6. 路线图 — 贝塞尔曲线时间线 + 3D SittingBox 左侧装饰 */}
         <div data-section="roadmap">
           <RoadmapSectionWithSittingBox />
         </div>
@@ -73,10 +59,10 @@ export default function HomePage() {
         {/* 右侧滚动导航点 */}
         <ScrollNav />
 
-        {/* 8. 示例视频推荐 */}
+        {/* 7. 示例视频推荐 */}
         <ExampleVideos />
 
-        {/* 9. 底部 CTA + 3D Horse */}
+        {/* 8. 底部 CTA + 3D Horse */}
         <BottomCta />
 
         <footer className="relative border-t border-white/6 px-5 py-8 text-center">

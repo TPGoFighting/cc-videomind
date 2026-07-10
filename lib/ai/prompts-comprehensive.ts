@@ -102,3 +102,48 @@ export function buildComprehensivePrompt(
     "</transcript>",
   ].join("\n");
 }
+
+/**
+ * Long transcripts are first distilled in parallel.  The reduction request below
+ * receives these compact, timestamp-preserving notes instead of the entire video.
+ */
+export function buildComprehensiveChunkPrompt(
+  title: string,
+  segments: TranscriptSegment[],
+): string {
+  return [
+    "You are extracting faithful, timestamped source notes for a later video-analysis pass.",
+    "Return ONLY valid JSON: {\"notes\":[{\"timestamp\":\"M:SS\",\"fact\":\"...\",\"quote\":\"exact short quote\"}]}",
+    "Extract 3-6 distinct, high-value facts, arguments, examples, or turning points.",
+    "Use only the supplied transcript. Preserve exact timestamps and do not add conclusions.",
+    "Video: " + xmlEscape(title),
+    "<transcript>",
+    "<![CDATA[" + transcriptForSummaryPrompt(segments, 16_000) + "]]>",
+    "</transcript>",
+  ].join("\n");
+}
+
+export function buildComprehensiveReducePrompt(
+  title: string,
+  chunkNotes: string[],
+): string {
+  const candidates = chunkNotes.join("\n\n");
+  return [
+    "You are a comprehensive video analysis assistant. Build the final analysis from the timestamped source notes below.",
+    "Return ALL fields in the exact JSON schema. Never invent facts, quotes, or timestamps; omit a field item if evidence is insufficient.",
+    "summary: 3-5 sentence English overview.",
+    "takeaways: 4-6 bilingual takeaways; moments: 3-5 bilingual key moments; highlights: 3-5 exact, timestamped highlights; suggestedQuestions: 3-5 English questions.",
+    "Schema:",
+    JSON.stringify({
+      summary: "3-5 sentence video overview in English",
+      takeaways: [{ label: "Label", label_zh: "中文标签", insight: "Insight", insight_zh: "中文解释", timestamps: ["0:12"] }],
+      moments: [{ title: "Title", title_zh: "中文标题", timestamp: "00:12-00:20", quote: "exact quote", quote_zh: "中文翻译", reason: "why it matters", reason_zh: "中文理由" }],
+      highlights: [{ startTime: 12, endTime: 20, title: "Title", quote: "exact quote", reason: "why it matters" }],
+      suggestedQuestions: ["Question"],
+    }),
+    "Video: " + xmlEscape(title),
+    "<source_notes>",
+    "<![CDATA[" + candidates + "]]>",
+    "</source_notes>",
+  ].join("\n");
+}
