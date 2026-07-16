@@ -1,4 +1,4 @@
-import { query } from "@/lib/db";
+import { queryTencent } from "@/lib/tencent-db";
 import type { TranscriptSegment } from "@/lib/types";
 
 interface TranslationRecord {
@@ -18,7 +18,7 @@ export async function getLatestTranslation(
   videoId: string,
   language: string
 ): Promise<{ segments: TranscriptSegment[]; version: number } | null> {
-  const { rows } = await query<{ segments: TranscriptSegment[]; version: number }>(
+  const { rows } = await queryTencent<{ segments: TranscriptSegment[]; version: number }>(
     `SELECT segments, version FROM video_translations
      WHERE video_id = $1 AND language = $2
      ORDER BY version DESC LIMIT 1`,
@@ -33,7 +33,7 @@ export async function getTranslation(
   language: string,
   version: number
 ): Promise<TranslationRecord | null> {
-  const { rows } = await query<TranslationRecord>(
+  const { rows } = await queryTencent<TranslationRecord>(
     `SELECT * FROM video_translations
      WHERE video_id = $1 AND language = $2 AND version = $3`,
     [videoId, language, version]
@@ -46,7 +46,7 @@ export async function getAllTranslations(
   videoId: string,
   language: string
 ): Promise<Pick<TranslationRecord, "id" | "version" | "provider" | "model" | "quality_score" | "created_at">[]> {
-  const { rows } = await query(
+  const { rows } = await queryTencent<Pick<TranslationRecord, "id" | "version" | "provider" | "model" | "quality_score" | "created_at">>(
     `SELECT id, version, provider, model, quality_score, created_at
      FROM video_translations
      WHERE video_id = $1 AND language = $2
@@ -65,7 +65,7 @@ export async function upsertTranslation(
   model?: string
 ): Promise<number | null> {
   // Find max version
-  const { rows: existing } = await query<{ version: number }>(
+  const { rows: existing } = await queryTencent<{ version: number }>(
     `SELECT version FROM video_translations
      WHERE video_id = $1 AND language = $2
      ORDER BY version DESC LIMIT 1`,
@@ -73,7 +73,7 @@ export async function upsertTranslation(
   );
   const nextVersion = (existing[0]?.version ?? 0) + 1;
 
-  const { rows } = await query<{ version: number }>(
+  const { rows } = await queryTencent<{ version: number }>(
     `INSERT INTO video_translations (video_id, language, version, segments, provider, model)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING version`,
@@ -89,7 +89,7 @@ export async function deleteTranslation(
   language: string,
   version: number
 ): Promise<boolean> {
-  const { rowCount } = await query(
+  const { rowCount } = await queryTencent(
     `DELETE FROM video_translations
      WHERE video_id = $1 AND language = $2 AND version = $3`,
     [videoId, language, version]

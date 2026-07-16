@@ -13,6 +13,7 @@ import { SummaryPanel } from "@/components/summary-panel";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
+import { hasCompleteTranslation } from "@/lib/utils/translation";
 import type {
   GenerationDebug,
   JsonResponse,
@@ -81,6 +82,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
   // 翻译状态
   const [translating, setTranslating] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
 
@@ -306,10 +308,10 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   const ensureTranslation = useCallback(async (mode: string) => {
     if (mode === "en") return;
     // 检查是否已有翻译
-    const hasTranslation = transcript.some((s) => s.text_zh);
-    if (hasTranslation) return;
+    if (hasCompleteTranslation(transcript)) return;
 
     setTranslating(true);
+    setTranslationError(null);
     try {
       const res = await fetch("/api/translate-transcript", {
         method: "POST",
@@ -323,6 +325,8 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         const payload = await res.json();
         if (payload.ok && payload.data?.transcript) {
           setTranscript(payload.data.transcript);
+        } else {
+          setTranslationError(payload.error?.message ?? "翻译失败，请稍后重试。");
         }
         setTranslating(false);
         return;
@@ -337,6 +341,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let receivedTranslation = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -352,15 +357,20 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
             const event = JSON.parse(line.slice(6));
             if (event.type === "segment" && event.data?.text_zh) {
               const { startTime, text_zh } = event.data;
+              receivedTranslation = true;
               setTranscript((prev) =>
                 prev.map((s) =>
                   s.startTime === startTime ? { ...s, text_zh } : s
                 )
               );
             } else if (event.type === "done") {
+              if (!receivedTranslation || event.data?.translatedCount === 0) {
+                setTranslationError("未生成可用翻译，请稍后重试。");
+              }
               setTranslating(false);
             } else if (event.type === "error") {
               console.error("[Translate] 服务端错误:", event.data?.message);
+              setTranslationError(event.data?.message ?? "翻译失败，请稍后重试。");
               setTranslating(false);
             }
           } catch {
@@ -370,6 +380,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       }
     } catch (err) {
       console.error("[Translate] 翻译请求失败:", err);
+      setTranslationError("翻译请求失败，请稍后重试。");
       setTranslating(false);
     }
   }, [transcript, videoId]);
@@ -430,6 +441,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               ref={playerRef}
               videoId={videoId}
               metadata={metadata}
+              fallbackTitle={error ? "视频信息加载失败" : undefined}
             />
 
             {error ? (
@@ -466,6 +478,8 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
                 onSaveQuote={handleSaveQuote}
                 onSeekTo={handleSeekTo}
                 translating={translating}
+                translationError={translationError}
+                chatEnabled={transcript.length > 0}
               />
             </div>
 
@@ -500,6 +514,8 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
                 onSaveQuote={handleSaveQuote}
                 onSeekTo={handleSeekTo}
                 translating={translating}
+                translationError={translationError}
+                chatEnabled={transcript.length > 0}
               />
             </div>
           </aside>

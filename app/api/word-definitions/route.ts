@@ -1,5 +1,6 @@
 import { WordDefinitionsRequestSchema, type WordDefinition } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
+import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withWordDefsDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
@@ -43,6 +44,9 @@ export async function POST(request: Request) {
         const degradedResult = await withWordDefsDegradation(
           () => provider.defineWords({ lemmas: missing }),
         );
+        if (degradedResult.level === "degraded") {
+          throw degradedResult.originalError ?? new Error("AI word definition generation is unavailable.");
+        }
         const { data: generatedDefs } = buildDegradedResponse(degradedResult, []);
         generated = generatedDefs ?? [];
         recordAiCall({
@@ -63,6 +67,10 @@ export async function POST(request: Request) {
         }
       } catch (err) {
         console.error("[WordDefs] AI 词义生成失败:", err);
+        const providerFailure = getAiProviderFailure(err);
+        if (providerFailure) {
+          return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
+        }
       }
     }
 

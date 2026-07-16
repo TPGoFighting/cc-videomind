@@ -6,6 +6,7 @@ import { getCachedMoments, upsertMomentsCache, getCachedComprehensive } from "@/
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
+import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withMomentsDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
@@ -103,6 +104,9 @@ export async function POST(request: Request) {
     const degradedResult = await withMomentsDegradation(
       () => aiProvider.generateKeyMoments({ title, transcript, mode, theme, targetLanguage: lang, debug }),
     );
+    if (degradedResult.level === "degraded") {
+      throw degradedResult.originalError ?? new Error("AI key-moment generation is unavailable.");
+    }
     const { data: moments = [] } = buildDegradedResponse(degradedResult, []);
     const tAiEnd = Date.now();
     recordAiCall({
@@ -133,6 +137,10 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[API:Moments] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Moments] 总耗时(失败): %dms", Date.now() - tStart);
+    const providerFailure = getAiProviderFailure(err);
+    if (providerFailure) {
+      return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
+    }
     return errorResponse("moments_failed", "Key moments could not be generated.", 502);
   }
   });

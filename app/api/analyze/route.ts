@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
+import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withAnalysisDegradation, buildDegradedAnalysisResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
@@ -71,6 +72,9 @@ export async function POST(request: Request) {
           transcript,
         );
         const degradedResponse = buildDegradedAnalysisResponse(degradedResult, transcript);
+        if (degradedResult.level === "degraded") {
+          throw degradedResult.originalError ?? new Error("AI analysis is unavailable.");
+        }
         analysis = degradedResponse.data;
         degraded = degradedResponse.degraded ?? false;
         message = degradedResponse.message;
@@ -106,6 +110,10 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       console.error("Analysis failed", error);
+      const providerFailure = getAiProviderFailure(error);
+      if (providerFailure) {
+        return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
+      }
       const message =
         error instanceof Error
           ? `分析失败：${error.message}`
