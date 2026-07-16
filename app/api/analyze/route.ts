@@ -4,11 +4,14 @@ import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withAnalysisDegradation, buildDegradedAnalysisResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
-import { upsertAnalysisCache } from "@/lib/supabase/cache";
-import { upsertComprehensiveCache } from "@/lib/supabase/cache-v2";
+import { getCachedAnalysis, upsertAnalysisCache } from "@/lib/supabase/cache";
+import { getCachedComprehensive, upsertComprehensiveCache } from "@/lib/supabase/cache-v2";
 import { getAuthenticatedUserId, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
-import type { TranscriptSegment } from "@/lib/types";
+import { runSingleFlight } from "@/lib/utils/single-flight";
+import { deriveComprehensiveFromAnalysis } from "@/lib/utils/comprehensive-cache";
+import { hasReusableVideoAnalysis } from "@/lib/utils/video-analysis-cache";
+import type { TranscriptSegment, VideoMetadata } from "@/lib/types";
 
 const TranscriptSegmentSchema = z.object({
   startTime: z.number(),
@@ -19,11 +22,17 @@ const TranscriptSegmentSchema = z.object({
 
 const RequestSchema = z.object({
   videoId: z.string().min(1).max(100),
-  title: z.string().min(1).max(500),
-  transcript: z.array(TranscriptSegmentSchema).min(1).max(10000),
+  // The workspace sends only videoId after /api/transcript has persisted data.
+  // These fields remain optional for backward compatibility with older clients.
+  title: z.string().min(1).max(500).optional(),
+  transcript: z.array(TranscriptSegmentSchema).min(1).max(10000).optional(),
 });
 
 export const maxDuration = 120;
+
+function fallbackMetadata(videoId: string, title: string): VideoMetadata {
+  return { videoId, title, authorName: "", thumbnailUrl: "", providerUrl: "" };
+}
 
 export async function POST(request: Request) {
   return withSecurity({
@@ -35,78 +44,128 @@ export async function POST(request: Request) {
     const parsed = await readJson(request, RequestSchema);
     if (!parsed.ok) return parsed.response;
 
-    const { videoId, title, transcript } = parsed.data;
+    const { videoId } = parsed.data;
     const userId = await getAuthenticatedUserId(request);
+    const cached = await getCachedAnalysis(videoId);
 
-    try {
-      // 翻译延迟到用户切换中文模式时触发（通过 /api/translate-transcript SSE 端点）
-      // 这里只做 AI 分析，不翻译
-      const aiProvider = await getAiProvider(userId ?? undefined);
-      const t0 = Date.now();
-
-      // 先尝试 comprehensive 生成（一次 AI 调用生成全部内容）
-      let comprehensiveData: Awaited<ReturnType<typeof aiProvider.generateComprehensiveAnalysis>> | null = null;
-      let analysis: Awaited<ReturnType<typeof aiProvider.generateAnalysis>> | null = null;
-      let degraded = false;
-      let message: string | undefined;
-
-      try {
-        comprehensiveData = await aiProvider.generateComprehensiveAnalysis({ title, transcript });
-        // 从 comprehensive 结果构建 VideoAnalysis（用于兼容现有缓存和前端）
-        analysis = {
-          summary: comprehensiveData.summary,
-          takeaways: comprehensiveData.suggestedQuestions.slice(0, 8),
-          suggestedQuestions: comprehensiveData.suggestedQuestions,
-          highlights: comprehensiveData.highlights,
-        };
-        // 存 comprehensive 缓存
+    // A complete shared cache is the normal fast path for repeat viewers.
+    if (hasReusableVideoAnalysis(cached)) {
+      let comprehensive = await getCachedComprehensive(videoId);
+      if (!comprehensive) {
+        comprehensive = deriveComprehensiveFromAnalysis(cached.analysis);
         try {
-          await upsertComprehensiveCache({ videoId, result: comprehensiveData });
-        } catch { /* 缓存写入失败不影响正常响应 */ }
-      } catch (comprehensiveError) {
-        console.warn("[Analyze] Comprehensive generation failed, falling back to basic analysis:", comprehensiveError);
-        comprehensiveData = null;
-        // fallback 到原始 analyze
-        const degradedResult = await withAnalysisDegradation(
-          () => aiProvider.generateAnalysis({ title, transcript }),
-          transcript,
-        );
-        const degradedResponse = buildDegradedAnalysisResponse(degradedResult, transcript);
-        if (degradedResult.level === "degraded") {
-          throw degradedResult.originalError ?? new Error("AI analysis is unavailable.");
+          await upsertComprehensiveCache({ videoId, result: comprehensive });
+        } catch (cacheError) {
+          console.warn("[Analyze] Historical comprehensive cache write failed:", cacheError);
         }
-        analysis = degradedResponse.data;
-        degraded = degradedResponse.degraded ?? false;
-        message = degradedResponse.message;
       }
-
-      const t1 = Date.now();
-      recordAiCall({
-        provider: "default", model: "default", feature: comprehensiveData ? "comprehensive" : "analysis",
-        inputTokens: Math.ceil(JSON.stringify(transcript).length / 4),
-        outputTokens: Math.ceil(JSON.stringify(analysis).length / 4),
-        elapsedMs: t1 - t0, success: true,
-        userId: userId ?? undefined, videoId,
-      });
-
-      // 缓存结果（保存原始字幕，不含翻译）
-      await upsertAnalysisCache({
-        videoId,
-        metadata: { videoId, title, authorName: "", thumbnailUrl: "", providerUrl: "" },
-        transcript,
-        analysis,
-      });
       await recordAnalysisUsage({ userId, videoId, request });
-
       return successResponse({
         videoId,
-        transcript,
-        analysis,
-        comprehensive: comprehensiveData ?? undefined,
-        cached: false,
+        transcript: cached.transcript,
+        analysis: cached.analysis,
+        comprehensive,
+        cached: true,
         preview: userId === null,
-        degraded,
-        message,
+        degraded: false,
+      });
+    }
+
+    const title = cached?.metadata?.title ?? parsed.data.title;
+    const transcript = cached?.transcript ?? parsed.data.transcript;
+    if (!title || !transcript) {
+      return errorResponse("analysis_input_missing", "字幕尚未写入缓存，请刷新页面后重试。", 409);
+    }
+    const metadata = cached?.metadata ?? fallbackMetadata(videoId, title);
+
+    try {
+      const result = await runSingleFlight(`video-analysis:${videoId}`, async () => {
+        // A second request may have finished while this request waited for the
+        // single-flight slot, so always re-check the durable shared cache.
+        const sharedCached = await getCachedAnalysis(videoId);
+        if (hasReusableVideoAnalysis(sharedCached)) {
+          return {
+            transcript: sharedCached.transcript,
+            analysis: sharedCached.analysis,
+            cached: true,
+            comprehensive: undefined,
+            degraded: false,
+            message: undefined,
+          };
+        }
+
+        const aiProvider = await getAiProvider(userId ?? undefined);
+        const t0 = Date.now();
+        let comprehensiveData: Awaited<ReturnType<typeof aiProvider.generateComprehensiveAnalysis>> | null = null;
+        let analysis: Awaited<ReturnType<typeof aiProvider.generateAnalysis>> | null = null;
+        let degraded = false;
+        let message: string | undefined;
+
+        try {
+          comprehensiveData = await aiProvider.generateComprehensiveAnalysis({ title, transcript });
+          analysis = {
+            summary: comprehensiveData.summary,
+            takeaways: comprehensiveData.suggestedQuestions.slice(0, 8),
+            suggestedQuestions: comprehensiveData.suggestedQuestions,
+            highlights: comprehensiveData.highlights,
+          };
+          try {
+            await upsertComprehensiveCache({ videoId, result: comprehensiveData });
+          } catch (cacheError) {
+            console.warn("[Analyze] Comprehensive cache write failed:", cacheError);
+          }
+        } catch (comprehensiveError) {
+          console.warn("[Analyze] Comprehensive generation failed, falling back to basic analysis:", comprehensiveError);
+          comprehensiveData = null;
+          const degradedResult = await withAnalysisDegradation(
+            () => aiProvider.generateAnalysis({ title, transcript }),
+            transcript,
+          );
+          const degradedResponse = buildDegradedAnalysisResponse(degradedResult, transcript);
+          if (degradedResult.level === "degraded") {
+            throw degradedResult.originalError ?? new Error("AI analysis is unavailable.");
+          }
+          analysis = degradedResponse.data;
+          degraded = degradedResponse.degraded ?? false;
+          message = degradedResponse.message;
+        }
+
+        const t1 = Date.now();
+        if (!analysis) {
+          throw new Error("AI analysis returned no result.");
+        }
+        recordAiCall({
+          provider: "default",
+          model: "default",
+          feature: comprehensiveData ? "comprehensive" : "analysis",
+          inputTokens: Math.ceil(JSON.stringify(transcript).length / 4),
+          outputTokens: Math.ceil(JSON.stringify(analysis).length / 4),
+          elapsedMs: t1 - t0,
+          success: true,
+          userId: userId ?? undefined,
+          videoId,
+        });
+
+        try {
+          await upsertAnalysisCache({ videoId, metadata, transcript, analysis });
+        } catch (cacheError) {
+          console.warn("[Analyze] Analysis cache write failed:", cacheError);
+        }
+        return {
+          transcript,
+          analysis,
+          comprehensive: comprehensiveData ?? undefined,
+          cached: false,
+          degraded,
+          message,
+        };
+      });
+
+      await recordAnalysisUsage({ userId, videoId, request });
+      return successResponse({
+        videoId,
+        ...result,
+        preview: userId === null,
       });
     } catch (error) {
       console.error("Analysis failed", error);
@@ -114,10 +173,7 @@ export async function POST(request: Request) {
       if (providerFailure) {
         return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
       }
-      const message =
-        error instanceof Error
-          ? `分析失败：${error.message}`
-          : "AI analysis could not be generated.";
+      const message = error instanceof Error ? `分析失败：${error.message}` : "AI analysis could not be generated.";
       return errorResponse("analysis_failed", message, 502);
     }
   });

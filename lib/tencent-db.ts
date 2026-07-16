@@ -118,6 +118,18 @@ const SCHEMA = [
     UNIQUE(video_id, language, version)
   )`,
   `CREATE INDEX IF NOT EXISTS video_translations_latest_idx ON video_translations(video_id, language, version DESC)`,
+  `CREATE TABLE IF NOT EXISTS ai_results_cache (
+    video_id TEXT NOT NULL,
+    result_type TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL DEFAULT '',
+    theme TEXT NOT NULL DEFAULT '',
+    result JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (video_id, result_type, language, mode, theme)
+  )`,
+  `CREATE INDEX IF NOT EXISTS ai_results_cache_latest_idx ON ai_results_cache(video_id, result_type, updated_at DESC)`,
 ];
 
 export async function ensureTencentSchema(): Promise<void> {
