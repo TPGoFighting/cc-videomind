@@ -23,6 +23,8 @@ interface SidebarTabsProps {
   onSaveQuote?: (segment: TranscriptSegment) => Promise<boolean>;
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
+  translationError?: string | null;
+  chatEnabled: boolean;
 }
 
 type TabId = "transcript" | "chat" | "notes" | "review";
@@ -47,6 +49,8 @@ export function SidebarTabs({
   onSaveQuote,
   onSeekTo,
   translating,
+  translationError,
+  chatEnabled,
 }: SidebarTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -102,6 +106,7 @@ export function SidebarTabs({
               onSaveQuote={onSaveQuote}
               onSeekTo={onSeekTo}
               translating={translating}
+              translationError={translationError}
             />
           </div>
         )}
@@ -112,6 +117,7 @@ export function SidebarTabs({
               suggestedQuestions={analysis?.suggestedQuestions ?? []}
               compact
               onSeekTo={onSeekTo}
+              disabled={!chatEnabled}
             />
           </div>
         )}

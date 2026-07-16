@@ -3,12 +3,12 @@ import { getAiProvider } from "@/lib/ai/provider";
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { getLatestTranslation, upsertTranslation } from "@/lib/supabase/translations";
 import { isLocalMode } from "@/lib/local-mode";
-import { saveTranslationVersion } from "@/lib/db/local-store";
+import { getLatestTranslation as getLocalLatestTranslation, saveTranslationVersion } from "@/lib/db/local-store";
 import { upsertTranscriptCache } from "@/lib/supabase/cache";
 import { errorResponse, readJson } from "@/lib/utils/api";
+import { hasCompleteTranslation } from "@/lib/utils/translation";
 
 export const maxDuration = 300;
 
@@ -53,7 +53,9 @@ export async function POST(request: Request) {
 
   // 快速路径：先检查 video_translations 表是否有完整翻译
   const lang = containsChinese(textSample) ? "en" : "zh";
-  const existingTranslation = await getLatestTranslation(videoId, lang);
+  const existingTranslation = isLocalMode()
+    ? await getLocalLatestTranslation(videoId, lang)
+    : await getLatestTranslation(videoId, lang);
   if (existingTranslation) {
     // 合并翻译结果到原始 segments
     const translatedMap = new Map(
@@ -63,15 +65,13 @@ export async function POST(request: Request) {
       const t = translatedMap.get(s.startTime);
       return t ? { ...s, text_zh: t.text_zh } : s;
     });
-    const allTranslated = merged.every((s) => s.text_zh);
-    if (allTranslated) {
+    if (hasCompleteTranslation(merged)) {
       return Response.json({ ok: true, data: { transcript: merged } });
     }
   }
 
   // 回退检查：原始 segments 自身是否已全部翻译
-  const allTranslatedLocal = segments.every((s) => s.text_zh);
-  if (allTranslatedLocal) {
+  if (hasCompleteTranslation(segments)) {
     return Response.json({ ok: true, data: { transcript: segments } });
   }
 
@@ -88,6 +88,7 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder();
   let translatedCount = 0;
+  let failedBatchCount = 0;
   let aborted = false;
 
   const stream = new ReadableStream({
@@ -118,16 +119,13 @@ export async function POST(request: Request) {
                   data: { startTime: seg.startTime, text_zh: seg.text_zh ?? seg.text }
                 })));
               }
-            } catch {
-              // 整批失败：逐条用原文回退
-              for (const seg of batch) {
-                const original = segments.find((s) => s.startTime === seg.startTime);
-                if (original) original.text_zh = seg.text;
-                controller.enqueue(encoder.encode(sse({
-                  type: "segment",
-                  data: { startTime: seg.startTime, text_zh: seg.text }
-                })));
-              }
+            } catch (error) {
+              failedBatchCount++;
+              console.error("[Translate] 翻译批次失败:", error);
+              controller.enqueue(encoder.encode(sse({
+                type: "error",
+                data: { message: "部分字幕翻译失败，请重试。" }
+              })));
             }
           }
         }
@@ -146,31 +144,24 @@ export async function POST(request: Request) {
               upsertTranscriptCache({ videoId, transcript: segments }),
             ]);
           } else {
-          const supabase = createSupabaseServiceClient();
-
-          // 写入 video_translations 表（新版本化系统）
-          upsertTranslation(videoId, lang, segments, "ai", "default").then((version) => {
-            if (version !== null) {
-              console.log(`[Translate] 已保存翻译到 video_translations: v${version}`);
+            try {
+              await Promise.all([
+                upsertTranslation(videoId, lang, segments, "ai", "default"),
+                upsertTranscriptCache({
+                  videoId,
+                  metadata: cached.metadata ?? undefined,
+                  transcript: segments,
+                }),
+              ]);
+            } catch (error) {
+              console.error("[Translate] 保存翻译失败:", error);
             }
-          });
-
-          // 同时回写 video_analyses.transcript（向后兼容）
-          if (supabase) {
-            supabase
-              .from("video_analyses")
-              .update({ transcript: segments })
-              .eq("video_id", videoId)
-              .then(({ error }) => {
-                if (error) console.error("[Translate] 回写翻译失败:", error.message);
-              });
-          }
           }
         }
 
         controller.enqueue(encoder.encode(sse({
           type: "done",
-          data: { translatedCount }
+          data: { translatedCount, failedBatchCount }
         })));
         controller.close();
       } catch (err) {

@@ -6,6 +6,7 @@ import { getCachedSummary, upsertSummaryCache, getCachedComprehensive } from "@/
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { getAiProvider } from "@/lib/ai/provider";
+import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withSummaryDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
@@ -97,6 +98,9 @@ export async function POST(request: Request) {
     const degradedResult = await withSummaryDegradation(
       () => aiProvider.generateStructuredSummary({ title, transcript, targetLanguage: lang, debug }),
     );
+    if (degradedResult.level === "degraded") {
+      throw degradedResult.originalError ?? new Error("AI summary generation is unavailable.");
+    }
     const { data: takeaways = [] } = buildDegradedResponse(degradedResult, []);
     const tAiEnd = Date.now();
     recordAiCall({
@@ -127,6 +131,10 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[API:Summary] 失败:", err instanceof Error ? err.message : err);
     console.error("[API:Summary] 总耗时(失败): %dms", Date.now() - tStart);
+    const providerFailure = getAiProviderFailure(err);
+    if (providerFailure) {
+      return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
+    }
     return errorResponse("summary_failed", "Summary could not be generated from the transcript.", 502);
   }
   });

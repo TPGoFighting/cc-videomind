@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils/cn";
 import { lemmatizeWord } from "@/lib/utils/tokenize";
 import { DisplayModeToggle } from "./display-mode-toggle";
 import { WordCard } from "./word-card";
+import { hasCompleteTranslation, hasDisplayableTranslation } from "@/lib/utils/translation";
 
 /** 将文本按单词边界拆分，返回片段列表 */
 function tokenizeText(text: string): string[] {
@@ -31,6 +32,7 @@ export function TranscriptViewer({
   onSaveQuote,
   onSeekTo,
   translating = false,
+  translationError,
 }: {
   transcript: TranscriptSegment[];
   loading: boolean;
@@ -43,6 +45,7 @@ export function TranscriptViewer({
   onSaveQuote?: (segment: TranscriptSegment) => Promise<boolean>;
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
+  translationError?: string | null;
 }) {
   const [autoScroll, setAutoScroll] = useState(true);
   const [showJumpButton, setShowJumpButton] = useState(false);
@@ -237,8 +240,8 @@ export function TranscriptViewer({
     activeWord ? wordDefinitions?.get(activeWord.lemma) : undefined;
 
   // 检查是否已有翻译数据
-  const hasTranslation = transcript.some((s) => s.text_zh);
-  const needsTranslation = (displayMode === "zh" || displayMode === "bilingual") && !hasTranslation;
+  const hasTranslation = hasDisplayableTranslation(transcript);
+  const needsTranslation = (displayMode === "zh" || displayMode === "bilingual") && !hasCompleteTranslation(transcript);
 
   // 显示规则：中文模式下如果没有翻译，回退显示英文
   const showZh = (displayMode === "zh" || displayMode === "bilingual") && hasTranslation;
@@ -288,7 +291,9 @@ export function TranscriptViewer({
               {needsTranslation && translating && (
                 <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
               )}
-              {needsTranslation && !translating && (
+              {translationError ? (
+                <span className="text-[11px] text-red-400">{translationError}</span>
+              ) : needsTranslation && !translating && (
                 <span className="text-[11px] text-white/20">切换至中英/中文模式以触发翻译</span>
               )}
               {!loading && transcript.length > 0 && (
@@ -328,7 +333,9 @@ export function TranscriptViewer({
             {needsTranslation && translating && (
               <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
             )}
-            {needsTranslation && !translating && (
+            {translationError ? (
+              <span className="text-[11px] text-red-400">{translationError}</span>
+            ) : needsTranslation && !translating && (
               <span className="text-[11px] text-white/20">切换模式以翻译</span>
             )}
           </div>

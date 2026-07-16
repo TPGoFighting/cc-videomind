@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getAiProvider } from "@/lib/ai/provider";
+import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withChatDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
@@ -82,6 +83,10 @@ export async function POST(request: Request) {
       );
     }
 
+    if (degradedResult.level === "degraded") {
+      throw degradedResult.originalError ?? new Error("AI chat is unavailable.");
+    }
+
     const { data: answer } = buildDegradedResponse(degradedResult, { answer: "暂时无法回答，请稍后再试。", citations: [] });
     recordAiCall({
       provider: "default", model: "default", feature: "chat",
@@ -94,6 +99,10 @@ export async function POST(request: Request) {
     return successResponse(answer);
   } catch (error) {
     console.error("Chat answer failed", error);
+    const providerFailure = getAiProviderFailure(error);
+    if (providerFailure) {
+      return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
+    }
     return errorResponse("chat_failed", "Question could not be answered from the transcript.", 502);
   }
   });

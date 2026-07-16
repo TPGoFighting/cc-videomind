@@ -24,6 +24,8 @@ interface MobileVideoTabsProps {
   onSaveQuote?: (segment: TranscriptSegment) => Promise<boolean>;
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
+  translationError?: string | null;
+  chatEnabled: boolean;
 }
 
 type TabId = "transcript" | "chat" | "notes" | "review";
@@ -48,6 +50,8 @@ export function MobileVideoTabs({
   onSaveQuote,
   onSeekTo,
   translating,
+  translationError,
+  chatEnabled,
 }: MobileVideoTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -64,7 +68,7 @@ export function MobileVideoTabs({
   return (
     <div className="rounded-xl border border-white/8 bg-[#0d0d0d] overflow-hidden">
       {/* 标签页头部 */}
-      <div className="flex border-b border-white/8 bg-[#0d0d0d]">
+      <div className="flex border-b border-white/8 bg-[#0d0d0d]" role="tablist" aria-label="视频学习功能">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -72,6 +76,11 @@ export function MobileVideoTabs({
             <button
               key={tab.id}
               type="button"
+              id={`mobile-video-tab-${tab.id}`}
+              role="tab"
+              aria-label={tab.label}
+              aria-selected={isActive}
+              aria-controls={`mobile-video-panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 px-3 py-3",
@@ -90,7 +99,13 @@ export function MobileVideoTabs({
       </div>
 
       {/* 内容区 */}
-      <div className="min-h-[300px]" key={activeTab}>
+      <div
+        id={`mobile-video-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`mobile-video-tab-${activeTab}`}
+        className="min-h-[300px]"
+        key={activeTab}
+      >
         <div ref={contentRef}>
         {activeTab === "transcript" && (
           <TranscriptViewer
@@ -105,6 +120,7 @@ export function MobileVideoTabs({
             onSaveQuote={onSaveQuote}
             onSeekTo={onSeekTo}
             translating={translating}
+            translationError={translationError}
           />
         )}
         {activeTab === "chat" && (
@@ -114,6 +130,7 @@ export function MobileVideoTabs({
               suggestedQuestions={analysis?.suggestedQuestions ?? []}
               compact
               onSeekTo={onSeekTo}
+              disabled={!chatEnabled}
             />
           </div>
         )}

@@ -7,9 +7,9 @@ import {
   type VideoAnalysis,
   type VideoMetadata
 } from "@/lib/types";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isLocalMode } from "@/lib/local-mode";
 import { getAnalysis, saveAnalysis } from "@/lib/db/local-store";
+import { queryTencent } from "@/lib/tencent-db";
 
 const CachedAnalysisSchema = z.object({
   video_id: z.string(),
@@ -31,22 +31,16 @@ export async function getCachedAnalysis(videoId: string) {
     return parsed.success ? parsed.data : null;
   }
 
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("video_analyses")
-    .select("video_id, metadata, transcript, analysis")
-    .eq("video_id", videoId)
-    .maybeSingle();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return CachedAnalysisSchema.parse(data);
+  const result = await queryTencent<{
+    video_id: string;
+    metadata: unknown;
+    transcript: unknown;
+    analysis: unknown;
+  }>(`SELECT video_id, metadata, transcript, analysis FROM video_analyses WHERE video_id = $1`, [videoId]);
+  const data = result.rows[0];
+  if (!data) return null;
+  const parsed = CachedAnalysisSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function upsertTranscriptCache(input: {
@@ -65,19 +59,11 @@ export async function upsertTranscriptCache(input: {
     return;
   }
 
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    return;
-  }
-
-  await supabase.from("video_analyses").upsert(
-    {
-      video_id: input.videoId,
-      metadata: input.metadata,
-      transcript: input.transcript,
-      updated_at: new Date().toISOString()
-    },
-    { onConflict: "video_id" }
+  await queryTencent(
+    `INSERT INTO video_analyses (video_id, metadata, transcript, updated_at)
+     VALUES ($1, $2::jsonb, $3::jsonb, NOW())
+     ON CONFLICT (video_id) DO UPDATE SET metadata = EXCLUDED.metadata, transcript = EXCLUDED.transcript, updated_at = NOW()`,
+    [input.videoId, JSON.stringify(input.metadata ?? null), JSON.stringify(input.transcript)],
   );
 }
 
@@ -92,19 +78,11 @@ export async function upsertAnalysisCache(input: {
     return;
   }
 
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    return;
-  }
-
-  await supabase.from("video_analyses").upsert(
-    {
-      video_id: input.videoId,
-      metadata: input.metadata,
-      transcript: input.transcript,
-      analysis: input.analysis,
-      updated_at: new Date().toISOString()
-    },
-    { onConflict: "video_id" }
+  await queryTencent(
+    `INSERT INTO video_analyses (video_id, metadata, transcript, analysis, updated_at)
+     VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, NOW())
+     ON CONFLICT (video_id) DO UPDATE SET
+       metadata = EXCLUDED.metadata, transcript = EXCLUDED.transcript, analysis = EXCLUDED.analysis, updated_at = NOW()`,
+    [input.videoId, JSON.stringify(input.metadata), JSON.stringify(input.transcript), JSON.stringify(input.analysis)],
   );
 }

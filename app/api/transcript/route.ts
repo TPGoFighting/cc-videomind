@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withSecurity } from "@/lib/security/middleware";
-import { getCachedAnalysis } from "@/lib/supabase/cache";
+import { getCachedAnalysis, upsertTranscriptCache } from "@/lib/supabase/cache";
 import { getAuthenticatedUserId, hasUserAnalyzedVideo, checkAnalysisQuota, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
@@ -121,6 +121,14 @@ export async function POST(request: Request) {
       const [metadata, transcript] = await Promise.all([fetchMeta(), fetchTrans()]);
 
       // Fire-and-forget: async vectorize (non-blocking)
+      // Persist as soon as the expensive provider work succeeds. This gives
+      // every later user a shared transcript hit even before AI analysis ends.
+      try {
+        await upsertTranscriptCache({ videoId, metadata, transcript });
+      } catch (cacheError) {
+        console.warn("[Transcript] Shared cache write failed:", cacheError);
+      }
+
       if (userId && Array.isArray(transcript) && transcript.length) {
         import("@/lib/embedding/vectorizer")
           .then(({ vectorizeTranscript }) =>
