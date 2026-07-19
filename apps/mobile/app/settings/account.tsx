@@ -8,7 +8,7 @@ import { useHaptics } from "@/hooks/use-haptics";
 import { useStorageState } from "@/hooks/use-storage-state";
 import { planLabels } from "@/lib/plans";
 import { Button, Card, MutedText, Screen, StatusMessage } from "@/components/ui";
-import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
+import { changeTencentPassword } from "@/lib/tencent-auth-client";
 import { DEFAULT_USER_AVATAR, getDisplayNameFallback } from "@/lib/user-profile";
 import { Camera, Mail, User, Lock } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/page-header";
 export default function AccountSettingsScreen() {
   const { theme } = useTheme();
   const haptics = useHaptics();
-  const { user, configured, subscriptionTier, refreshProfile } = useAuth();
+  const { user, accessToken, configured, subscriptionTier, refreshProfile } = useAuth();
 
   const [avatarUri, setAvatarUri] = useStorageState<string | null>("user:avatar-uri", null);
   const [displayName, setDisplayName] = useStorageState<string>("user:display-name", getDisplayNameFallback(user?.email));
@@ -59,8 +59,8 @@ export default function AccountSettingsScreen() {
 
   const handleChangePassword = async () => {
     haptics.medium();
-    if (!newPassword || newPassword.length < 6) {
-      Alert.alert("密码太短", "新密码至少需要 6 个字符。");
+    if (!newPassword || newPassword.length < 8) {
+      Alert.alert("密码太短", "新密码至少需要 8 个字符。");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -68,14 +68,13 @@ export default function AccountSettingsScreen() {
       return;
     }
     if (!configured) {
-      Alert.alert("无法操作", "Supabase 环境变量缺失，请检查 .env 配置。");
+      Alert.alert("无法操作", "账户服务尚未准备好，请稍后重试。");
       return;
     }
     setChangingPassword(true);
     try {
-      const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw new Error(error.message);
+      if (!accessToken) throw new Error("请先登录后再修改密码。");
+      await changeTencentPassword(currentPassword, newPassword, accessToken);
       haptics.success();
       Alert.alert("密码已更新", "请使用新密码重新登录。");
       setCurrentPassword("");
@@ -98,7 +97,7 @@ export default function AccountSettingsScreen() {
 
         <ScrollView contentContainerStyle={{ padding: theme.spacing.page, gap: 14, paddingBottom: 40 }}>
           {!configured ? (
-            <StatusMessage tone="danger">Supabase 环境变量缺失，请检查 .env 配置。</StatusMessage>
+            <StatusMessage tone="danger">账户服务尚未准备好，请稍后重试。</StatusMessage>
           ) : null}
 
           {/* 头像区域 */}

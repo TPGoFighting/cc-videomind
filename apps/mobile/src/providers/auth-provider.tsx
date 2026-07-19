@@ -1,11 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Session, User } from "@supabase/supabase-js";
 import { getMe, type SubscriptionTier } from "@/lib/api";
-import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase";
+import {
+  restoreTencentSession,
+  saveTencentSession,
+  signInTencent,
+  signOutTencent,
+  signUpTencent,
+  type TencentAuthUser,
+} from "@/lib/tencent-auth-client";
 
 type AuthContextValue = {
-  user: User | null;
-  session: Session | null;
+  user: TencentAuthUser | null;
   accessToken: string | null;
   loading: boolean;
   configured: boolean;
@@ -20,49 +25,42 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<TencentAuthUser | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
-  const configured = isSupabaseConfigured();
+  const configured = true;
 
   const refreshProfile = useCallback(async () => {
-    const token = session?.access_token;
-    if (!token) {
+    if (!accessToken) {
       setIsAdmin(false);
       setSubscriptionTier("free");
       return;
     }
 
-    const me = await getMe(token);
-    setIsAdmin(me.role === "admin");
-    setSubscriptionTier(me.subscription_tier ?? "free");
-  }, [session?.access_token]);
-
-  useEffect(() => {
-    if (!configured) {
-      setLoading(false);
-      return;
+    const profile = await getMe(accessToken);
+    setIsAdmin(profile.role === "admin");
+    setSubscriptionTier(profile.subscription_tier ?? "free");
+    if (typeof profile.email === "string") {
+      const email = profile.email;
+      setUser((currentUser) => currentUser && currentUser.email !== email
+        ? { ...currentUser, email }
+        : currentUser);
     }
-
-    const supabase = getSupabaseClient();
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [configured]);
+  }, [accessToken]);
 
   useEffect(() => {
-    if (!session?.access_token) {
+    restoreTencentSession()
+      .then((session) => {
+        setUser(session?.user ?? null);
+        setAccessToken(session?.accessToken ?? null);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!accessToken) {
       setIsAdmin(false);
       setSubscriptionTier("free");
       return;
@@ -72,36 +70,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAdmin(false);
       setSubscriptionTier("free");
     });
-  }, [refreshProfile, session?.access_token]);
+  }, [accessToken, refreshProfile]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await getSupabaseClient().auth.signInWithPassword({ email, password });
-    if (error) {
-      throw new Error(error.message);
-    }
+    const session = await signInTencent(email, password);
+    await saveTencentSession(session);
+    setUser(session.user);
+    setAccessToken(session.accessToken);
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
-    const { error } = await getSupabaseClient().auth.signUp({ email, password });
-    if (error) {
-      throw new Error(error.message);
-    }
+    const session = await signUpTencent(email, password);
+    await saveTencentSession(session);
+    setUser(session.user);
+    setAccessToken(session.accessToken);
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!configured) {
-      return;
-    }
-    await getSupabaseClient().auth.signOut();
+    await signOutTencent(accessToken);
+    setUser(null);
+    setAccessToken(null);
     setIsAdmin(false);
     setSubscriptionTier("free");
-  }, [configured]);
+  }, [accessToken]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      user: session?.user ?? null,
-      session,
-      accessToken: session?.access_token ?? null,
+      user,
+      accessToken,
       loading,
       configured,
       isAdmin,
@@ -109,9 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshProfile,
       signIn,
       signUp,
-      signOut
+      signOut,
     }),
-    [configured, isAdmin, loading, refreshProfile, session, signIn, signOut, signUp, subscriptionTier]
+    [accessToken, configured, isAdmin, loading, refreshProfile, signIn, signOut, signUp, subscriptionTier, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

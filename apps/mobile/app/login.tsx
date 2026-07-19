@@ -68,7 +68,7 @@ export default function LoginScreen() {
             <MutedText>登录以同步笔记、词库、收藏和 Pro 订阅状态。</MutedText>
           </Animated.View>
 
-          {!configured ? <StatusMessage tone="danger">Supabase 环境变量缺失。</StatusMessage> : null}
+          {!configured ? <StatusMessage tone="danger">账户服务尚未准备好。</StatusMessage> : null}
 
           <Animated.View style={[cardStyle, shakeStyle]}>
             <Card>

@@ -54,9 +54,9 @@ The Android build requires a local JDK in addition to the Android SDK.
 ## Web configuration parity
 
 For a production Android build, copy `apps/mobile/.env.production.example` to
-`apps/mobile/.env.production` on the secure build machine. Its three public
-values must be copied from the target Web deployment's `NEXT_PUBLIC_*` values;
-the Android file is ignored by Git.
+`apps/mobile/.env.production` on the secure build machine. Its API origin must
+match the target Web deployment's `NEXT_PUBLIC_APP_URL`; the Android file is
+ignored by Git.
 
 Before signing an APK, verify the two files without printing their values:
 
@@ -66,5 +66,5 @@ npm run verify:mobile-web-config -- `
   --mobile-env apps/mobile/.env.production
 ```
 
-The command rejects an API-origin mismatch and mismatched Supabase public URL or
-anon key, so a release cannot silently point at another Web environment.
+The command rejects an API-origin mismatch, so a release cannot silently point
+at another Web environment.

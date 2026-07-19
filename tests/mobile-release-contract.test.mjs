@@ -52,10 +52,11 @@ test("an older deployed API cannot break an authenticated mobile session when /a
   assert.match(api, /authenticated: Boolean\(token\)/);
 });
 
-test("the mobile app pins a Hermes-compatible Supabase client", async () => {
+test("the mobile app has no unused Supabase runtime dependency after the Tencent auth migration", async () => {
   const mobilePackage = await read("apps/mobile/package.json");
 
-  assert.match(mobilePackage, /"@supabase\/supabase-js": "2\.49\.8"/);
+  assert.doesNotMatch(mobilePackage, /@supabase\/supabase-js/);
+  assert.match(mobilePackage, /"expo-secure-store"/);
 });
 
 test("Metro prefers browser-safe ESM entry points over Node CommonJS entry points", async () => {

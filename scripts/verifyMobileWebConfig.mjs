@@ -45,27 +45,7 @@ export function comparePublicRuntimeConfig(webEnv, mobileEnv) {
     issues.push("EXPO_PUBLIC_API_BASE_URL does not match NEXT_PUBLIC_APP_URL");
   }
 
-  compareExact(webEnv, mobileEnv, "NEXT_PUBLIC_SUPABASE_URL", "EXPO_PUBLIC_SUPABASE_URL", issues);
-  compareExact(webEnv, mobileEnv, "NEXT_PUBLIC_SUPABASE_ANON_KEY", "EXPO_PUBLIC_SUPABASE_ANON_KEY", issues);
-
   return issues;
-}
-
-function compareExact(webEnv, mobileEnv, webKey, mobileKey, issues) {
-  const webValue = webEnv[webKey];
-  const mobileValue = mobileEnv[mobileKey];
-
-  if (!webValue) {
-    issues.push(`${webKey} is missing`);
-    return;
-  }
-  if (!mobileValue) {
-    issues.push(`${mobileKey} is missing`);
-    return;
-  }
-  if (webValue !== mobileValue) {
-    issues.push(`${mobileKey} does not match ${webKey}`);
-  }
 }
 
 function getArgument(name) {

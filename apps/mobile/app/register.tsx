@@ -31,7 +31,7 @@ export default function RegisterScreen() {
     try {
       await signUp(email.trim(), password);
       haptics.success();
-      setMessage("账号创建成功！请检查邮箱确认（如已启用确认）。");
+      setMessage("账号创建成功！现在可以开始同步学习数据。");
       setTimeout(() => router.back(), 1200);
     } catch (submitError) {
       haptics.error();
@@ -64,10 +64,10 @@ export default function RegisterScreen() {
             <Title>创建你的学习空间</Title>
           </Animated.View>
           <Animated.View style={useFadeInUp(delays[1])}>
-            <MutedText>使用与网页版相同的 Supabase 账号。</MutedText>
+            <MutedText>使用与网页版相同的 Teach Player 账号。</MutedText>
           </Animated.View>
 
-          {!configured ? <StatusMessage tone="danger">Supabase 环境变量缺失。</StatusMessage> : null}
+          {!configured ? <StatusMessage tone="danger">账户服务尚未准备好。</StatusMessage> : null}
 
           <Animated.View style={[useScaleIn(delays[2]), shakeStyle]}>
             <Card>
@@ -86,14 +86,14 @@ export default function RegisterScreen() {
                 onChangeText={setPassword}
                 secureTextEntry
                 autoComplete="new-password"
-                placeholder="至少 6 位密码"
+                placeholder="至少 8 位密码"
               />
               {message ? <StatusMessage tone="success">{message}</StatusMessage> : null}
               {error ? <StatusMessage tone="danger">{error}</StatusMessage> : null}
               <Button
                 title={loading ? "创建中..." : "创建账号"}
                 loading={loading}
-                disabled={!configured || email.length === 0 || password.length < 6}
+                disabled={!configured || email.length === 0 || password.length < 8}
                 onPress={handleSubmit}
               />
             </Card>

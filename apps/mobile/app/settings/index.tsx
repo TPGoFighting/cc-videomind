@@ -124,7 +124,7 @@ export default function SettingsScreen() {
         }}
       >
         {!configured ? (
-          <StatusMessage tone="danger">Supabase 环境变量缺失，请检查 .env 配置。</StatusMessage>
+          <StatusMessage tone="danger">账户服务尚未准备好，请稍后重试。</StatusMessage>
         ) : null}
 
         {/* 账户概览 */}

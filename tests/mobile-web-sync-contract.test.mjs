@@ -32,8 +32,7 @@ test("the production environment template makes the Web origin explicit", async 
   const gitignore = await read("apps/mobile/.gitignore");
 
   assert.match(productionTemplate, /EXPO_PUBLIC_API_BASE_URL=https:\/\/video\.tpgofighting\.top/);
-  assert.match(productionTemplate, /EXPO_PUBLIC_SUPABASE_URL=/);
-  assert.match(productionTemplate, /EXPO_PUBLIC_SUPABASE_ANON_KEY=/);
+  assert.doesNotMatch(productionTemplate, /SUPABASE/);
   assert.match(gitignore, /^\.env\*$/m);
   assert.match(gitignore, /^!\.env\.production\.example$/m);
 });
