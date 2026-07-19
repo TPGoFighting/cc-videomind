@@ -33,7 +33,9 @@ export const VideoAnalysisSchema = z.object({
   summary: z.string().min(1),
   takeaways: z.array(z.string().min(1)).min(3).max(8),
   suggestedQuestions: z.array(z.string().min(1)).min(3).max(8),
-  highlights: z.array(HighlightSchema).min(5).max(8)
+  // 综合分析模型稳定产出 3 个高亮；缓存层必须接受该有效结果，
+  // 否则会把已完成的分析误判为无缓存并触发重复字幕抓取。
+  highlights: z.array(HighlightSchema).min(3).max(8)
 });
 
 export const ChatAnswerSchema = z.object({
@@ -77,7 +79,7 @@ export const SummaryTakeawaySchema = z.object({
   insight_zh: z.string().max(600).optional(),
   timestamps: z.array(
     z.string().regex(/^\d{1,2}:\d{2}$/, "timestamp 格式必须为 M:SS 或 MM:SS")
-  ).min(1).max(2)
+  ).max(2)
 });
 
 export type SummaryTakeaway = z.infer<typeof SummaryTakeawaySchema>;

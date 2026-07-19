@@ -20,6 +20,7 @@ const WASM_PATH = process.env.SQLJS_WASM_PATH ?? DEFAULT_WASM;
 let sqlStatic: SqlJsStatic | null = null;
 let db: Database | null = null;
 let schemaReady = false;
+let dbInitialization: Promise<Database> | null = null;
 
 async function loadSqlJs(): Promise<SqlJsStatic> {
   if (sqlStatic) return sqlStatic;
@@ -40,10 +41,12 @@ async function readExistingFile(): Promise<Uint8Array | null> {
 }
 
 export async function getDb(): Promise<Database> {
-  if (db) {
-    if (!schemaReady) await ensureSchema(db);
-    return db;
-  }
+  if (db && schemaReady) return db;
+  if (!dbInitialization) dbInitialization = initializeDb();
+  return dbInitialization;
+}
+
+async function initializeDb(): Promise<Database> {
   const SQL = await loadSqlJs();
   const bytes = await readExistingFile();
   db = bytes ? new SQL.Database(bytes) : new SQL.Database();
@@ -146,6 +149,25 @@ const SCHEMA: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS notes_video_idx ON notes(video_id, created_at DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS user_quotes (
+    id TEXT PRIMARY KEY,
+    video_id TEXT NOT NULL,
+    text_en TEXT NOT NULL,
+    text_zh TEXT,
+    start_time REAL NOT NULL,
+    end_time REAL NOT NULL,
+    notes TEXT,
+    video_title TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_quotes_created_idx ON user_quotes(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS user_quotes_video_idx ON user_quotes(video_id, created_at DESC)`,
+
+  `CREATE TABLE IF NOT EXISTS user_checkins (
+    checkin_date TEXT PRIMARY KEY,
+    word_count INTEGER NOT NULL DEFAULT 0
+  )`,
 ];
 
 async function ensureSchema(database: Database): Promise<void> {
@@ -176,6 +198,7 @@ export async function closeDb(): Promise<void> {
     db = null;
   }
   schemaReady = false;
+  dbInitialization = null;
 }
 
 export type { SqlValue };

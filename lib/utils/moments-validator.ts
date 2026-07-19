@@ -244,7 +244,9 @@ function normalizeTakeaway(raw: Record<string, unknown>): SummaryTakeaway | null
     if (normalized) timestamps = [normalized];
   }
 
-  if (!label || !insight || timestamps.length === 0) return null;
+  // A takeaway remains valuable even when the model omits a timestamp. Keep
+  // the text and render it without a seek link rather than dropping it all.
+  if (!label || !insight) return null;
 
   const parsed = SummaryTakeawaySchema.safeParse({ label, insight, timestamps: timestamps.slice(0, 2) });
   return parsed.success ? parsed.data : null;
@@ -384,8 +386,7 @@ export function validateSummaryTakeaways(
       }
 
       return { ...t, timestamps: filteredTs };
-    })
-    .filter((t) => t.timestamps.length > 0);
+    });
 
   console.log("[Validate:Summary] 验证后: %d 条 (丢弃 %d)", validated.length, takeaways.length - validated.length);
 

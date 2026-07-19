@@ -49,11 +49,15 @@ export function ChatPanel({
   suggestedQuestions,
   compact,
   onSeekTo,
+  disabled = false,
+  disabledReason = "转录文本暂不可用。请先重试字幕获取后再提问。",
 }: {
   videoId: string;
   suggestedQuestions: string[];
   compact?: boolean;
   onSeekTo?: (seconds: number) => void;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const [question, setQuestion] = useState("");
   const [answers, setAnswers] = useState<
@@ -63,7 +67,7 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
 
   async function ask(nextQuestion = question) {
-    if (!nextQuestion.trim()) return;
+    if (disabled || !nextQuestion.trim()) return;
 
     setLoading(true);
     setError(null);
@@ -90,6 +94,16 @@ export function ChatPanel({
     } finally {
       setLoading(false);
     }
+  }
+
+  if (disabled) {
+    return (
+      <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-white/8 bg-white/[0.02] p-5 text-center">
+        <MessageSquare className="h-6 w-6 text-white/25" aria-hidden />
+        <p className="text-[14px] font-medium text-white/65">暂时无法基于视频内容问答</p>
+        <p className="text-[13px] leading-relaxed text-white/40">{disabledReason}</p>
+      </div>
+    );
   }
 
   if (compact) {

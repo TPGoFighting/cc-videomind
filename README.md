@@ -40,7 +40,8 @@
 
 | 技术 | 用途 |
 |------|------|
-| **Supabase** | 数据库 + 认证 + RLS |
+| **腾讯云 PostgreSQL** | 自托管数据库、视频缓存与用户学习数据 |
+| **自托管认证** | 邮箱密码 + HttpOnly Cookie Session |
 | **Anthropic API (LongCat)** | AI 推理（支持 thinking 块解析） |
 | **YouTube Transcript API** | 字幕提取（4 层回退链） |
 | **Supadata API** | 字幕备选来源 |
@@ -60,7 +61,7 @@
 |------|------|
 | **自建服务器** | Next.js 应用（PM2 + Nginx） |
 | **Cloudflare Tunnel** | HTTPS 反向代理 |
-| **Supabase** | 托管数据库 + 认证服务 |
+| **腾讯云 PostgreSQL** | 独立 `teachplayer` 数据库（仅本机服务连接） |
 
 ---
 
@@ -89,9 +90,9 @@ npm start
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+# Tencent Cloud PostgreSQL（仅服务端）
+DATABASE_URL=postgresql://teachplayer_app:<password>@127.0.0.1:5432/teachplayer
+AUTH_SESSION_SECRET=<random-secret>
 
 # AI Provider
 AI_PROVIDER=anthropic
@@ -137,7 +138,8 @@ lib/
 │   ├── transcript-provider.ts  # 4 层字幕回退链
 │   └── metadata.ts        # 元数据获取
 ├── bilibili/              # B站集成
-├── supabase/              # 数据库客户端 + 缓存
+├── tencent-db.ts          # 腾讯云 PostgreSQL 连接与幂等建表
+├── tencent-auth.ts        # 自托管用户认证与 Cookie Session
 ├── security/              # 安全中间件（限速/CSRF）
 └── utils/                 # 工具函数
 
@@ -191,7 +193,7 @@ LongCat API 返回 `thinking` 内容块（推理过程），项目通过 `extrac
 
 - **withSecurity 中间件**：统一接入方法校验 + CSRF + 请求体大小限制 + 限流
 - **Durable Objects 限流**：Cloudflare 上共享计数，本地回退内存实现
-- **RLS 保护**：用户数据通过 Supabase Row Level Security 隔离
+- **服务端数据隔离**：所有个人数据查询强制按当前会话 `user_id` 过滤
 
 ---
 
@@ -210,7 +212,7 @@ APK 下载：[GitHub Releases](https://github.com/TPGoFighting/cc-videomind/rele
 - **AI 模型 API 格式参考**：OpenAI / Anthropic / DeepSeek / LongCat 格式对比
 - **项目 API 格式需求**：各功能输入/输出格式说明
 - **API 端点文档**：28 个端点的请求/响应格式
-- **核心库文档**：AI / YouTube / Bilibili / Supabase 模块说明
+- **腾讯云架构**：[自托管 PostgreSQL、认证、备份与发布指南](docs/tencent-cloud-architecture.md)
 - **前端组件文档**：所有 UI 组件的使用说明
 
 ---

@@ -39,6 +39,19 @@ const SCHEMA = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS app_sessions_user_idx ON app_sessions(user_id)`,
+  `CREATE TABLE IF NOT EXISTS payment_submissions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    tier TEXT NOT NULL CHECK (tier IN ('pro', 'max')),
+    transaction_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by TEXT REFERENCES app_users(id),
+    admin_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ
+  )`,
+  `CREATE INDEX IF NOT EXISTS payment_submissions_user_idx ON payment_submissions(user_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS payment_submissions_status_idx ON payment_submissions(status, created_at DESC)`,
   `CREATE TABLE IF NOT EXISTS video_analyses (
     video_id TEXT PRIMARY KEY,
     metadata JSONB,

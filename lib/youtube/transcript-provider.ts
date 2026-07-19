@@ -1,7 +1,8 @@
-import { type TranscriptSegment } from "@/lib/types";
+import { TranscriptSegmentSchema, type TranscriptSegment } from "@/lib/types";
 import { fetchWithTimeout } from "@/lib/utils/http";
 import { YoutubeTranscriptPackageProvider } from "./youtube-transcript-pkg-provider";
 import { YtDlpTranscriptProvider } from "./yt-dlp-provider";
+import { z } from "zod";
 // ═══════════════════════════════════════════════════════════════════════════════
 // 类型定义
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -876,6 +877,51 @@ export class ExternalApiTranscriptProvider implements TranscriptProvider {
   }
 }
 
+/**
+ * Calls a separately deployed instance that can reach YouTube when this host
+ * cannot. It is intentionally opt-in: set TRANSCRIPT_FALLBACK_URL and use the
+ * `remote` provider on constrained server deployments.
+ */
+export class RemoteTranscriptProvider implements TranscriptProvider {
+  constructor(private readonly endpoint = process.env.TRANSCRIPT_FALLBACK_URL?.trim()) {}
+
+  async getTranscript(videoId: string): Promise<TranscriptSegment[]> {
+    if (!this.endpoint) {
+      throw new TranscriptError(
+        "ALL_TRACKS_FAILED",
+        "未配置 TRANSCRIPT_FALLBACK_URL，远程字幕后备不可用。"
+      );
+    }
+
+    let endpoint: URL;
+    try {
+      endpoint = new URL(this.endpoint);
+      if (endpoint.protocol !== "https:") throw new Error("not https");
+    } catch {
+      throw new TranscriptError("ALL_TRACKS_FAILED", "TRANSCRIPT_FALLBACK_URL 必须是 HTTPS 地址。");
+    }
+
+    const response = await fetchWithTimeout(endpoint.toString(), {
+      method: "POST",
+      timeoutMs: 45_000,
+      service: "remote transcript fallback",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId }),
+    });
+
+    const payload = z.object({
+      ok: z.literal(true),
+      data: z.object({ transcript: z.array(TranscriptSegmentSchema).min(1) }),
+    }).safeParse(await response.json());
+
+    if (!payload.success) {
+      throw new TranscriptError("CAPTION_DOWNLOAD_FAILED", "远程字幕后备未返回有效字幕。");
+    }
+
+    return payload.data.data.transcript;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // 多层回退编排
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -928,8 +974,12 @@ export function getTranscriptProvider(): TranscriptProvider {
     return new ExternalApiTranscriptProvider();
   }
 
+  if (provider === "remote") {
+    return new RemoteTranscriptProvider();
+  }
+
   throw new Error(
-    `TRANSCRIPT_PROVIDER "${provider}" is invalid. Set to "youtube" or "supadata".`
+    `TRANSCRIPT_PROVIDER "${provider}" is invalid. Set to "youtube", "supadata", or "remote".`
   );
 }
 

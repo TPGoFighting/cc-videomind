@@ -11,6 +11,10 @@ function validateCsrf(request: Request): boolean {
     // allow localhost, vercel domains, custom domain
     return (
       hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "tauri.localhost" ||
+      url.protocol === "tauri:" ||
       hostname.endsWith(".vercel.app") ||
       hostname === "video.tpgofighting.top" ||
       hostname.endsWith(".tpgofighting.top")

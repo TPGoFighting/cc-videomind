@@ -8,14 +8,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Session, User } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/client";
 import type { SubscriptionTier } from "@/lib/plans";
 import { isLocalMode } from "@/lib/local-mode";
 
+type AppUser = { id: string; email?: string | null };
+
 type AuthContextType = {
-  user: User | null;
-  session: Session | null;
+  user: AppUser | null;
+  session: null;
   loading: boolean;
   isAdmin: boolean;
   subscriptionTier: SubscriptionTier;
@@ -23,109 +23,58 @@ type AuthContextType = {
   refreshProfile: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
 type Profile = {
-  role: string;
+  id?: string;
+  role: string | null;
   email: string | null;
-  subscription_tier: string;
+  subscription_tier: string | null;
+  authenticated: boolean;
 };
 
-/** LOCAL_MODE 下的固定本地用户（无远程账号） */
-const LOCAL_USER = {
-  id: "local",
-  email: "local@local",
-  app_metadata: {},
-  user_metadata: {},
-  aud: "local",
-  created_at: new Date(0).toISOString(),
-} as unknown as User;
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const LOCAL_USER: AppUser = { id: "local", email: "local@local" };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
 
   const fetchProfile = useCallback(async () => {
-    try {
-      const res = await fetch("/api/me");
-      if (!res.ok) return;
-      const profile = (await res.json()) as Profile & { authenticated: boolean };
-      if (profile.authenticated) {
-        setIsAdmin(profile.role === "admin");
-        setSubscriptionTier((profile.subscription_tier as SubscriptionTier) || "free");
-      }
-    } catch {
-      // /api/me 调用失败时保持默认值
+    const response = await fetch("/api/me", { cache: "no-store" });
+    if (!response.ok) throw new Error("Unable to load account profile.");
+    const profile = await response.json() as Profile;
+    if (profile.authenticated && profile.id) {
+      setUser({ id: profile.id, email: profile.email });
+      setIsAdmin(profile.role === "admin");
+      setSubscriptionTier((profile.subscription_tier as SubscriptionTier) || "free");
+    } else {
+      setUser(null);
+      setIsAdmin(false);
+      setSubscriptionTier("free");
     }
   }, []);
 
   useEffect(() => {
-    // LOCAL_MODE：单机本地工具，无远程登录态，始终视为固定本地用户
     if (isLocalMode()) {
       setUser(LOCAL_USER);
-      setSession(null);
-      setIsAdmin(false);
-      setSubscriptionTier("free");
       setLoading(false);
       return;
     }
-
-    const supabase = createClient();
-
-    // 获取初始会话
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchProfile();
-      }
-      setLoading(false);
-    });
-
-    // 监听认证状态变化
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchProfile();
-        } else {
-          setIsAdmin(false);
-          setSubscriptionTier("free");
-        }
-        setLoading(false);
-      },
-    );
-
-    return () => subscription.unsubscribe();
+    void fetchProfile().catch(() => {
+      setUser(null);
+    }).finally(() => setLoading(false));
   }, [fetchProfile]);
 
-  const signOut = async () => {
-    // LOCAL_MODE：无远程会话，仅重置本地态
-    if (isLocalMode()) {
-      setUser(LOCAL_USER);
-      setIsAdmin(false);
-      setSubscriptionTier("free");
-      return;
-    }
-
-    const supabase = createClient();
-    await supabase.auth.signOut();
+  const signOut = useCallback(async () => {
+    if (!isLocalMode()) await fetch("/api/auth/logout", { method: "POST" });
+    setUser(isLocalMode() ? LOCAL_USER : null);
     setIsAdmin(false);
     setSubscriptionTier("free");
-  };
-
-  const refreshProfile = useCallback(async () => {
-    await fetchProfile();
-  }, [fetchProfile]);
+  }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ user, session, loading, isAdmin, subscriptionTier, signOut, refreshProfile }}
-    >
+    <AuthContext.Provider value={{ user, session: null, loading, isAdmin, subscriptionTier, signOut, refreshProfile: fetchProfile }}>
       {children}
     </AuthContext.Provider>
   );
@@ -133,8 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth 必须在 AuthProvider 内部使用");
-  }
+  if (!context) throw new Error("useAuth 必须在 AuthProvider 内部使用");
   return context;
 }

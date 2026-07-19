@@ -17,6 +17,7 @@
 | [Tasks.md.md](Tasks.md.md) | 任务清单 |
 | [Continue.md.md](Continue.md.md) | 待续事项 |
 | [Difficulty.md.md](Difficulty.md.md) | 难点记录 |
+| [腾讯云自托管架构](tencent-cloud-architecture.md) | PostgreSQL、认证、备份与发布指南 |
 
 ---
 

@@ -173,11 +173,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         const analyzeRes = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            videoId,
-            title: metadata.title,
-            transcript,
-          }),
+          body: JSON.stringify({ videoId, title: metadata.title, transcript }),
         });
         const analyzePayload = (await analyzeRes.json()) as JsonResponse<AnalyzePayload>;
 

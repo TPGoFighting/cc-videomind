@@ -1,192 +1,69 @@
-import { SaveWordRequestSchema } from "@/lib/types";
-import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { withSecurity } from "@/lib/security/middleware";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
-import { isLocalMode } from "@/lib/local-mode";
+import { randomUUID } from "node:crypto";
 import { deleteVocabulary, loadVocabulary, saveVocabulary } from "@/lib/db/local-store";
+import { isLocalMode } from "@/lib/local-mode";
+import { withSecurity } from "@/lib/security/middleware";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
+import { queryTencent } from "@/lib/tencent-db";
+import { SaveWordRequestSchema } from "@/lib/types";
+import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 
-/** GET /api/user-vocabulary — 获取用户收藏的单词 */
 export async function GET(request: Request) {
+  const videoId = new URL(request.url).searchParams.get("videoId") ?? undefined;
   if (isLocalMode()) {
-    const videoId = new URL(request.url).searchParams.get("videoId");
-    const entries = await loadVocabulary();
-    const vocabulary = entries
-      .filter((entry) => !videoId || entry.videoId === videoId)
-      .map((entry) => ({
-        id: entry.id,
-        wordId: entry.id,
-        lemma: entry.word,
-        phonetic: entry.phonetic ?? undefined,
-        partOfSpeech: entry.partOfSpeech ?? undefined,
-        definitionZh: entry.definitionZh ?? entry.word,
-        definitionEn: entry.definitionEn ?? undefined,
-        exampleEn: entry.exampleEn ?? undefined,
-        exampleZh: entry.exampleZh ?? undefined,
-        videoId: entry.videoId,
-        createdAt: entry.createdAt,
-      }));
-    return successResponse({ vocabulary });
+    const entries = (await loadVocabulary()).filter((entry) => !videoId || entry.videoId === videoId);
+    return successResponse({ vocabulary: entries.map((entry) => ({
+      id: entry.id, wordId: entry.id, lemma: entry.word, phonetic: entry.phonetic ?? undefined,
+      partOfSpeech: entry.partOfSpeech ?? undefined, definitionZh: entry.definitionZh ?? entry.word,
+      definitionEn: entry.definitionEn ?? undefined, exampleEn: entry.exampleEn ?? undefined,
+      exampleZh: entry.exampleZh ?? undefined, videoId: entry.videoId, createdAt: entry.createdAt,
+    })) });
   }
-
   const userId = await getAuthenticatedUserId(request);
-  if (!userId) {
-    return errorResponse("unauthorized", "请先登录。", 401);
-  }
-
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    return successResponse({ vocabulary: [] });
-  }
-
-  const url = new URL(request.url);
-  const videoId = url.searchParams.get("videoId");
-
-  let query = supabase
-    .from("user_vocabulary")
-    .select("id, created_at, video_id, word_definitions!inner(*)")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(200);
-
-  if (videoId) query = query.eq("video_id", videoId);
-
-  const { data } = await query;
-
-  const vocabulary = (data ?? []).map((row: Record<string, unknown>) => {
-    const def = row.word_definitions as Record<string, unknown> | null;
-    return {
-      id: row.id as string,
-      wordId: def?.id as string,
-      lemma: def?.lemma as string,
-      phonetic: def?.phonetic as string | undefined,
-      partOfSpeech: def?.part_of_speech as string | undefined,
-      definitionZh: def?.definition_zh as string,
-      definitionEn: def?.definition_en as string | undefined,
-      exampleEn: def?.example_en as string | undefined,
-      exampleZh: def?.example_zh as string | undefined,
-      videoId: row.video_id as string,
-      createdAt: row.created_at as string,
-    };
-  });
-
-  return successResponse({ vocabulary });
+  if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
+  const result = await queryTencent<{
+    id: string; lemma: string; phonetic: string | null; part_of_speech: string | null; definition_zh: string | null; definition_en: string | null; example_en: string | null; example_zh: string | null; video_id: string; created_at: Date;
+  }>(
+    `SELECT id, lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh, video_id, created_at
+     FROM user_vocabulary WHERE user_id = $1 ${videoId ? "AND video_id = $2" : ""} ORDER BY created_at DESC LIMIT 200`,
+    videoId ? [userId, videoId] : [userId],
+  );
+  return successResponse({ vocabulary: result.rows.map((row) => ({
+    id: row.id, wordId: row.id, lemma: row.lemma, phonetic: row.phonetic ?? undefined,
+    partOfSpeech: row.part_of_speech ?? undefined, definitionZh: row.definition_zh ?? row.lemma,
+    definitionEn: row.definition_en ?? undefined, exampleEn: row.example_en ?? undefined,
+    exampleZh: row.example_zh ?? undefined, videoId: row.video_id, createdAt: row.created_at.toISOString(),
+  })) });
 }
 
-/** POST /api/user-vocabulary — 收藏单词 */
 export async function POST(request: Request) {
-  return withSecurity({
-    allowedMethods: ["POST"],
-    maxBodySize: 32 * 1024,
-    scope: "user-vocabulary",
-    rateLimit: { maxRequests: 30, windowMs: 60_000 },
-  }).wrap(request, async () => {
-      const userId = await getAuthenticatedUserId(request);
-  if (isLocalMode()) {
+  return withSecurity({ allowedMethods: ["POST"], maxBodySize: 32 * 1024, scope: "user-vocabulary", rateLimit: { maxRequests: 30, windowMs: 60_000 } }).wrap(request, async () => {
     const parsed = await readJson(request, SaveWordRequestSchema);
     if (!parsed.ok) return parsed.response;
-    await saveVocabulary([{
-      word: parsed.data.lemma,
-      videoId: parsed.data.videoId,
-      definitionZh: parsed.data.lemma,
-    }]);
-    return successResponse({ saved: true, lemma: parsed.data.lemma, wordId: parsed.data.lemma });
-  }
-  if (!userId) {
-    return errorResponse("unauthorized", "请先登录。", 401);
-  }
-
-  const parsed = await readJson(request, SaveWordRequestSchema);
-  if (!parsed.ok) return parsed.response;
-
-  const { lemma, videoId } = parsed.data;
-
-  // 查找或创建 word_definition
-  const serviceClient = createSupabaseServiceClient();
-  if (!serviceClient) {
-    return errorResponse("db_error", "数据库未配置。", 500);
-  }
-
-  // 先查 word_definitions
-  const { data: existingDef } = await serviceClient
-    .from("word_definitions")
-    .select("id")
-    .eq("lemma", lemma)
-    .single();
-
-  let wordId: string;
-
-  if (existingDef) {
-    wordId = existingDef.id;
-  } else {
-    // 创建占位记录（词义后续通过 AI 批量填充）
-    const { data: newDef, error: insertErr } = await serviceClient
-      .from("word_definitions")
-      .insert({ lemma, definition_zh: lemma })
-      .select("id")
-      .single();
-
-    if (insertErr || !newDef) {
-      return errorResponse("db_error", "无法创建单词记录。", 500);
+    if (isLocalMode()) {
+      await saveVocabulary([{ word: parsed.data.lemma, videoId: parsed.data.videoId, definitionZh: parsed.data.lemma }]);
+      return successResponse({ saved: true, lemma: parsed.data.lemma, wordId: parsed.data.lemma });
     }
-    wordId = newDef.id;
-  }
-
-  // 插入 user_vocabulary（unique 约束防重复）
-  const { error: vocabErr } = await serviceClient
-    .from("user_vocabulary")
-    .upsert({ user_id: userId, word_id: wordId, video_id: videoId }, {
-      onConflict: "user_id,word_id",
-      ignoreDuplicates: true,
-    });
-
-  if (vocabErr) {
-    return errorResponse("db_error", vocabErr.message, 500);
-  }
-
-  return successResponse({ saved: true, lemma, wordId });
-});
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
+    const id = randomUUID();
+    await queryTencent(
+      `INSERT INTO user_vocabulary (id, user_id, lemma, video_id, definition_zh)
+       VALUES ($1, $2, $3, $4, $3)
+       ON CONFLICT (user_id, lemma) DO UPDATE SET video_id = EXCLUDED.video_id, created_at = NOW()`,
+      [id, userId, parsed.data.lemma.toLowerCase(), parsed.data.videoId],
+    );
+    return successResponse({ saved: true, lemma: parsed.data.lemma, wordId: id });
+  });
 }
 
-/** DELETE /api/user-vocabulary — 取消收藏单词 */
 export async function DELETE(request: Request) {
-  return withSecurity({
-    allowedMethods: ["DELETE"],
-    maxBodySize: 16 * 1024,
-    scope: "user-vocabulary",
-  }).wrap(request, async () => {
-      const userId = await getAuthenticatedUserId(request);
-  if (isLocalMode()) {
+  return withSecurity({ allowedMethods: ["DELETE"], maxBodySize: 16 * 1024, scope: "user-vocabulary" }).wrap(request, async () => {
     const id = new URL(request.url).searchParams.get("id");
     if (!id) return errorResponse("invalid_request", "缺少 id 参数。", 400);
-    await deleteVocabulary(id);
+    if (isLocalMode()) { await deleteVocabulary(id); return successResponse({ deleted: true }); }
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
+    await queryTencent(`DELETE FROM user_vocabulary WHERE id = $1 AND user_id = $2`, [id, userId]);
     return successResponse({ deleted: true });
-  }
-  if (!userId) {
-    return errorResponse("unauthorized", "请先登录。", 401);
-  }
-
-  const url = new URL(request.url);
-  const id = url.searchParams.get("id");
-  if (!id) {
-    return errorResponse("invalid_request", "缺少 id 参数。", 400);
-  }
-
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    return errorResponse("db_error", "数据库未配置。", 500);
-  }
-
-  const { error } = await supabase
-    .from("user_vocabulary")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId);
-
-  if (error) {
-    return errorResponse("db_error", error.message, 500);
-  }
-
-  return successResponse({ deleted: true });
-});
+  });
 }

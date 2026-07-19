@@ -658,6 +658,140 @@ export async function deleteNote(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// saved quotes + check-ins (local, single-user)
+// ---------------------------------------------------------------------------
+
+export interface QuoteInput {
+  videoId: string;
+  textEn: string;
+  textZh?: string | null;
+  startTime: number;
+  endTime: number;
+  notes?: string | null;
+  videoTitle?: string | null;
+}
+
+export interface QuoteEntry extends QuoteInput {
+  id: string;
+  createdAt: string;
+}
+
+export async function saveQuote(input: QuoteInput): Promise<string> {
+  const id = newId();
+  await mutate(
+    "saveQuote",
+    `INSERT INTO user_quotes
+       (id, video_id, text_en, text_zh, start_time, end_time, notes, video_title, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      input.videoId,
+      input.textEn,
+      input.textZh ?? null,
+      input.startTime,
+      input.endTime,
+      input.notes ?? null,
+      input.videoTitle ?? null,
+      nowIso(),
+    ],
+  );
+  return id;
+}
+
+export function getQuotes(videoId?: string): Promise<QuoteEntry[]> {
+  return safeRead(async () => {
+    const sql = videoId
+      ? `SELECT * FROM user_quotes WHERE video_id = ? ORDER BY created_at DESC`
+      : `SELECT * FROM user_quotes ORDER BY created_at DESC`;
+    const rows = await queryRows<{
+      id: string;
+      video_id: string;
+      text_en: string;
+      text_zh: string | null;
+      start_time: number;
+      end_time: number;
+      notes: string | null;
+      video_title: string | null;
+      created_at: string;
+    }>(sql, videoId ? [videoId] : []);
+    return rows.map((row) => ({
+      id: row.id,
+      videoId: row.video_id,
+      textEn: row.text_en,
+      textZh: row.text_zh,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      notes: row.notes,
+      videoTitle: row.video_title,
+      createdAt: row.created_at,
+    }));
+  }, []);
+}
+
+export async function deleteQuote(id: string): Promise<void> {
+  await mutate("deleteQuote", `DELETE FROM user_quotes WHERE id = ?`, [id]);
+}
+
+export interface CheckinSummary {
+  streak: number;
+  todayCompleted: boolean;
+  todayCount: number;
+  calendar: Array<{ date: string; count: number }>;
+}
+
+function isoDate(date = new Date()): string {
+  return date.toISOString().slice(0, 10);
+}
+
+export async function incrementCheckin(wordCount: number): Promise<CheckinSummary> {
+  const increment = Math.max(1, Math.floor(wordCount));
+  const today = isoDate();
+  await mutate(
+    "incrementCheckin",
+    `INSERT INTO user_checkins (checkin_date, word_count) VALUES (?, ?)
+     ON CONFLICT(checkin_date) DO UPDATE SET word_count = word_count + excluded.word_count`,
+    [today, increment],
+  );
+  return getCheckinSummary();
+}
+
+export function getCheckinSummary(): Promise<CheckinSummary> {
+  return safeRead(async () => {
+    const firstDate = new Date();
+    firstDate.setUTCDate(firstDate.getUTCDate() - 364);
+    const rows = await queryRows<{ checkin_date: string; word_count: number }>(
+      `SELECT checkin_date, word_count FROM user_checkins
+       WHERE checkin_date >= ? ORDER BY checkin_date DESC`,
+      [isoDate(firstDate)],
+    );
+    const counts = new Map(rows.map((row) => [row.checkin_date, row.word_count]));
+    const today = isoDate();
+    let streak = 0;
+    const cursor = new Date(`${today}T00:00:00.000Z`);
+    for (let day = 0; day < 365; day += 1) {
+      const date = isoDate(cursor);
+      if ((counts.get(date) ?? 0) >= 10) {
+        streak += 1;
+      } else if (day > 0) {
+        break;
+      }
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    }
+
+    const calendarStart = new Date();
+    calendarStart.setUTCDate(calendarStart.getUTCDate() - 29);
+    return {
+      streak,
+      todayCompleted: (counts.get(today) ?? 0) >= 10,
+      todayCount: counts.get(today) ?? 0,
+      calendar: rows
+        .filter((row) => row.checkin_date >= isoDate(calendarStart))
+        .map((row) => ({ date: row.checkin_date, count: row.word_count })),
+    };
+  }, { streak: 0, todayCompleted: false, todayCount: 0, calendar: [] });
+}
+
+// ---------------------------------------------------------------------------
 // async tasks (mirrors lib/async/task-manager.ts, local-backed)
 // ---------------------------------------------------------------------------
 

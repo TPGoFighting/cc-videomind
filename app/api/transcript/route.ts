@@ -5,7 +5,8 @@ import { getAuthenticatedUserId, hasUserAnalyzedVideo, checkAnalysisQuota, recor
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
-import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
+import { getTranscriptProvider, TranscriptError } from "@/lib/youtube/transcript-provider";
+import { ExternalServiceError } from "@/lib/utils/http";
 
 const RequestSchema = z
   .object({
@@ -120,7 +121,6 @@ export async function POST(request: Request) {
 
       const [metadata, transcript] = await Promise.all([fetchMeta(), fetchTrans()]);
 
-      // Fire-and-forget: async vectorize (non-blocking)
       // Persist as soon as the expensive provider work succeeds. This gives
       // every later user a shared transcript hit even before AI analysis ends.
       try {
@@ -129,6 +129,7 @@ export async function POST(request: Request) {
         console.warn("[Transcript] Shared cache write failed:", cacheError);
       }
 
+      // Fire-and-forget: async vectorize (non-blocking)
       if (userId && Array.isArray(transcript) && transcript.length) {
         import("@/lib/embedding/vectorizer")
           .then(({ vectorizeTranscript }) =>
@@ -146,9 +147,11 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("Transcript fetch failed", error);
       const message =
-        error instanceof Error
-          ? `字幕获取失败：${error.message}`
-          : "Could not fetch transcript from this video.";
+        error instanceof TranscriptError
+          ? error.message
+          : error instanceof ExternalServiceError
+            ? "无法获取视频元数据，请检查网络后重试。"
+            : "暂时无法获取视频字幕，请稍后重试。";
       return errorResponse("transcript_failed", message, 502);
     }
   });

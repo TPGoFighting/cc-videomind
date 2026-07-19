@@ -44,6 +44,13 @@ export interface YtDlpOptions {
   timeoutMs?: number;
 }
 
+export interface YtDlpMetadata {
+  title: string;
+  authorName?: string;
+  thumbnailUrl?: string;
+  providerUrl: string;
+}
+
 export class YtDlpTranscriptProvider implements TranscriptProvider {
   constructor(private readonly opts: YtDlpOptions = {}) {}
 
@@ -100,6 +107,64 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
       return segments;
     } finally {
       await fs.rm(outDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /** Read lightweight video metadata through the same local yt-dlp path. */
+  async getMetadata(videoId: string): Promise<YtDlpMetadata> {
+    const binary = await this.resolveBinary();
+    if (!binary) {
+      throw new TranscriptError(
+        "PAGE_FETCH_FAILED",
+        "未找到 yt-dlp，请先安装（pip install yt-dlp）或设置 YTDLP_COMMAND 环境变量。"
+      );
+    }
+
+    const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+    const args = [
+      watchUrl,
+      "--skip-download",
+      "--dump-single-json",
+      "--no-warnings",
+      "--no-progress",
+      "--no-playlist",
+    ];
+
+    const cookiesFromBrowser =
+      this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "chrome";
+    const cookiesFile = this.opts.cookiesFile ?? process.env.YTDLP_COOKIES_FILE ?? "";
+
+    if (cookiesFile) {
+      args.unshift("--cookies", cookiesFile);
+    } else if (cookiesFromBrowser) {
+      args.unshift("--cookies-from-browser", cookiesFromBrowser);
+    }
+
+    const { stdout } = await this.run(binary, args);
+    try {
+      const data = JSON.parse(stdout) as {
+        title?: unknown;
+        uploader?: unknown;
+        channel?: unknown;
+        thumbnail?: unknown;
+        webpage_url?: unknown;
+      };
+      if (typeof data.title !== "string" || !data.title.trim()) {
+        throw new Error("missing title");
+      }
+      return {
+        title: data.title.trim(),
+        authorName:
+          typeof data.uploader === "string"
+            ? data.uploader
+            : typeof data.channel === "string"
+              ? data.channel
+              : undefined,
+        thumbnailUrl: typeof data.thumbnail === "string" ? data.thumbnail : undefined,
+        providerUrl: typeof data.webpage_url === "string" ? data.webpage_url : watchUrl,
+      };
+    } catch {
+      throw new TranscriptError("PAGE_FETCH_FAILED", "yt-dlp 未返回可用的视频元数据。");
     }
   }
 

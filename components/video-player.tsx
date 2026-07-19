@@ -12,10 +12,11 @@ export type VideoPlayerHandle = {
 type VideoPlayerProps = {
   videoId: string;
   metadata?: VideoMetadata;
+  fallbackTitle?: string;
 };
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  function VideoPlayer({ videoId, metadata }, ref) {
+  function VideoPlayer({ videoId, metadata, fallbackTitle }, ref) {
     const playerRef = useRef<YT.Player | null>(null);
     const apiLoadedRef = useRef(false);
 
@@ -84,7 +85,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         </div>
         <div className="flex flex-col gap-2 border-t border-white/8 bg-[#090909] p-4 sm:flex-row sm:items-center">
           <h1 className="text-[17px] font-semibold leading-snug tracking-[-0.01em] sm:flex-1 sm:min-w-0 break-words">
-            {metadata?.title ?? "正在加载视频信息…"}
+            {metadata?.title ?? fallbackTitle ?? "正在加载视频信息…"}
           </h1>
           {metadata?.authorName ? (
             <Badge className="self-start sm:self-auto shrink-0">{metadata.authorName}</Badge>

@@ -249,7 +249,7 @@ describe("parseKeyMoments", () => {
     assert.strictEqual(result.length, 1);
   });
 
-  it("过滤缺少必填字段的条目", () => {
+  it("保留缺少时间戳但有完整内容的条目", () => {
     const json = JSON.stringify({
       moments: [
         { title: "标题", timestamp: "00:10-00:20", quote: "quote", reason: "reason" },
@@ -336,11 +336,12 @@ describe("parseSummaryTakeaways", () => {
         { label: "L1", insight: "I1", timestamps: ["1:00"] },
         { label: "", insight: "I2", timestamps: ["2:00"] }, // 空 label
         { label: "L3", insight: "", timestamps: ["3:00"] }, // 空 insight
-        { label: "L4", insight: "I4", timestamps: [] }, // 无时间戳
+        { label: "L4", insight: "I4", timestamps: [] }, // 无时间戳，但正文可展示
       ],
     });
     const result = parseSummaryTakeaways(json);
-    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result.length, 2);
+    assert.deepStrictEqual(result[1].timestamps, []);
   });
 
   it("无效 JSON 返回空数组", () => {
@@ -497,10 +498,11 @@ describe("validateSummaryTakeaways", () => {
     assert.deepStrictEqual(result[0].timestamps, ["0:10", "0:30"]);
   });
 
-  it("所有时间戳无效时整条被丢弃", () => {
+  it("所有时间戳无效时保留摘要正文但移除跳转链接", () => {
     const takeaways = [makeTakeaway({ timestamps: ["9:99"] })];
     const result = validateSummaryTakeaways(takeaways, transcript);
-    assert.strictEqual(result.length, 0);
+    assert.strictEqual(result.length, 1);
+    assert.deepStrictEqual(result[0].timestamps, []);
   });
 
   it("容差范围内的时间戳被接受", () => {

@@ -3,6 +3,7 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { withSecurity } from "@/lib/security/middleware";
 import { extractYouTubeVideoId } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
+import { isLocalMode } from "@/lib/local-mode";
 
 const RequestSchema = z.object({
   url: z.string().min(1).max(500)
@@ -54,6 +55,18 @@ export async function POST(request: Request) {
     return errorResponse("invalid_video_url", "Enter a valid public YouTube or Bilibili URL.", 400);
   }
 
+  // The workspace only needs an id to start. In local mode, fetching complete
+  // metadata through yt-dlp can take many seconds, so defer it to the
+  // transcript load rather than making the entry interaction feel frozen.
+  if (isLocalMode()) {
+    return successResponse({
+      videoId: youtubeId,
+      title: "正在加载视频信息…",
+      thumbnailUrl: `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`,
+      providerUrl: `https://www.youtube.com/watch?v=${youtubeId}`,
+    });
+  }
+
   try {
     const metadata = await fetchYouTubeMetadata(youtubeId);
     return successResponse(metadata);
@@ -63,4 +76,3 @@ export async function POST(request: Request) {
   }
   });
 }
-
