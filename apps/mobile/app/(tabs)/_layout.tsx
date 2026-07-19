@@ -17,6 +17,7 @@ import { useTheme } from "@/providers/theme-provider";
 import { useAuth } from "@/providers/auth-provider";
 import { useStorageState } from "@/hooks/use-storage-state";
 import { useHaptics } from "@/hooks/use-haptics";
+import { getApiBaseUrl } from "@/lib/runtime-config";
 import { extractVideoId } from "@teach-player/shared";
 import { Button, Field, Card } from "@/components/ui";
 import { storage, cacheKey } from "@/lib/storage";
@@ -132,28 +133,28 @@ function CreateTabIcon({ isCreateOpen }: { isCreateOpen: boolean }) {
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ rotateZ: `${rotateZ.value}deg` }, { scale: scale.value }],
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: theme.colors.glassRaised,
-    borderColor: isCreateOpen ? theme.colors.danger : theme.colors.accent,
-    borderWidth: 1.5,
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.md,
+    backgroundColor: isCreateOpen ? theme.colors.surfaceRaised : theme.colors.accent,
+    borderColor: isCreateOpen ? theme.colors.border : theme.colors.accent,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    top: -10,
+    top: -6,
     shadowColor: theme.colors.text,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 6
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: isCreateOpen ? 0.02 : 0.16,
+    shadowRadius: 7,
+    elevation: 3
   }));
 
   return (
     <Animated.View style={animatedStyle}>
       {isCreateOpen ? (
-        <X color="#0A1A00" size={24} strokeWidth={3} />
+        <X color={theme.colors.text} size={22} strokeWidth={2.5} />
       ) : (
-        <Plus color="#0A1A00" size={24} strokeWidth={3} />
+        <Plus color="#FFFFFF" size={22} strokeWidth={2.5} />
       )}
     </Animated.View>
   );
@@ -344,7 +345,7 @@ export default function TabLayout() {
       formData.append("duration", String(durationSeconds));
       formData.append("title", cleanName);
 
-      const apiBaseUrl = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://video.tpgofighting.top").replace(/\/$/, "");
+      const apiBaseUrl = getApiBaseUrl();
       console.log(`[Upload] Uploading file to: ${apiBaseUrl}/api/video-analysis/upload`);
 
       updateParsingTask(tempTaskId, { progress: 45, status: "parsing" });
@@ -488,27 +489,26 @@ export default function TabLayout() {
           tabBarInactiveTintColor: theme.colors.muted,
           tabBarStyle: {
             position: "absolute",
-            backgroundColor: theme.colors.glassRaised,
-            borderWidth: 1,
-            borderColor: theme.colors.glassBorder,
-            borderTopColor: theme.colors.glassBorder,
+            backgroundColor: theme.colors.surface,
+            borderWidth: 0,
+            borderTopColor: theme.colors.border,
             borderTopWidth: 1,
-            height: 68,
-            bottom: 16,
-            left: 20,
-            right: 20,
-            borderRadius: 34,
+            height: 66,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            borderRadius: 0,
             paddingBottom: 0,
             paddingTop: 8,
             shadowColor: theme.colors.text,
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.06,
-            shadowRadius: 16,
-            elevation: 8,
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.02,
+            shadowRadius: 6,
+            elevation: 4,
           },
           tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: "700",
+            fontSize: 11,
+            fontWeight: "600",
             marginTop: 2,
           },
           headerStyle: {
@@ -727,9 +727,9 @@ export default function TabLayout() {
                   }}
                 >
                   {isResolvingUrl ? (
-                    <ActivityIndicator size="small" color="#0A1A00" />
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <Text style={{ color: "#0A1A00", fontWeight: "900" }}>{t("create.startAnalysis")}</Text>
+                    <Text style={{ color: "#FFFFFF", fontWeight: "700" }}>{t("create.startAnalysis")}</Text>
                   )}
                 </Pressable>
               </View>

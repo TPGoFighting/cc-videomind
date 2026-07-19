@@ -5,6 +5,7 @@ import YoutubeIframe, { type YoutubeIframeRef } from "react-native-youtube-ifram
 import { WebView } from "react-native-webview";
 import { isBilibiliVideoId, type VideoMetadata } from "@teach-player/shared";
 import { useTheme } from "@/providers/theme-provider";
+import { getApiBaseUrl } from "@/lib/runtime-config";
 import { useScaleIn } from "@/lib/animation";
 import { useHaptics } from "@/hooks/use-haptics";
 import { storage } from "@/lib/storage";
@@ -127,7 +128,7 @@ export const VideoPlayer = forwardRef<PlayerHandle, { videoId: string; metadata?
     const bvidParam = videoId.toLowerCase().startsWith("av") ? `aid=${videoId.slice(2)}` : `bvid=${videoId}`;
     const bilibiliPlayerUrl = `https://player.bilibili.com/player.html?${bvidParam}&as_wide=1&high_quality=1&danmaku=0&autoplay=0`;
 
-    const apiBaseUrl = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://10.0.2.2:3000").replace(/\/$/, "");
+    const apiBaseUrl = getApiBaseUrl();
     const streamUrl = localUri ?? `${apiBaseUrl}/api/video-stream?id=${videoId}`;
 
     const localPlayerHtml = `

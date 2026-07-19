@@ -5,7 +5,7 @@ React Native + Expo client for Teach Player.
 ## Development
 
 ```powershell
-npm install
+npm ci
 npm run mobile:start
 ```
 
@@ -29,3 +29,42 @@ The mobile app sends Supabase access tokens as Bearer auth. See:
 
 - `docs/backend-mobile-auth.md`
 - `docs/android-qa-performance.md`
+
+## Release checks
+
+Run the checks that protect the Android release contract before building:
+
+```powershell
+npm run test:release-contract
+npm run mobile:typecheck
+```
+
+Android release artifacts must be signed with the production keystore. On the
+secure build machine, copy `apps/mobile/android/release-signing.properties.example`
+to `apps/mobile/android/release-signing.properties`, fill in the keystore values,
+then run the Gradle release task. The properties file and keystores are ignored by
+Git on purpose; the build fails instead of silently falling back to a debug key.
+
+Release APKs are generated per CPU architecture to avoid shipping four native
+library sets in every direct download. Publish the `arm64-v8a` artifact for most
+modern physical Android devices; use the matching ABI artifact for other devices.
+
+The Android build requires a local JDK in addition to the Android SDK.
+
+## Web configuration parity
+
+For a production Android build, copy `apps/mobile/.env.production.example` to
+`apps/mobile/.env.production` on the secure build machine. Its three public
+values must be copied from the target Web deployment's `NEXT_PUBLIC_*` values;
+the Android file is ignored by Git.
+
+Before signing an APK, verify the two files without printing their values:
+
+```powershell
+npm run verify:mobile-web-config -- `
+  --web-env /secure/path/to/web/.env.production `
+  --mobile-env apps/mobile/.env.production
+```
+
+The command rejects an API-origin mismatch and mismatched Supabase public URL or
+anon key, so a release cannot silently point at another Web environment.

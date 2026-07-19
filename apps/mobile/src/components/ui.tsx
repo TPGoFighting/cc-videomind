@@ -25,23 +25,12 @@ import { springBouncy, timingQuick, useSpringPress } from "@/lib/animation";
 export function Screen({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background, overflow: "hidden" }}>
-      {/* Liquid Glass Background Orbs */}
-      <View style={{
-        position: 'absolute', top: -100, left: -50, width: 300, height: 300,
-        borderRadius: 150, backgroundColor: theme.colors.accent, opacity: 0.08,
-      }} />
-      <View style={{
-        position: 'absolute', bottom: -50, right: -80, width: 350, height: 350,
-        borderRadius: 175, backgroundColor: theme.colors.blue, opacity: 0.06,
-      }} />
-      {children}
-    </View>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>{children}</View>
   );
 }
 
 // ============ Card ============
-/** 静态卡片 — 液态玻璃态设计 */
+/** 静态卡片 — 克制的表面层级 */
 export function Card({
   children,
   style,
@@ -56,15 +45,15 @@ export function Card({
         {
           borderRadius: theme.radius.lg,
           borderWidth: 1,
-          borderColor: theme.colors.glassBorder,
-          backgroundColor: theme.colors.glass,
-          padding: theme.spacing.card,
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface,
+          padding: theme.spacing.card + 2,
           gap: theme.spacing.gap,
           shadowColor: theme.colors.text,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.04,
-          shadowRadius: 16,
-          elevation: 2,
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.03,
+          shadowRadius: 8,
+          elevation: 1,
         },
         style,
       ]}
@@ -75,7 +64,7 @@ export function Card({
 }
 
 // ============ AnimatedCard ============
-/** 柔滑入场 + 微抬升的玻璃卡片 */
+/** 柔滑入场 + 微抬升的内容卡片 */
 export function AnimatedCard({
   children,
   style,
@@ -109,15 +98,15 @@ export function AnimatedCard({
             {
               borderRadius: theme.radius.lg,
               borderWidth: 1,
-              borderColor: theme.colors.glassBorder,
-              backgroundColor: theme.colors.glass,
-              padding: theme.spacing.card,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              padding: theme.spacing.card + 2,
               gap: theme.spacing.gap,
               shadowColor: theme.colors.text,
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.04,
-              shadowRadius: 16,
-              elevation: 2,
+              shadowOffset: { width: 0, height: 3 },
+              shadowOpacity: 0.03,
+              shadowRadius: 8,
+              elevation: 1,
             },
             style,
           ]}
@@ -137,9 +126,10 @@ export function Title({ children }: { children: React.ReactNode }) {
       selectable
       style={{
         color: theme.colors.text,
-        fontSize: 28,
-        fontWeight: "800",
+        fontSize: 30,
+        fontWeight: "700",
         lineHeight: 34,
+        letterSpacing: -0.6,
       }}
     >
       {children}
@@ -153,7 +143,7 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <Text
       selectable
-      style={{ color: theme.colors.text, fontSize: 18, fontWeight: "700" }}
+      style={{ color: theme.colors.text, fontSize: 17, fontWeight: "700", letterSpacing: -0.2 }}
     >
       {children}
     </Text>
@@ -200,7 +190,7 @@ export function Button({
     danger: theme.colors.danger,
   };
   const textColorMap = {
-    primary: "#FFFFFF", // Premium white for the lime green primary button
+    primary: "#FFFFFF",
     secondary: theme.colors.text,
     danger: "#FFFFFF",
   };
@@ -221,23 +211,22 @@ export function Button({
         onPressOut={onPressOut}
         style={({ pressed }) => [
           {
-            minHeight: 52,
+            minHeight: 50,
             borderRadius: theme.radius.md,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor,
             opacity: disabled ? 0.45 : 1,
-            paddingHorizontal: 24,
-            borderWidth: 1,
-            borderColor: variant === "primary" ? "rgba(255,255,255,0.25)" : theme.colors.glassBorder,
-            // 莹亮微阴影
+            paddingHorizontal: 20,
+            borderWidth: variant === "primary" ? 0 : 1,
+            borderColor: theme.colors.border,
             ...(variant === "primary"
               ? {
                   shadowColor: theme.colors.accent,
-                  shadowOffset: { width: 0, height: 6 },
-                  shadowOpacity: 0.35,
-                  shadowRadius: 12,
-                  elevation: 4,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.16,
+                  shadowRadius: 8,
+                  elevation: 2,
                 }
               : {}),
           },
@@ -252,11 +241,8 @@ export function Button({
             style={{
               color: textColor,
               fontSize: 16,
-              fontWeight: "800",
-              letterSpacing: 0.5,
-              textShadowColor: variant === "primary" ? "rgba(0,0,0,0.15)" : "transparent",
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 2,
+              fontWeight: "700",
+              letterSpacing: 0.1,
             }}
           >
             {title}
@@ -300,7 +286,7 @@ export function Field(props: TextInputProps & { label: string }) {
           {
             borderRadius: theme.radius.md,
             borderWidth: 1,
-            backgroundColor: theme.colors.glassRaised,
+            backgroundColor: theme.colors.surface,
             shadowOffset: { width: 0, height: 2 },
             shadowRadius: 4,
           },

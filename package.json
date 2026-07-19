@@ -7,12 +7,13 @@
     "packages/*"
   ],
   "scripts": {
+    "test:release-contract": "node --test tests/mobile-release-contract.test.mjs tests/mobile-web-sync-contract.test.mjs tests/verify-mobile-web-config.test.mjs",
+    "verify:mobile-web-config": "node scripts/verifyMobileWebConfig.mjs",
     "mobile:start": "npm --workspace apps/mobile run start",
     "mobile:start:lan": "npm --workspace apps/mobile run start:lan",
     "mobile:android": "npm --workspace apps/mobile run android",
     "mobile:android:lan": "npm --workspace apps/mobile run android:lan",
     "mobile:typecheck": "npm --workspace apps/mobile run typecheck",
-    "bridge:typecheck": "npm --workspace packages/next-auth-bridge run typecheck",
-    "typecheck": "npm run mobile:typecheck && npm run bridge:typecheck"
+    "typecheck": "npm run mobile:typecheck"
   }
 }

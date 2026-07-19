@@ -127,7 +127,7 @@ export default function SettingsScreen() {
           <StatusMessage tone="danger">Supabase 环境变量缺失，请检查 .env 配置。</StatusMessage>
         ) : null}
 
-        {/* 置顶 Pro 尊贵会员名片舱 */}
+        {/* 账户概览 */}
         <Animated.View style={fade1}>
           <Pressable
             onPress={() => {
@@ -136,11 +136,11 @@ export default function SettingsScreen() {
             }}
             style={({ pressed }) => ({
               borderRadius: theme.radius.lg,
-              borderWidth: 1.5,
-              borderColor: pressed ? `${theme.colors.accent}60` : `${theme.colors.accent}24`,
-              backgroundColor: "rgba(10, 26, 0, 0.4)",
-              padding: 20,
-              gap: 16,
+              borderWidth: 1,
+              borderColor: pressed ? theme.colors.accent : theme.colors.border,
+              backgroundColor: theme.colors.surface,
+              padding: 18,
+              gap: 14,
               transform: [{ scale: pressed ? 0.985 : 1 }]
             })}
           >
@@ -150,7 +150,7 @@ export default function SettingsScreen() {
                 width: 58,
                 height: 58,
                 borderRadius: 29,
-                borderWidth: 2.2,
+                borderWidth: 1.5,
                 borderColor: theme.colors.accent,
                 backgroundColor: theme.colors.surfaceRaised,
                 alignItems: "center",
@@ -168,15 +168,13 @@ export default function SettingsScreen() {
                     {displayName || getDisplayNameFallback(user?.email || "Guest")}
                   </Text>
                   <View style={{
-                    backgroundColor: `${theme.colors.accent}24`,
-                    borderWidth: 1.2,
-                    borderColor: theme.colors.accent,
-                    borderRadius: 4,
-                    paddingHorizontal: 6,
-                    paddingVertical: 1
+                    backgroundColor: `${theme.colors.accent}14`,
+                    borderRadius: theme.radius.full,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3
                   }}>
-                    <Text style={{ color: theme.colors.accent, fontSize: 9, fontWeight: "900", letterSpacing: 0.5 }}>
-                      PRO MEMBER
+                    <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700", letterSpacing: 0.2 }}>
+                      {planLabels[subscriptionTier]}
                     </Text>
                   </View>
                 </View>
@@ -193,7 +191,7 @@ export default function SettingsScreen() {
           <Card style={{ padding: 18, gap: 12 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <LocalIcon name="settings" size={24} color={theme.colors.accent} />
-              <Text style={{ color: theme.colors.text, fontSize: 17, fontWeight: "900" }}>{t("settings.appearance")}</Text>
+              <Text style={{ color: theme.colors.text, fontSize: 17, fontWeight: "700" }}>{t("settings.appearance")}</Text>
             </View>
             <Text style={{ color: theme.colors.muted, fontSize: 13, lineHeight: 18 }}>{t("settings.appearanceDesc")}</Text>
             
@@ -247,8 +245,8 @@ export default function SettingsScreen() {
                       zIndex: 5
                     }}
                   >
-                    <Glyph name={item.icon} size={18} color={active ? "#0A1A00" : theme.colors.text} />
-                    <Text style={{ color: active ? "#0A1A00" : theme.colors.text, fontSize: 13, fontWeight: "900" }}>
+                    <Glyph name={item.icon} size={18} color={active ? "#FFFFFF" : theme.colors.text} />
+                    <Text style={{ color: active ? "#FFFFFF" : theme.colors.text, fontSize: 13, fontWeight: "700" }}>
                       {item.label}
                     </Text>
                   </Pressable>

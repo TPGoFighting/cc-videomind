@@ -38,8 +38,9 @@ import {
   type TranscriptSegment,
 } from "@teach-player/shared";
 import { MOCK_VIDEOS } from "./mock-data";
+import { getApiBaseUrl } from "./runtime-config";
 
-const apiBaseUrl = (process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://video.tpgofighting.top").replace(/\/$/, "");
+const apiBaseUrl = getApiBaseUrl();
 
 export class ApiError extends Error {
   constructor(
@@ -267,14 +268,14 @@ export async function streamTranscriptTranslations(
     return;
   }
 
-  const response = await fetch(`${apiBaseUrl}/api/transcript-translations/stream`, {
+  const response = await fetch(`${apiBaseUrl}/api/translate-transcript`, {
     method: "POST",
     headers: {
       Accept: "text/event-stream",
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ videoId, segments }),
+    body: JSON.stringify({ videoId }),
     signal,
   });
 
@@ -351,18 +352,24 @@ function consumeSseFrame(
   }
 
   const parsed = parseTranslationEvent(data);
-  const updates = Array.isArray(parsed?.translations) ? parsed.translations : [parsed];
+  const updates = Array.isArray(parsed?.translations)
+    ? parsed.translations
+    : parsed?.type === "segment"
+      ? [parsed.data]
+      : [parsed];
 
   for (const update of updates) {
     const index = Number(update?.index);
-    if (!Number.isInteger(index) || index < 0) {
+    const source = Number.isInteger(index) && index >= 0
+      ? segments.find((segment) => segment.index === index)
+      : segments.find((segment) => segment.startTime === Number(update?.startTime));
+    if (!source) {
       continue;
     }
 
-    const source = segments.find((segment) => segment.index === index);
     const text_zh = firstNonEmptyString(update?.text_zh, update?.textZh, update?.translation, update?.text) ?? source?.text;
     if (text_zh) {
-      onTranslation({ index, text_zh });
+      onTranslation({ index: source.index, text_zh });
     }
   }
 }
@@ -462,8 +469,23 @@ export function postNote(videoId: string, body: string, timestampSeconds?: numbe
   }).then((data) => ({ ok: true, data }));
 }
 
-export function getMe(token?: string | null): Promise<z.infer<typeof MeSchema>> {
-  return requestJson("/api/me", MeSchema, { token });
+export async function getMe(token?: string | null): Promise<z.infer<typeof MeSchema>> {
+  try {
+    return await requestJson("/api/me", MeSchema, { token });
+  } catch (error) {
+    // Older deployments did not yet expose this optional profile endpoint.
+    // Supabase still owns the authenticated session, so keep the app usable
+    // and safely default privileged server-derived fields to their least value.
+    if (error instanceof ApiError && error.status === 404) {
+      return {
+        role: null,
+        email: null,
+        subscription_tier: "free",
+        authenticated: Boolean(token),
+      };
+    }
+    throw error;
+  }
 }
 
 export function getPaymentStatus(token?: string | null): Promise<z.infer<typeof PaymentStatusSchema>> {

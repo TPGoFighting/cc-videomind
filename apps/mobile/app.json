@@ -2,7 +2,7 @@
   "expo": {
     "name": "Teach Player",
     "slug": "teach-player",
-    "version": "1.0.0",
+    "version": "1.8.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "teachplayer",

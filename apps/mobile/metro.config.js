@@ -18,7 +18,21 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+// Several isomorphic SDKs expose a Node CommonJS `main` field alongside a
+// browser-safe ESM build. Hermes must never resolve the Node entry point.
+config.resolver.resolverMainFields = ["react-native", "browser", "module", "main"];
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Supabase is isomorphic and may surface its optional Node `ws` dependency
+  // while resolving transitive packages. React Native provides WebSocket, so
+  // resolve the package name to a tiny native adapter instead of bundling Node
+  // streams and TLS modules.
+  if (moduleName === "ws") {
+    return {
+      type: "sourceFile",
+      filePath: path.resolve(projectRoot, "mocks/ws.js"),
+    };
+  }
   if (moduleName === "@opentelemetry/api") {
     return {
       type: "sourceFile",

@@ -6,7 +6,7 @@ import { colors } from "@/theme";
 export default function RootLayout() {
   return (
     <AppProviders>
-      <StatusBar style="light" />
+      <StatusBar style="auto" />
       <Stack
         screenOptions={{
           contentStyle: { backgroundColor: colors.background },

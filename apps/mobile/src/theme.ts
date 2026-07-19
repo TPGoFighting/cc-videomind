@@ -1,5 +1,5 @@
 // ============================================================
-// 双主题色彩系统 — 黑/白高级风格
+// 双主题色彩系统 — 低饱和暖白 / 墨黑 / 钴蓝
 // ============================================================
 
 // ---- 色彩定义 ----
@@ -26,53 +26,53 @@ export type ThemeColors = {
 
 // 日间模式
 export const lightColors: ThemeColors = {
-  background: "#F2F2F7",
+  background: "#F7F7F5",
   surface: "#FFFFFF",
-  surfaceRaised: "#F1F3F5",
-  glass: "rgba(255, 255, 255, 0.72)",
-  glassRaised: "rgba(255, 255, 255, 0.85)",
-  glassBorder: "rgba(0, 0, 0, 0.05)",
-  border: "rgba(0, 0, 0, 0.08)",
-  text: "#1C1C1E",
-  muted: "#8E8E93",
-  subtle: "#C7C7CC",
-  accent: "#58CC02",
-  accentDark: "#46A302",
-  warm: "#FF9F1C",
-  success: "#58CC02",
-  danger: "#FF3B30",
-  gold: "#FFC800",
-  blue: "#007AFF",
+  surfaceRaised: "#F0F0EC",
+  glass: "#FFFFFF",
+  glassRaised: "#FAFAF8",
+  glassBorder: "rgba(17, 18, 22, 0.08)",
+  border: "rgba(17, 18, 22, 0.10)",
+  text: "#121318",
+  muted: "#71737C",
+  subtle: "#B6B7BD",
+  accent: "#315EFB",
+  accentDark: "#2448C8",
+  warm: "#B87532",
+  success: "#23845D",
+  danger: "#CE3A4B",
+  gold: "#B8892D",
+  blue: "#315EFB",
 };
 
 // 夜间模式
 export const darkColors: ThemeColors = {
-  background: "#000000",
-  surface: "#1C1C1E",
-  surfaceRaised: "#2C2C2E",
-  glass: "rgba(28, 28, 30, 0.65)",
-  glassRaised: "rgba(44, 44, 46, 0.75)",
-  glassBorder: "rgba(255, 255, 255, 0.12)",
-  border: "rgba(255, 255, 255, 0.08)",
-  text: "#F2F2F7",
-  muted: "#8E8E93",
-  subtle: "#636366",
-  accent: "#58CC02",
-  accentDark: "#46A302",
-  warm: "#FF9F1C",
-  success: "#58CC02",
-  danger: "#FF453A",
-  gold: "#FFC800",
-  blue: "#0A84FF",
+  background: "#0D0E10",
+  surface: "#16171B",
+  surfaceRaised: "#202126",
+  glass: "#16171B",
+  glassRaised: "#1A1B20",
+  glassBorder: "rgba(255, 255, 255, 0.09)",
+  border: "rgba(255, 255, 255, 0.10)",
+  text: "#F5F5F1",
+  muted: "#A2A3AC",
+  subtle: "#676971",
+  accent: "#5878FF",
+  accentDark: "#7690FF",
+  warm: "#D29A5A",
+  success: "#4DBB88",
+  danger: "#FF6977",
+  gold: "#D3AA54",
+  blue: "#5878FF",
 };
 
 // ---- 布局常量 ----
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 18,
-  xl: 24,
+  sm: 10,
+  md: 14,
+  lg: 20,
+  xl: 28,
   full: 999,
 } as const;
 
@@ -80,7 +80,7 @@ export const spacing = {
   xs: 4,
   sm: 8,
   md: 12,
-  page: 20,
+  page: 22,
   card: 16,
   gap: 12,
   lg: 24,
