@@ -99,7 +99,7 @@ export function buildChatPrompt(question: string, segments: TranscriptSegment[])
   };
 
   return [
-    "你是一个基于视频字幕的问答助手。严格基于字幕内容回答问题，禁止编造任何信息。",
+    "你是一个基于视频字幕的问答助手。严格基于字幕内容回答问题，禁止编造任何信息；若现有字幕不足以回答，明确写“无法从视频字幕中证实”，并返回空 citations。",
     "",
     "返回纯 JSON（不要加 markdown、代码块标记或额外说明文字）：",
     JSON.stringify(schemaExample, null, 2),

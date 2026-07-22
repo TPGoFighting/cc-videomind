@@ -10,28 +10,12 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
-import { retrieveRelevantChunks, type RetrievedChunk } from "@/lib/embedding/retriever";
-import type { TranscriptSegment } from "@/lib/types";
+import { selectChatEvidence, validateChatCitations } from "@/lib/product/chat-evidence";
 
 const RequestSchema = z.object({
   videoId: VideoIdSchema,
   question: z.string().min(3).max(800)
 });
-
-function chunksToSegments(chunks: RetrievedChunk[]): TranscriptSegment[] {
-  // Build minimal TranscriptSegment[] from retrieved chunks for the provider
-  const segments: { startTime: number; endTime: number; text: string }[] = [];
-  for (const c of chunks) {
-    // Use segment range as a synthetic timestamp reference
-    // The actual timestamps aren't available from chunks, so we use segment indices * 10 as rough estimates
-    segments.push({
-      startTime: c.segmentStart * 10,
-      endTime: (c.segmentEnd + 1) * 10,
-      text: c.text,
-    });
-  }
-  return segments;
-}
 
 export async function POST(request: Request) {
   return withSecurity({
@@ -55,49 +39,40 @@ export async function POST(request: Request) {
       await upsertTranscriptCache({ videoId: parsed.data.videoId, metadata, transcript });
     }
 
-    // RAG retrieval: try vector search first, fall back to full transcript
-    let ragChunks: RetrievedChunk[] = [];
-    try {
-      ragChunks = await retrieveRelevantChunks(parsed.data.videoId, parsed.data.question, 5);
-    } catch {
-      // Vector search failed (e.g. no chunks vectorized yet) — fall back silently
+    const evidence = selectChatEvidence(parsed.data.question, transcript);
+    if (!evidence.found) {
+      return successResponse({
+        answer: "无法从这段视频字幕中证实这个问题。请换一种问法，或回到视频中的具体术语、人物或时间点。",
+        citations: [],
+      });
     }
 
     const aiProvider = await getAiProvider(userId ?? undefined);
     const t0 = Date.now();
 
-    let degradedResult;
-    if (ragChunks.length > 0) {
-      // RAG mode: use retrieved chunks as context
-      const segmentsFromChunks = chunksToSegments(ragChunks);
-      degradedResult = await withChatDegradation(
-        () => aiProvider.answerQuestion({
-          question: parsed.data.question,
-          transcript: segmentsFromChunks,
-          chunks: ragChunks,
-        }),
-      );
-    } else {
-      // Fallback: existing behavior with full transcript
-      degradedResult = await withChatDegradation(
-        () => aiProvider.answerQuestion({ question: parsed.data.question, transcript }),
-      );
-    }
+    const degradedResult = await withChatDegradation(
+      () => aiProvider.answerQuestion({ question: parsed.data.question, transcript: evidence.segments }),
+    );
 
     if (degradedResult.level === "degraded") {
       throw degradedResult.originalError ?? new Error("AI chat is unavailable.");
     }
 
-    const { data: answer } = buildDegradedResponse(degradedResult, { answer: "暂时无法回答，请稍后再试。", citations: [] });
+    const fallbackAnswer = { answer: "暂时无法回答，请稍后再试。", citations: [] };
+    const { data: answer = fallbackAnswer } = buildDegradedResponse(degradedResult, fallbackAnswer);
+    const citations = validateChatCitations(answer.citations, evidence.segments);
+    const verifiedAnswer = citations.length > 0
+      ? { ...answer, citations }
+      : { answer: "模型没有返回可在原字幕中核验的引用，因此无法从视频证实这个回答。", citations: [] };
     recordAiCall({
       provider: "default", model: "default", feature: "chat",
       inputTokens: Math.ceil(transcript.length * 50 / 4),
-      outputTokens: Math.ceil(JSON.stringify(answer).length / 4),
+      outputTokens: Math.ceil(JSON.stringify(verifiedAnswer).length / 4),
       elapsedMs: Date.now() - t0, success: true,
       userId: userId ?? undefined, videoId: parsed.data.videoId,
     });
 
-    return successResponse(answer);
+    return successResponse(verifiedAnswer);
   } catch (error) {
     console.error("Chat answer failed", error);
     const providerFailure = getAiProviderFailure(error);

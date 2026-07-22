@@ -152,14 +152,9 @@ export async function POST(request: Request) {
         console.warn("[Transcript] Shared cache write failed:", cacheError);
       }
 
-      // Fire-and-forget: async vectorize (non-blocking)
-      if (userId && Array.isArray(transcript) && transcript.length) {
-        import("@/lib/embedding/vectorizer")
-          .then(({ vectorizeTranscript }) =>
-            vectorizeTranscript(videoId!, transcript)
-          )
-          .catch(() => {});
-      }
+      // Pseudo embeddings are not a production retrieval signal. Chat uses
+      // timestamped transcript evidence directly until a real embedding path
+      // has an evaluated provider and migration plan.
 
       await recordProductEventSafely(analyticsUserId, {
         name: "video_parse_completed",

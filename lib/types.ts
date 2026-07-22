@@ -40,7 +40,8 @@ export const VideoAnalysisSchema = z.object({
 
 export const ChatAnswerSchema = z.object({
   answer: z.string().min(1),
-  citations: z.array(CitationSchema).min(1).max(5)
+  // A refusal is truthful when the video does not contain usable evidence.
+  citations: z.array(CitationSchema).max(5)
 });
 
 export type TranscriptSegment = z.infer<typeof TranscriptSegmentSchema>;
