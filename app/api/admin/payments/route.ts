@@ -3,6 +3,7 @@ import { clearAiProviderCache } from "@/lib/ai/provider";
 import { getTencentUser } from "@/lib/tencent-auth";
 import { queryTencent, withTencentTransaction } from "@/lib/tencent-db";
 import { canTransitionPayment, type PaymentStatus } from "@/lib/product/payment-state";
+import { getPlanOrderSnapshot } from "@/lib/product/manual-payment";
 import { withSecurity } from "@/lib/security/middleware";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { recordAdminAuditEventSafely } from "@/lib/product/admin-audit";
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
   const values = requestedStatus.data === "all" ? [] : [requestedStatus.data];
   const statusFilter = requestedStatus.data === "all" ? "" : "WHERE p.status = $1";
   const result = await queryTencent<{
-    id: string; user_id: string; tier: "pro" | "max"; transaction_id: string; status: PaymentStatus;
+    id: string; user_id: string; tier: "pro" | "max"; transaction_id: string; amount_cny: number | null; status: PaymentStatus;
     reviewed_by: string | null; admin_notes: string | null; created_at: Date; reviewed_at: Date | null; user_email: string | null;
   }>(
     `SELECT p.*, u.email AS user_email FROM payment_submissions p
@@ -59,9 +60,9 @@ export async function PUT(request: Request) {
       const submissionResult = await client.query<{
         user_id: string;
         tier: "pro" | "max";
-        status: PaymentStatus;
+        status: PaymentStatus; access_days: number | null;
       }>(
-        `SELECT user_id, tier, status FROM payment_submissions WHERE id = $1 FOR UPDATE`,
+        `SELECT user_id, tier, status, access_days FROM payment_submissions WHERE id = $1 FOR UPDATE`,
         [parsed.data.submissionId],
       );
       const submission = submissionResult.rows[0];
@@ -77,7 +78,15 @@ export async function PUT(request: Request) {
         [nextStatus, admin.id, parsed.data.notes ?? null, parsed.data.submissionId],
       );
       if (nextStatus === "approved") {
-        await client.query(`UPDATE app_users SET subscription_tier = $1 WHERE id = $2`, [submission.tier, submission.user_id]);
+        const accessDays = submission.access_days ?? getPlanOrderSnapshot(submission.tier).accessDays;
+        await client.query(
+          `UPDATE app_users
+           SET subscription_tier = $1,
+               subscription_expires_at = GREATEST(COALESCE(subscription_expires_at, NOW()), NOW()) + ($2::integer * INTERVAL '1 day')
+               , subscription_usage_started_at = NOW()
+           WHERE id = $3`,
+          [submission.tier, accessDays, submission.user_id],
+        );
       }
       return nextStatus;
     }).catch((error) => {

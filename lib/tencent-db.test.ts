@@ -72,4 +72,12 @@ describe("Tencent PostgreSQL authoritative schema", () => {
       /create unique index if not exists payment_submissions_active_user_idx on payment_submissions\(user_id\) where status = 'pending'/,
     );
   });
+
+  it("persists a bounded subscription expiry and immutable manual-payment snapshot", () => {
+    assert.match(schemaSql, /subscription_expires_at timestamptz/);
+    assert.match(schemaSql, /alter table app_users add column if not exists subscription_expires_at timestamptz/);
+    assert.match(schemaSql, /subscription_usage_started_at timestamptz/);
+    assert.match(schemaSql, /amount_cny integer/);
+    assert.match(schemaSql, /access_days integer/);
+  });
 });

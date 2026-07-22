@@ -26,9 +26,10 @@ function buildQuotaMessage(quota: {
 }) {
   const tier = quota.tier ?? "free";
 
-  // 免费版：总计额度，不重置
-  if (tier === "free" && quota.totalLimit !== undefined) {
-    return `总计解析次数已达上限（${quota.totalLimit}次），请升级至 Pro 或 Max 解锁更多配额。`;
+  if (quota.totalLimit !== undefined) {
+    return tier === "free"
+      ? `免费版总计解析次数已达上限（${quota.totalLimit}次），请升级至 Pro 或 Max 解锁更多配额。`
+      : `${tier === "pro" ? "Pro" : "Max"} 当前周期解析次数已达上限（${quota.totalLimit}次）。`;
   }
 
   const dailyLimit = quota.dailyLimit ?? 10;
@@ -114,7 +115,8 @@ export async function POST(request: Request) {
       return errorResponse("quota_exceeded", msg, 402);
     }
 
-    await recordAnalysisUsage({ userId, videoId, request });
+    const usage = await recordAnalysisUsage({ userId, videoId, request });
+    if (!usage.recorded) return errorResponse("quota_exceeded", buildQuotaMessage(usage.quota ?? quota), 402);
 
     return successResponse({
       videoId,
@@ -198,7 +200,8 @@ export async function POST(request: Request) {
     const analysis = await (await getAiProvider(userId ?? undefined)).generateAnalysis({ title: metadata.title, transcript: finalTranscript });
 
     await upsertAnalysisCache({ videoId, metadata, transcript: finalTranscript, analysis });
-    await recordAnalysisUsage({ userId, videoId, request });
+    const usage = await recordAnalysisUsage({ userId, videoId, request });
+    if (!usage.recorded) return errorResponse("quota_exceeded", buildQuotaMessage(usage.quota ?? quota), 402);
 
     return successResponse({
       videoId,

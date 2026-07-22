@@ -4,9 +4,12 @@ export interface PlanConfig {
   tier: SubscriptionTier;
   name: string;
   nameZh: string;
-  price: number; // 月费（人民币）
-  dailyLimit: number;
-  weeklyLimit: number; // Infinity 表示无限制
+  /** 人民币；首发没有自动续费。 */
+  price: number;
+  /** 免费版为 0；付费权益以审核通过起算。 */
+  accessDays: number;
+  /** 一个权益周期内可解析的不同视频数量。 */
+  analysisLimit: number;
   features: string[];
   highlighted: boolean;
 }
@@ -17,8 +20,8 @@ export const PLAN_CONFIGS: PlanConfig[] = [
     name: "Free",
     nameZh: "免费版",
     price: 0,
-    dailyLimit: 3, // 免费版总计 3 次，不重置
-    weeklyLimit: 3,
+    accessDays: 0,
+    analysisLimit: 3,
     highlighted: false,
     features: [
       "总计 3 次视频分析",
@@ -32,13 +35,12 @@ export const PLAN_CONFIGS: PlanConfig[] = [
     tier: "pro",
     name: "Pro",
     nameZh: "专业版",
-    price: 15,
-    dailyLimit: 10,
-    weeklyLimit: 30,
+    price: 19,
+    accessDays: 30,
+    analysisLimit: 30,
     highlighted: true,
     features: [
-      "每日 10 次视频分析",
-      "每周 30 次",
+      "30 天内总计 30 次视频分析",
       "AI 要点时刻提取",
       "AI 结构化摘要",
       "对话式问答",
@@ -50,13 +52,12 @@ export const PLAN_CONFIGS: PlanConfig[] = [
     tier: "max",
     name: "Max",
     nameZh: "旗舰版",
-    price: 50,
-    dailyLimit: 30,
-    weeklyLimit: 100,
+    price: 59,
+    accessDays: 30,
+    analysisLimit: 100,
     highlighted: false,
     features: [
-      "每日 30 次视频分析",
-      "每周 100 次",
+      "30 天内总计 100 次视频分析",
       "AI 要点时刻提取",
       "AI 结构化摘要",
       "对话式问答",

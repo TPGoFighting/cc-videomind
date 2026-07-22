@@ -45,13 +45,14 @@ describe("self-hosted authentication and quota boundaries", () => {
     }
   });
 
-  it("reports the self-hosted quota boundary consistently", async () => {
+  it("does not grant account entitlement when a request has no authenticated session", async () => {
     const anonymous = await checkAnalysisQuota(null);
     const authenticated = await checkAnalysisQuota("user-1");
 
     assert.equal(anonymous.allowed, true);
     assert.equal(anonymous.anonymous, true);
     assert.equal(authenticated.allowed, true);
-    assert.equal(authenticated.anonymous, false);
+    assert.equal(authenticated.anonymous, true);
+    assert.equal(authenticated.totalLimit, 1);
   });
 });

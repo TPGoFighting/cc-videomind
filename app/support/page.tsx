@@ -45,8 +45,9 @@ export default function SupportPage() {
           <section className="py-8" aria-labelledby="support-payment">
             <h2 id="support-payment" className="text-xl font-semibold">付款审核与退款</h2>
             <div className="mt-4 space-y-4 text-base leading-8 text-[var(--tp-text-secondary)]">
-              <p>当前公开版本没有自动扣款入口。只有站内明确展示价格、权益、审核状态和私密支持方式的付款记录才构成有效交易。</p>
-              <p>若付款入口未来开放，退款范围、处理时限和私密联系渠道会随订单展示；不要在 GitHub Issues 上传交易号或付款截图。未出现这些信息时，请不要付款。</p>
+              <p>当前没有自动扣款或自动续费。只有登录后的套餐页明确展示价格、权益、审核状态和私密收款信息时，才可提交付款申请；提交后由人工审核开通。</p>
+              <p>审核目标为 1 个工作日。审核开通后 7 天内，尚未完成任何 AI 视频分析的用户可申请全额退款；我们会在 1 个工作日内回应，符合条件的退款目标处理时限为 7 个工作日。不要在 GitHub Issues 上传交易号或付款截图。</p>
+              <Link href="/billing" className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--tp-accent)]">登录后查看套餐与付款状态</Link>
             </div>
           </section>
         </div>

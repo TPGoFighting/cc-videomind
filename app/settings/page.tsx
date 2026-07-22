@@ -729,6 +729,13 @@ export default function SettingsPage() {
               <Bookmark className="h-4 w-4" />
               句子本
             </Link>
+            <Link
+              href="/billing"
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-white/60 transition-colors hover:bg-white/6 hover:text-white min-h-[44px]"
+            >
+              <Clock className="h-4 w-4" />
+              套餐与付款审核
+            </Link>
           </CardContent>
         </Card>
 
@@ -897,6 +904,7 @@ interface PaymentSubmission {
   user_id: string;
   tier: string;
   transaction_id: string;
+  amount_cny: number | null;
   status: string;
   reviewed_by: string | null;
   admin_notes: string | null;
@@ -1067,7 +1075,7 @@ function AdminPaymentsPanel() {
                         </span>
                       </div>
                       <div className="flex items-center gap-4 text-[12px] text-white/35">
-                        <span>{tierLabel(s.tier)} · ¥{s.tier === "pro" ? "15" : "50"}</span>
+                        <span>{tierLabel(s.tier)} · ¥{s.amount_cny ?? (s.tier === "pro" ? "19" : "59")}</span>
                         <span>单号: {s.transaction_id}</span>
                       </div>
                       <p className="text-[11px] text-white/25">
