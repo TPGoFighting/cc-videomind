@@ -5,6 +5,8 @@ import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { queryTencent } from "@/lib/tencent-db";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { getAccuracyBucket } from "@/lib/product/analytics-event";
+import { recordProductEventSafely } from "@/lib/product/analytics-store";
 
 const RequestSchema = z.object({ reviews: z.array(z.object({ lemma: z.string().min(1), quality: z.number().int().min(0).max(5) })).min(1).max(50) });
 
@@ -39,6 +41,10 @@ export async function GET(request: Request) {
      ORDER BY COALESCE(r.next_review_at, v.created_at) ASC LIMIT 20`,
     [userId],
   );
+  await recordProductEventSafely(userId, {
+    name: "review_opened",
+    payload: { dueCount: result.rows.length },
+  });
   return successResponse({ words: result.rows.map((word) => ({
     lemma: word.lemma, phonetic: word.phonetic ?? undefined, partOfSpeech: word.part_of_speech ?? undefined,
     definitionZh: word.definition_zh ?? word.lemma, definitionEn: word.definition_en ?? undefined,
@@ -80,6 +86,13 @@ export async function POST(request: Request) {
        ON CONFLICT (user_id, checkin_date) DO UPDATE SET word_count = user_checkins.word_count + EXCLUDED.word_count`,
       [userId, parsed.data.reviews.length],
     );
+    await recordProductEventSafely(userId, {
+      name: "review_completed",
+      payload: {
+        completedCount: parsed.data.reviews.length,
+        accuracyBucket: getAccuracyBucket(parsed.data.reviews.map((review) => review.quality)),
+      },
+    });
     return successResponse({ ok: true });
   });
 }

@@ -4,6 +4,7 @@ import { getTencentUser } from "@/lib/tencent-auth";
 import { queryTencent } from "@/lib/tencent-db";
 import { withSecurity } from "@/lib/security/middleware";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { recordAdminAuditEventSafely } from "@/lib/product/admin-audit";
 
 const UpdateSchema = z.object({
   submissionId: z.string().uuid(),
@@ -70,6 +71,12 @@ export async function PUT(request: Request) {
       await queryTencent(`UPDATE app_users SET subscription_tier = $1 WHERE id = $2`, [submission.tier, submission.user_id]);
       clearAiProviderCache();
     }
+
+    await recordAdminAuditEventSafely(admin.id, {
+      action: "payment_reviewed",
+      targetType: "payment",
+      targetId: parsed.data.submissionId,
+    });
 
     return successResponse({ ok: true, status });
   });

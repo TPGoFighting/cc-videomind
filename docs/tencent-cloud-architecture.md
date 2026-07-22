@@ -46,6 +46,8 @@ TRANSCRIPT_PROVIDER=youtube
 SUPADATA_API_KEY=
 TRANSCRIPT_FALLBACK_URL=
 ADMIN_EMAIL=owner@example.com
+ASYNC_TASK_WORKER_SECRET=<independent-long-random-value>
+ACCOUNT_DELETION_WORKER_SECRET=<independent-long-random-value>
 ASR_API_BASE_URL=https://api.siliconflow.cn/v1
 ASR_API_KEY=
 ASR_MODEL=FunAudioLLM/SenseVoiceSmall
@@ -55,6 +57,7 @@ ASR_MODEL=FunAudioLLM/SenseVoiceSmall
 - 不需要 `AUTH_SESSION_SECRET`：登录时生成 48-byte 随机 token，客户端保存原 token，PostgreSQL 只保存 SHA-256 哈希。
 - 生产禁止设置 `LOCAL_MODE=1` 或 `NEXT_PUBLIC_LOCAL_MODE=1`。
 - `NEXT_PUBLIC_APP_URL` 必须等于 canonical HTTPS 地址，否则上传媒体 URL 和 SEO 地址可能分叉。
+- `ASYNC_TASK_WORKER_SECRET` 与 `ACCOUNT_DELETION_WORKER_SECRET` 必须独立生成并只放在服务端；任一缺失时对应内部 Worker 拒绝执行。
 
 ## 数据库与认证
 
@@ -66,6 +69,8 @@ ASR_MODEL=FunAudioLLM/SenseVoiceSmall
 | --- | --- |
 | 账户与 Session | `app_users`, `app_sessions` |
 | 设置与付费 | `app_settings`, `user_ai_settings`, `payment_submissions` |
+| 隐私与账户权利 | `user_privacy_preferences`, `account_deletion_requests` |
+| 产品观测与管理审计 | `product_events`, `admin_audit_events` |
 | 视频与 AI 共享数据 | `video_analyses`, `ai_results_cache`, `video_translations`, `video_chunks`, `word_definitions`, `async_tasks` |
 | 个人学习数据 | `user_videos`, `user_notes`, `user_vocabulary`, `user_quotes`, `user_word_reviews`, `user_checkins` |
 
@@ -76,6 +81,14 @@ ASR_MODEL=FunAudioLLM/SenseVoiceSmall
 - 会话默认 30 天，退出会删除服务端 hash。
 - 个人数据 SQL 必须从 session 取得用户并显式带 `user_id`；不依赖前端 user ID，也不依赖 Supabase RLS。
 - 邮箱验证、找回密码和 OAuth 当前未实现。旧 `/auth/callback` 只会同源返回登录错误页。
+
+## 隐私维护与账户删除 Worker
+
+- 产品分析默认关闭；只有 `user_privacy_preferences.analytics_enabled = TRUE` 的登录用户才会写入 `product_events`。
+- 事件 payload 在应用层按事件名使用严格 Zod 白名单，禁止 URL、字幕、Prompt、回答和笔记正文；产品事件保留 180 天，管理员审计保留 365 天。
+- 账户删除请求验证当前密码后进入 7 天撤销期。到期 Worker 删除会话、个人配置、历史、笔记、词句、复习、打卡与待处理任务，并把付款引用最小化为不可逆摘要；管理员账户需要先移交权限。
+- 运维应每天以 `Authorization: Bearer <ACCOUNT_DELETION_WORKER_SECRET>` 调用一次 `POST /api/internal/account-deletions`。响应只含完成/失败和到期清理数量，不含用户身份或内容。
+- Worker 上线、定时器配置和首次生产执行属于部署变更，必须在数据库备份后由发布负责人授权；本仓库的代码与 schema 不等同于生产任务已激活。
 
 历史目录 `lib/supabase/` 只保留模块名，里面的缓存、设置、配额和翻译实现均以腾讯 PostgreSQL 为后端。新代码直接依赖 `lib/tencent-db.ts`；不得新增 Supabase SDK。
 

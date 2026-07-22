@@ -39,6 +39,50 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS app_sessions_user_idx ON app_sessions(user_id)`,
+  `CREATE TABLE IF NOT EXISTS user_privacy_preferences (
+    user_id TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+    analytics_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    consented_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE TABLE IF NOT EXISTS product_events (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+    event_name TEXT NOT NULL CHECK (event_name IN (
+      'video_parse_started', 'video_parse_completed', 'video_parse_failed',
+      'analysis_completed', 'analysis_failed', 'learning_item_saved',
+      'review_opened', 'review_completed', 'upgrade_opened', 'upgrade_paid'
+    )),
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS product_events_name_time_idx ON product_events(event_name, occurred_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS product_events_user_time_idx ON product_events(user_id, occurred_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS product_events_expiry_idx ON product_events(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS account_deletion_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+    account_email_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'cancelled', 'failed')),
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    process_after TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    error_code TEXT
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS account_deletion_active_user_idx ON account_deletion_requests(user_id) WHERE status IN ('pending', 'processing')`,
+  `CREATE INDEX IF NOT EXISTS account_deletion_due_idx ON account_deletion_requests(status, process_after)`,
+  `CREATE TABLE IF NOT EXISTS admin_audit_events (
+    id TEXT PRIMARY KEY,
+    actor_user_id TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS admin_audit_events_actor_time_idx ON admin_audit_events(actor_user_id, occurred_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS admin_audit_events_expiry_idx ON admin_audit_events(expires_at)`,
   `CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

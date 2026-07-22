@@ -7,6 +7,7 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { queryTencent } from "@/lib/tencent-db";
 import { SaveWordRequestSchema } from "@/lib/types";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { recordLearningItemSavedSafely } from "@/lib/product/analytics-store";
 
 export async function GET(request: Request) {
   const videoId = new URL(request.url).searchParams.get("videoId") ?? undefined;
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
        ON CONFLICT (user_id, lemma) DO NOTHING`,
       [id, userId, lemma, parsed.data.videoId],
     );
+    await recordLearningItemSavedSafely(userId, "word");
     return successResponse({ saved: true, lemma, wordId: id });
   });
 }

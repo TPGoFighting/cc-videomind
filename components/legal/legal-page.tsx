@@ -55,6 +55,7 @@ export function LegalPage({
         <footer className="flex flex-wrap gap-4 border-t border-[var(--tp-border)] pt-8 text-sm">
           <Link href="/terms" className="inline-flex min-h-11 items-center text-[var(--tp-accent)]">服务条款</Link>
           <Link href="/privacy" className="inline-flex min-h-11 items-center text-[var(--tp-accent)]">隐私政策</Link>
+          <Link href="/support" className="inline-flex min-h-11 items-center text-[var(--tp-accent)]">支持与退款</Link>
           <Link href="/" className="inline-flex min-h-11 items-center text-[var(--tp-text-muted)]">返回首页</Link>
         </footer>
       </main>

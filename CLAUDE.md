@@ -87,7 +87,7 @@ docs/                         ADR、架构、运维与执行证据
 
 ## Environment
 
-复制 `.env.example`，不要提交真实值。生产至少需要 `NEXT_PUBLIC_APP_URL`、`DATABASE_URL` 和一套有效 AI Provider 配置；按启用能力配置字幕或 ASR 密钥。管理员邮箱由 `ADMIN_EMAIL` 控制。
+复制 `.env.example`，不要提交真实值。生产至少需要 `NEXT_PUBLIC_APP_URL`、`DATABASE_URL` 和一套有效 AI Provider 配置；按启用能力配置字幕或 ASR 密钥。管理员邮箱由 `ADMIN_EMAIL` 控制；异步任务和账户删除维护分别使用独立的 `ASYNC_TASK_WORKER_SECRET` 与 `ACCOUNT_DELETION_WORKER_SECRET`。
 
 `DATABASE_URL`、AI/ASR key、Cookie、Bearer token、用户文本和完整上传路径不得写入日志、文档、测试 fixture 或 Git。
 

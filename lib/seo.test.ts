@@ -50,12 +50,12 @@ describe("SEO contract", () => {
   it("publishes only intentional public pages in sitemap and robots", () => {
     assert.deepEqual(
       sitemap().map((entry) => entry.url),
-      [SITE_URL, `${SITE_URL}/explore`, `${SITE_URL}/privacy`, `${SITE_URL}/terms`],
+      [SITE_URL, `${SITE_URL}/explore`, `${SITE_URL}/privacy`, `${SITE_URL}/terms`, `${SITE_URL}/support`],
     );
 
     const rules = robots().rules;
     assert.ok(!Array.isArray(rules));
-    assert.deepEqual(rules.allow, ["/", "/explore", "/privacy", "/terms"]);
+    assert.deepEqual(rules.allow, ["/", "/explore", "/privacy", "/terms", "/support"]);
     assert.ok(rules.disallow?.includes("/api/"));
     assert.ok(rules.disallow?.includes("/video/"));
   });

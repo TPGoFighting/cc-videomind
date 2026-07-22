@@ -12,6 +12,7 @@ import {
 import { clearAiProviderCache } from "@/lib/ai/provider";
 import { errorResponse, readJson } from "@/lib/utils/api";
 import { withSecurity } from "@/lib/security/middleware";
+import { recordAdminAuditEventSafely } from "@/lib/product/admin-audit";
 
 const AI_SETTING_KEYS = [
   "ai_provider",
@@ -145,6 +146,11 @@ export async function PUT(request: Request) {
 
         // 写入后清除 provider 缓存（下次 AI 调用即生效）
         clearAiProviderCache();
+        await recordAdminAuditEventSafely(userId, {
+          action: "settings_updated",
+          targetType: "setting",
+          targetId: `${scope ?? "global"}/${key}`,
+        });
         return NextResponse.json({ ok: true, key, scope: scope ?? "global" });
       } catch (err) {
         console.error("[Admin:Settings] 更新失败:", err);
@@ -161,4 +167,3 @@ function maskApiKey(key: string): string {
   if (key.length <= 8) return "****";
   return key.slice(0, 4) + "****" + key.slice(-4);
 }
-

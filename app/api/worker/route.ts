@@ -2,6 +2,7 @@ import { z } from "zod";
 import { withSecurity } from "@/lib/security/middleware";
 import { getTask, updateTask, type AsyncTask } from "@/lib/async/task-manager";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { hasWorkerAuthorization } from "@/lib/security/worker-authorization";
 
 const RequestSchema = z.object({ taskId: z.string().uuid() });
 
@@ -29,6 +30,9 @@ export async function POST(request: Request) {
     scope: "worker",
     skipCsrf: true,
   }).wrap(request, async () => {
+    if (!hasWorkerAuthorization(request, process.env.ASYNC_TASK_WORKER_SECRET)) {
+      return errorResponse("forbidden", "Worker authorization failed.", 403);
+    }
     const parsed = await readJson(request, RequestSchema);
     if (!parsed.ok) return parsed.response;
 

@@ -3,6 +3,7 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { isAdmin } from "@/lib/supabase/admin";
 import { queryTencent } from "@/lib/tencent-db";
 import { errorResponse } from "@/lib/utils/api";
+import { recordAdminAuditEventSafely } from "@/lib/product/admin-audit";
 
 /**
  * GET — 管理员通过邮箱查找用户（返回 userId + email）。
@@ -28,6 +29,12 @@ export async function GET(request: Request) {
     `SELECT id, email FROM app_users WHERE LOWER(email) = $1 LIMIT 5`,
     [email],
   );
+
+  await recordAdminAuditEventSafely(userId, {
+    action: "user_lookup",
+    targetType: "user",
+    targetId: "email-exact-match",
+  });
 
   return NextResponse.json({ users: result.rows });
 }

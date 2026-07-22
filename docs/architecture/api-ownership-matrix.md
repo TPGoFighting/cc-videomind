@@ -1,7 +1,7 @@
 # API 运行时与数据归属矩阵
 
 > 审计日期：2026-07-22
-> 覆盖范围：全部 36 个 `app/api/**/route.ts`，另含 1 个历史 `/auth/callback` 入口。
+> 覆盖范围：全部 41 个 `app/api/**/route.ts`，另含 1 个历史 `/auth/callback` 入口。
 
 ## 全局不变量
 
@@ -16,6 +16,9 @@
 
 | Route / method | 生产运行时 | 权威数据 / 外部依赖 | 鉴权与资源边界 | 缓存 / 写入规则 |
 | --- | --- | --- | --- | --- |
+| `/api/account/deletion-request` GET, POST, DELETE | 腾讯 Next.js | PG `account_deletion_requests`, `app_users` | 必须登录；POST 还需当前密码和精确确认短语；管理员需先移交权限 | 创建 7 天撤销期请求；DELETE 仅撤销尚未到期的 pending 请求 |
+| `/api/account/export` GET | 腾讯 Next.js | PG 本人账户、学习、付款状态、隐私偏好与删除请求 | 必须登录且只导出本人；每小时 3 次 | `private, no-store` JSON；排除密码、session、个人 AI Key 和付款凭证正文 |
+| `/api/admin/metrics` GET | 腾讯 Next.js | PG `product_events` | 仅 `admin` session | 只读 7–180 天聚合；访问写入不含正文的管理员审计 |
 | `/api/admin/payments` GET, PUT | 腾讯 Next.js | PG `payment_submissions`, `app_users` | 仅 `admin` session | 审核批准更新唯一订阅权威；无第二支付状态 |
 | `/api/admin/settings` GET, PUT | 腾讯 Next.js | PG `app_settings`, `user_ai_settings`, `app_users` | GET 需登录并按角色脱敏；PUT 仅 admin | 写后清空进程内 AI provider 配置缓存 |
 | `/api/admin/settings/test` POST | 腾讯 Next.js | 请求内临时 AI 配置 + 外部 AI provider | 仅 admin | 不写数据库；只做受限 provider 探测 |
@@ -32,13 +35,15 @@
 | `/api/generate-moments` POST | 腾讯 Next.js | PG `video_analyses`, `ai_results_cache`; 外部 AI | 可选账户 | 综合缓存 → moments 缓存 → 生成后写共享缓存 |
 | `/api/generate-summary` POST | 腾讯 Next.js | PG `video_analyses`, `ai_results_cache`; 外部 AI | 可选账户 | 综合缓存 → summary 缓存 → 生成后写共享缓存 |
 | `/api/history` GET | 腾讯 Next.js | PG `user_videos`, `video_analyses` | 未登录返回空列表；登录后只查本人 | 无额外缓存 |
+| `/api/internal/account-deletions` POST | 腾讯 Next.js | PG 账户/学习表、`account_deletion_requests`, `product_events`, `admin_audit_events` | 独立 Bearer Worker Secret；无配置时 fail closed | 清理到期事件；处理到期删除请求并将付款引用最小化去标识 |
 | `/api/me` GET | 腾讯 Next.js | PG `app_sessions`, `app_users` | 可选 session | 每次从 session 权威读取，不缓存浏览器身份 |
 | `/api/notes` GET, POST, DELETE | 腾讯 Next.js | PG `user_notes`, `video_analyses` | 生产必须登录且只操作本人 note | 无额外缓存；LOCAL_MODE 可用 SQLite |
 | `/api/payment/submit` GET, POST | 腾讯 Next.js | PG `payment_submissions` | 必须登录且只查/写本人 | 同套餐仅允许一条 pending；不直接授予权益 |
+| `/api/privacy-preferences` GET, PUT | 腾讯 Next.js | PG `user_privacy_preferences` | 必须登录；LOCAL_MODE 明确不可用 | 默认关闭；PUT 只接受布尔同意状态，不接收事件内容 |
 | `/api/review` GET, POST | 腾讯 Next.js | PG `user_vocabulary`, `user_word_reviews`, `user_checkins` | 必须登录 | SM-2 状态和打卡直接写权威表 |
 | `/api/stripe/create-checkout-session` POST | 腾讯 Next.js | 无 | 兼容入口 | 固定 `410 payment_method_disabled`，不调用 Stripe |
 | `/api/sync/notebook` POST | 腾讯 Next.js | PG `user_vocabulary`, `user_word_reviews` | 必须登录；忽略客户端用户归属 | 每条变更在 PG transaction 中应用，再按时间增量拉取 |
-| `/api/tasks/[taskId]` GET | 腾讯 Next.js | PG `async_tasks` | 当前为不可猜 UUID capability | 只读任务状态；T06 应增加 owner/worker authorization |
+| `/api/tasks/[taskId]` GET | 腾讯 Next.js | PG `async_tasks` | 有 owner 的任务仅本人/admin；匿名任务 UUID 只返回无正文状态 | 不向匿名调用者返回 input/output/error 正文 |
 | `/api/transcript` POST | 腾讯 Next.js | PG `video_analyses`, `user_videos`; 外部 YouTube/字幕 provider | 可选账户 | 共享字幕缓存命中优先；成功后写 PG |
 | `/api/translate-transcript` POST | 腾讯 Next.js | PG `video_analyses`, `video_translations`; 外部 AI | 可选账户 | 读取最新完整翻译；SSE 生成后写翻译版本与字幕缓存 |
 | `/api/translations` GET | 腾讯 Next.js | PG `video_translations` | 公开读取视频 capability | 按 video/language/version 读取；LOCAL_MODE 可用 SQLite |
@@ -51,7 +56,7 @@
 | `/api/video-stream` GET | 腾讯 Next.js | 持久 `uploads/` | 必须登录 + 不可猜 local ID；尚无 owner 字段 | 支持合法 byte range；非法 range 返回 416 |
 | `/api/webhooks/stripe` POST | 腾讯 Next.js | 无 | 兼容入口 | 固定 `410 payment_method_disabled`，不接收支付事件 |
 | `/api/word-definitions` POST | 腾讯 Next.js | PG `word_definitions`; 外部 AI | 可选账户 | 批量命中共享词义缓存，缺失项生成后 upsert |
-| `/api/worker` POST | 腾讯 Next.js | PG `async_tasks` | 当前为 task UUID capability，且 handler 仍是 stub | 更新任务状态；T06 应增加 worker secret/owner authorization |
+| `/api/worker` POST | 腾讯 Next.js | PG `async_tasks` | 独立 Bearer Worker Secret；handler 仍是 stub | 更新任务状态；无配置或 secret 不匹配时 fail closed |
 | `/auth/callback` GET | 腾讯 Next.js | 无 | 历史书签兼容 | 不处理 OAuth/code/next 参数；只同源重定向到登录错误页 |
 
 ## 已关闭的双路径
@@ -67,9 +72,8 @@
 
 ## 已知但不模糊的后续安全债务
 
-这些不是“未知归属”，而是已明确归属后仍需在 T06/T10 处理的访问控制问题：
+这些不是“未知归属”，而是已明确归属后仍需在 T10 或生产扩容前处理的访问控制问题：
 
-1. `/api/tasks/[taskId]` 和 `/api/worker` 依赖不可猜 UUID，没有 owner 或 worker secret 校验。
-2. `/api/video-stream` 要求登录，但没有独立上传记录来验证当前用户是否拥有该 local ID。
-3. 登录/注册未走统一 `withSecurity()`，需要补充凭证接口的限流、审计和枚举防护。
-4. 单进程内存限流不支持 PM2 cluster；多实例前必须迁移到共享计数存储。
+1. `/api/video-stream` 要求登录，但没有独立上传记录来验证当前用户是否拥有该 local ID。
+2. 单进程内存限流不支持 PM2 cluster；多实例前必须迁移到共享计数存储。
+3. 邮箱验证、找回密码和私密支付支持渠道尚未实现，公开注册和真实付款前仍需完成。

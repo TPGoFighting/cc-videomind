@@ -12,6 +12,7 @@ import { runSingleFlight } from "@/lib/utils/single-flight";
 import { deriveComprehensiveFromAnalysis } from "@/lib/utils/comprehensive-cache";
 import { hasReusableVideoAnalysis } from "@/lib/utils/video-analysis-cache";
 import type { VideoMetadata } from "@/lib/types";
+import { recordProductEventSafely } from "@/lib/product/analytics-store";
 
 const TranscriptSegmentSchema = z.object({
   startTime: z.number(),
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
 
     const { videoId } = parsed.data;
     const userId = await getAuthenticatedUserId(request);
+    const analyticsStartedAt = Date.now();
     const cached = await getCachedAnalysis(videoId);
 
     // A complete shared cache is the normal fast path for repeat viewers.
@@ -60,6 +62,10 @@ export async function POST(request: Request) {
         }
       }
       await recordAnalysisUsage({ userId, videoId, request });
+      await recordProductEventSafely(userId, {
+        name: "analysis_completed",
+        payload: { durationMs: Date.now() - analyticsStartedAt, modelAlias: "shared-cache", cacheHit: true },
+      });
       return successResponse({
         videoId,
         transcript: cached.transcript,
@@ -74,6 +80,10 @@ export async function POST(request: Request) {
     const title = cached?.metadata?.title ?? parsed.data.title;
     const transcript = cached?.transcript ?? parsed.data.transcript;
     if (!title || !transcript) {
+      await recordProductEventSafely(userId, {
+        name: "analysis_failed",
+        payload: { durationMs: Date.now() - analyticsStartedAt, modelAlias: "configured", errorCode: "analysis_input_missing" },
+      });
       return errorResponse("analysis_input_missing", "字幕尚未写入缓存，请刷新页面后重试。", 409);
     }
     const metadata = cached?.metadata ?? fallbackMetadata(videoId, title);
@@ -91,6 +101,7 @@ export async function POST(request: Request) {
             comprehensive: undefined,
             degraded: false,
             message: undefined,
+            analyticsCostMicrousd: undefined,
           };
         }
 
@@ -134,7 +145,7 @@ export async function POST(request: Request) {
         if (!analysis) {
           throw new Error("AI analysis returned no result.");
         }
-        recordAiCall({
+        const aiCall = recordAiCall({
           provider: "default",
           model: "default",
           feature: comprehensiveData ? "comprehensive" : "analysis",
@@ -158,22 +169,41 @@ export async function POST(request: Request) {
           cached: false,
           degraded,
           message,
+          analyticsCostMicrousd: Math.round(aiCall.cost * 1_000_000),
         };
       });
 
       await recordAnalysisUsage({ userId, videoId, request });
+      const { analyticsCostMicrousd, ...responseResult } = result;
+      await recordProductEventSafely(userId, {
+        name: "analysis_completed",
+        payload: {
+          durationMs: Date.now() - analyticsStartedAt,
+          modelAlias: result.cached ? "shared-cache" : "configured",
+          cacheHit: result.cached,
+          ...(analyticsCostMicrousd === undefined ? {} : { costMicrousd: analyticsCostMicrousd }),
+        },
+      });
       return successResponse({
         videoId,
-        ...result,
+        ...responseResult,
         preview: userId === null,
       });
     } catch (error) {
       console.error("Analysis failed", error);
       const providerFailure = getAiProviderFailure(error);
       if (providerFailure) {
+        await recordProductEventSafely(userId, {
+          name: "analysis_failed",
+          payload: { durationMs: Date.now() - analyticsStartedAt, modelAlias: "configured", errorCode: providerFailure.code },
+        });
         return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
       }
       const message = error instanceof Error ? `分析失败：${error.message}` : "AI analysis could not be generated.";
+      await recordProductEventSafely(userId, {
+        name: "analysis_failed",
+        payload: { durationMs: Date.now() - analyticsStartedAt, modelAlias: "configured", errorCode: "analysis_failed" },
+      });
       return errorResponse("analysis_failed", message, 502);
     }
   });

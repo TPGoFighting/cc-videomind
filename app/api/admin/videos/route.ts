@@ -2,6 +2,7 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { isAdmin } from "@/lib/supabase/admin";
 import { queryTencent } from "@/lib/tencent-db";
 import { errorResponse, successResponse } from "@/lib/utils/api";
+import { recordAdminAuditEventSafely } from "@/lib/product/admin-audit";
 
 export async function GET(request: Request) {
   const userId = await getAuthenticatedUserId(request);
@@ -36,6 +37,12 @@ export async function GET(request: Request) {
       parsedAt: row.updated_at.toISOString(),
       parsedBy: row.parsed_by ?? "匿名用户",
     };
+  });
+
+  await recordAdminAuditEventSafely(userId, {
+    action: "videos_viewed",
+    targetType: "video",
+    targetId: "latest-100",
   });
 
   return successResponse({ videos });

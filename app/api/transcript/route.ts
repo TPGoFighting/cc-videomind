@@ -7,6 +7,7 @@ import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider, TranscriptError } from "@/lib/youtube/transcript-provider";
 import { ExternalServiceError } from "@/lib/utils/http";
+import { recordProductEventSafely } from "@/lib/product/analytics-store";
 
 const RequestSchema = z
   .object({
@@ -53,12 +54,22 @@ export async function POST(request: Request) {
     }
 
     const userId = await getAuthenticatedUserId(request);
+    const analyticsUserId = isBilibili ? null : userId;
+    const analyticsStartedAt = Date.now();
+    await recordProductEventSafely(analyticsUserId, {
+      name: "video_parse_started",
+      payload: { source: "youtube" },
+    });
 
     // 检查缓存
     const cached = await getCachedAnalysis(videoId);
     if (cached?.metadata && cached.transcript) {
       const alreadyAnalyzed = await hasUserAnalyzedVideo(userId, videoId, request);
       if (alreadyAnalyzed) {
+        await recordProductEventSafely(analyticsUserId, {
+          name: "video_parse_completed",
+          payload: { source: "youtube", durationMs: Date.now() - analyticsStartedAt, cacheHit: true },
+        });
         return successResponse({
           videoId,
           metadata: cached.metadata,
@@ -72,10 +83,18 @@ export async function POST(request: Request) {
         const msg = quota.anonymous
           ? "未登录仅限解析1条视频，请登录后继续使用。"
           : `配额已用完，请升级至 Pro 解锁更多配额。`;
+        await recordProductEventSafely(analyticsUserId, {
+          name: "video_parse_failed",
+          payload: { source: "youtube", durationMs: Date.now() - analyticsStartedAt, errorCode: "quota_exceeded" },
+        });
         return errorResponse("quota_exceeded", msg, 402);
       }
 
       await recordAnalysisUsage({ userId, videoId, request });
+      await recordProductEventSafely(analyticsUserId, {
+        name: "video_parse_completed",
+        payload: { source: "youtube", durationMs: Date.now() - analyticsStartedAt, cacheHit: true },
+      });
       return successResponse({
         videoId,
         metadata: cached.metadata,
@@ -90,6 +109,10 @@ export async function POST(request: Request) {
       const msg = quota.anonymous
         ? "未登录仅限解析1条视频，请登录后继续使用。"
         : `配额已用完，请升级至 Pro 解锁更多配额。`;
+      await recordProductEventSafely(analyticsUserId, {
+        name: "video_parse_failed",
+        payload: { source: "youtube", durationMs: Date.now() - analyticsStartedAt, errorCode: "quota_exceeded" },
+      });
       return errorResponse("quota_exceeded", msg, 402);
     }
 
@@ -138,6 +161,10 @@ export async function POST(request: Request) {
           .catch(() => {});
       }
 
+      await recordProductEventSafely(analyticsUserId, {
+        name: "video_parse_completed",
+        payload: { source: "youtube", durationMs: Date.now() - analyticsStartedAt, cacheHit: false },
+      });
       return successResponse({
         videoId,
         metadata,
@@ -158,6 +185,10 @@ export async function POST(request: Request) {
           : error instanceof ExternalServiceError
             ? "无法获取视频元数据，请检查网络后重试。"
             : "暂时无法获取视频字幕，请稍后重试。";
+      await recordProductEventSafely(analyticsUserId, {
+        name: "video_parse_failed",
+        payload: { source: "youtube", durationMs: Date.now() - analyticsStartedAt, errorCode: code },
+      });
       return errorResponse(code, message, 502);
     }
   });

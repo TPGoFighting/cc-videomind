@@ -10,6 +10,8 @@ import { useAuth } from "@/components/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PrivacyControlsCard } from "@/components/settings/privacy-controls-card";
+import { AdminMetricsPanel } from "@/components/settings/admin-metrics-panel";
 
 type ProviderInfo = { id: string; displayName: string; defaultBaseUrl: string; defaultModel: string };
 type AiConfigData = Record<string, string | null>;
@@ -725,6 +727,8 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        <PrivacyControlsCard />
+
         {/* 退出登录 */}
         <Card>
           <CardContent className="pt-6">
@@ -778,6 +782,8 @@ export default function SettingsPage() {
           targetUserId={targetUserId}
         />
         )}
+
+        {isAdmin && <AdminMetricsPanel />}
 
         {/* 管理员：所有解析视频 */}
         {isAdmin && <AdminVideosPanel />}

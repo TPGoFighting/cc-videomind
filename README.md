@@ -31,7 +31,7 @@ Browser
 
 腾讯云的 Next.js + PM2 + PostgreSQL 是唯一生产运行时与数据权威。Cloudflare 不运行应用 Worker、Durable Object、数据库、上传或后台任务；仓库也不再包含 Vercel、OpenNext 或 Wrangler 部署路径。完整决策见 [`docs/decisions/0001-tencent-runtime-and-data-authority.md`](docs/decisions/0001-tencent-runtime-and-data-authority.md)。
 
-PostgreSQL 保存账户、session、全站共享视频/AI/翻译缓存、用户学习数据、设置、异步任务和人工付款审核。`LOCAL_MODE=1` 的 SQLite 仅供本地开发，生产禁止启用或双写。
+PostgreSQL 保存账户、session、全站共享视频/AI/翻译缓存、用户学习数据、隐私偏好、最小化产品事件、删除请求、设置、异步任务和人工付款审核。`LOCAL_MODE=1` 的 SQLite 仅供本地开发，生产禁止启用或双写。
 
 ## 技术栈
 
@@ -78,6 +78,8 @@ TRANSCRIPT_PROVIDER=youtube
 SUPADATA_API_KEY=
 TRANSCRIPT_FALLBACK_URL=
 ADMIN_EMAIL=owner@example.com
+ASYNC_TASK_WORKER_SECRET=<independent-long-random-value>
+ACCOUNT_DELETION_WORKER_SECRET=<independent-long-random-value>
 ASR_API_BASE_URL=https://api.siliconflow.cn/v1
 ASR_API_KEY=
 ASR_MODEL=FunAudioLLM/SenseVoiceSmall
@@ -86,6 +88,7 @@ ASR_MODEL=FunAudioLLM/SenseVoiceSmall
 - 所有 key 与 `DATABASE_URL` 只能放在服务器环境或密钥管理系统中。
 - `ASR_API_KEY` 缺失时上传/ASR 安全失败，不会使用源码回退值。轮换方法见 [`docs/operations/secret-rotation.md`](docs/operations/secret-rotation.md)。
 - 认证不需要静态 session secret：每次登录生成高熵随机 token，数据库只保存 SHA-256 哈希。
+- 两个内部 Worker Secret 必须彼此独立，仅供服务器到服务器调用；缺失时相关 Worker 安全失败。
 - 其他开发专用选项以 [`.env.example`](.env.example) 和对应模块为准。
 
 ## 质量门禁
@@ -123,7 +126,7 @@ npm run build
 
 ```text
 app/
-  api/                         36 个腾讯云 Next.js API 路由
+  api/                         41 个腾讯云 Next.js API 路由
   video/[videoId]/             视频学习工作区
   history/ vocabulary/ quotes/ notes/ review/
 lib/

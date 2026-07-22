@@ -20,6 +20,9 @@
 | `/settings` | 设置 | 用户设置 / 管理 |
 | `/login` | 登录 | 自托管邮箱密码登录 |
 | `/register` | 注册 | 注册新账号 |
+| `/privacy` | 隐私政策 | 数据类型、可选分析、保留期与账户权利 |
+| `/terms` | 服务条款 | 服务、AI、付款和责任边界 |
+| `/support` | 支持与退款说明 | 公开问题追踪、站内数据权利和付款支持边界 |
 
 ---
 
@@ -169,6 +172,10 @@
 | `app_sessions` | 登录会话 token 哈希与过期时间 |
 | `app_settings` / `user_ai_settings` | 全局与用户 AI 配置 |
 | `payment_submissions` | 人工付款凭证提交与审核状态 |
+| `user_privacy_preferences` | 用户的可选产品分析同意，默认关闭 |
+| `product_events` | 严格白名单、最长 180 天的无正文产品事件 |
+| `account_deletion_requests` | 账户删除状态与 7 天撤销期 |
+| `admin_audit_events` | 不含用户正文、最长 365 天的管理操作审计 |
 | `video_analyses` | 视频解析缓存（metadata, transcript, analysis） |
 | `user_videos` | 用户解析记录（user_id, video_id, created_at） |
 | `user_notes` | 笔记（user_id, video_id, body, timestamp_seconds） |
@@ -224,6 +231,9 @@
 | GET | `/api/me` | 当前用户信息 |
 | POST | `/api/word-definitions` | 批量获取单词定义（body: `{lemmas: [...]}`） |
 | POST | `/api/sync/notebook` | 认证用户的移动端增量同步 |
+| GET/PUT | `/api/privacy-preferences` | 读取/更新非必要产品分析同意 |
+| GET | `/api/account/export` | 下载本人的数据副本，排除密码/session/API Key |
+| GET/POST/DELETE | `/api/account/deletion-request` | 查看、提交或撤销账户删除请求 |
 
 ### 管理 / 设置
 
@@ -234,7 +244,9 @@
 | GET | `/api/admin/users` | 管理员查看用户 |
 | GET | `/api/admin/videos` | 管理员查看视频缓存统计 |
 | GET/PUT | `/api/admin/payments` | 管理员审核人工付款提交 |
+| GET | `/api/admin/metrics` | 管理员查看经同意事件的 7–180 天聚合 |
 | GET/POST | `/api/payment/submit` | 用户查询/提交付款凭证 |
+| POST | `/api/internal/account-deletions` | Bearer Secret 保护的到期删除与保留期清理 Worker |
 | GET | `/auth/callback` | 已废弃 OAuth 入口；同源重定向到登录错误页 |
 
 ### 支付边界

@@ -6,6 +6,7 @@ import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { queryTencent } from "@/lib/tencent-db";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { recordLearningItemSavedSafely } from "@/lib/product/analytics-store";
 
 export async function GET(request: Request) {
   const videoId = new URL(request.url).searchParams.get("videoId") ?? undefined;
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [id, userId, parsed.data.videoId, parsed.data.textEn, parsed.data.textZh ?? null, parsed.data.startTime, parsed.data.endTime, parsed.data.notes ?? null],
     );
+    await recordLearningItemSavedSafely(userId, "quote");
     return successResponse({ saved: true, id });
   });
 }
