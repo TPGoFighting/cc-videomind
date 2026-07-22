@@ -2,6 +2,10 @@ import { getDb, persist, closeDb } from "./sqlite";
 import type { SqlValue } from "./sqlite";
 import type { AsyncTask, TaskStatus, TaskType } from "@/lib/async/task-manager";
 import type { TranscriptSegment } from "@/lib/types";
+import {
+  ReviewCadenceSchema,
+  type ReviewCadence,
+} from "@/lib/product/retention";
 
 export type { AsyncTask, TaskStatus, TaskType };
 
@@ -405,6 +409,7 @@ export async function deleteChunksByVideo(videoId: string): Promise<void> {
 export interface VocabularyItem {
   word: string;
   videoId: string;
+  sourceTime?: number | null;
   definitionZh?: string | null;
   definitionEn?: string | null;
   phonetic?: string | null;
@@ -428,8 +433,8 @@ export async function saveVocabulary(items: VocabularyItem[]): Promise<void> {
     await mutate(
       "saveVocabulary",
       `INSERT OR REPLACE INTO user_vocabulary
-         (id, word, video_id, definition_zh, definition_en, phonetic, part_of_speech, example_en, example_zh, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, word, video_id, definition_zh, definition_en, phonetic, part_of_speech, example_en, example_zh, source_time, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         item.word,
@@ -440,6 +445,7 @@ export async function saveVocabulary(items: VocabularyItem[]): Promise<void> {
         item.partOfSpeech ?? null,
         item.exampleEn ?? null,
         item.exampleZh ?? null,
+        item.sourceTime ?? null,
         nowIso(),
       ],
     );
@@ -458,6 +464,7 @@ export function loadVocabulary(): Promise<VocabularyEntry[]> {
       part_of_speech: string | null;
       example_en: string | null;
       example_zh: string | null;
+      source_time: number | null;
       created_at: string;
     }>(`SELECT * FROM user_vocabulary ORDER BY created_at DESC`);
     return rows.map((r) => ({
@@ -470,20 +477,29 @@ export function loadVocabulary(): Promise<VocabularyEntry[]> {
       partOfSpeech: r.part_of_speech,
       exampleEn: r.example_en,
       exampleZh: r.example_zh,
+      sourceTime: r.source_time,
       createdAt: r.created_at,
     }));
   }, []);
 }
 
 export async function deleteVocabulary(id: string): Promise<boolean> {
+  const entries = await queryRows<{ word: string }>(
+    `SELECT word FROM user_vocabulary WHERE id = ?`,
+    [id],
+  );
   const database = await getDb();
   const before = database.getRowsModified();
   await mutate("deleteVocabulary", `DELETE FROM user_vocabulary WHERE id = ?`, [id]);
+  if (entries[0]?.word) {
+    await mutate("deleteVocabulary/review", `DELETE FROM user_word_reviews WHERE lemma = ?`, [entries[0].word]);
+  }
   return database.getRowsModified() > before;
 }
 
 export async function deleteVocabularyByWord(word: string): Promise<void> {
   await mutate("deleteVocabularyByWord", `DELETE FROM user_vocabulary WHERE word = ?`, [word]);
+  await mutate("deleteVocabularyByWord/review", `DELETE FROM user_word_reviews WHERE lemma = ?`, [word]);
 }
 
 // ---------------------------------------------------------------------------
@@ -560,6 +576,7 @@ export function getDueReviewWords(limit = 20): Promise<ReviewWord[]> {
       part_of_speech: string | null;
       example_en: string | null;
       example_zh: string | null;
+      source_time: number | null;
       created_at: string;
       repetitions: number | null;
       ease_factor: number | null;
@@ -584,6 +601,7 @@ export function getDueReviewWords(limit = 20): Promise<ReviewWord[]> {
       partOfSpeech: row.part_of_speech,
       exampleEn: row.example_en,
       exampleZh: row.example_zh,
+      sourceTime: row.source_time,
       createdAt: row.created_at,
       lemma: row.word,
       repetitions: row.repetitions ?? 0,
@@ -729,7 +747,184 @@ export function getQuotes(videoId?: string): Promise<QuoteEntry[]> {
 }
 
 export async function deleteQuote(id: string): Promise<void> {
+  await mutate("deleteQuote/review", `DELETE FROM user_quote_reviews WHERE quote_id = ?`, [id]);
   await mutate("deleteQuote", `DELETE FROM user_quotes WHERE id = ?`, [id]);
+}
+
+export interface QuoteReviewState {
+  quoteId: string;
+  repetitions: number;
+  easeFactor: number;
+  intervalDays: number;
+  nextReviewAt: string;
+  status: string;
+}
+
+export interface ReviewQuote extends QuoteEntry, QuoteReviewState {}
+
+export function getQuoteReviewState(quoteId: string): Promise<QuoteReviewState | null> {
+  return safeRead(async () => {
+    const rows = await queryRows<{
+      quote_id: string;
+      repetitions: number;
+      ease_factor: number;
+      interval_days: number;
+      next_review_at: string;
+      status: string;
+    }>(`SELECT * FROM user_quote_reviews WHERE quote_id = ?`, [quoteId]);
+    const row = rows[0];
+    return row ? {
+      quoteId: row.quote_id,
+      repetitions: row.repetitions,
+      easeFactor: row.ease_factor,
+      intervalDays: row.interval_days,
+      nextReviewAt: row.next_review_at,
+      status: row.status,
+    } : null;
+  }, null);
+}
+
+export async function saveQuoteReviewState(state: QuoteReviewState): Promise<void> {
+  await mutate(
+    "saveQuoteReviewState",
+    `INSERT INTO user_quote_reviews
+       (quote_id, repetitions, ease_factor, interval_days, next_review_at, status, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(quote_id) DO UPDATE SET
+       repetitions = excluded.repetitions,
+       ease_factor = excluded.ease_factor,
+       interval_days = excluded.interval_days,
+       next_review_at = excluded.next_review_at,
+       status = excluded.status,
+       updated_at = excluded.updated_at`,
+    [
+      state.quoteId,
+      state.repetitions,
+      state.easeFactor,
+      state.intervalDays,
+      state.nextReviewAt,
+      state.status,
+      nowIso(),
+    ],
+  );
+}
+
+export function getDueReviewQuotes(limit = 20): Promise<ReviewQuote[]> {
+  return safeRead(async () => {
+    const rows = await queryRows<{
+      id: string;
+      video_id: string;
+      text_en: string;
+      text_zh: string | null;
+      start_time: number;
+      end_time: number;
+      notes: string | null;
+      video_title: string | null;
+      created_at: string;
+      repetitions: number | null;
+      ease_factor: number | null;
+      interval_days: number | null;
+      next_review_at: string | null;
+      status: string | null;
+    }>(
+      `SELECT q.*, r.repetitions, r.ease_factor, r.interval_days, r.next_review_at, r.status
+       FROM user_quotes q
+       LEFT JOIN user_quote_reviews r ON r.quote_id = q.id
+       WHERE r.next_review_at IS NULL OR r.next_review_at <= ?
+       ORDER BY COALESCE(r.next_review_at, q.created_at) ASC LIMIT ?`,
+      [nowIso(), limit],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      videoId: row.video_id,
+      textEn: row.text_en,
+      textZh: row.text_zh,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      notes: row.notes,
+      videoTitle: row.video_title,
+      createdAt: row.created_at,
+      quoteId: row.id,
+      repetitions: row.repetitions ?? 0,
+      easeFactor: row.ease_factor ?? 2.5,
+      intervalDays: row.interval_days ?? 0,
+      nextReviewAt: row.next_review_at ?? nowIso(),
+      status: row.status ?? "learning",
+    }));
+  }, []);
+}
+
+export function getLocalReviewCadence(): Promise<ReviewCadence> {
+  return safeRead(async () => {
+    const rows = await queryRows<{ cadence: string }>(
+      `SELECT cadence FROM user_review_preferences WHERE singleton = 1`,
+    );
+    const parsed = ReviewCadenceSchema.safeParse(rows[0]?.cadence);
+    return parsed.success ? parsed.data : "steady";
+  }, "steady");
+}
+
+export async function saveLocalReviewCadence(cadence: ReviewCadence): Promise<void> {
+  await mutate(
+    "saveLocalReviewCadence",
+    `INSERT INTO user_review_preferences (singleton, cadence, updated_at)
+     VALUES (1, ?, ?)
+     ON CONFLICT(singleton) DO UPDATE SET cadence = excluded.cadence, updated_at = excluded.updated_at`,
+    [cadence, nowIso()],
+  );
+}
+
+export interface LocalRetentionStats {
+  accountCreatedAt: string;
+  activeDays: number;
+  completedReviews: number;
+  savedItems: number;
+  nextReviewAt: string | null;
+}
+
+export function getLocalRetentionStats(now = new Date()): Promise<LocalRetentionStats> {
+  return safeRead(async () => {
+    const windowStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const accountRows = await queryRows<{ created_at: string | null }>(
+      `SELECT MIN(created_at) AS created_at FROM (
+         SELECT created_at FROM user_vocabulary
+         UNION ALL SELECT created_at FROM user_quotes
+         UNION ALL SELECT created_at FROM history
+       )`,
+    );
+    const checkinRows = await queryRows<{ active_days: number; completed_reviews: number }>(
+      `SELECT COUNT(*) AS active_days, COALESCE(SUM(word_count), 0) AS completed_reviews
+       FROM user_checkins WHERE checkin_date >= ?`,
+      [windowStart.slice(0, 10)],
+    );
+    const savedRows = await queryRows<{ saved_items: number }>(
+      `SELECT COUNT(*) AS saved_items FROM (
+         SELECT created_at FROM user_vocabulary WHERE created_at >= ?
+         UNION ALL SELECT created_at FROM user_quotes WHERE created_at >= ?
+       )`,
+      [windowStart, windowStart],
+    );
+    const nextRows = await queryRows<{ next_review_at: string | null }>(
+      `SELECT MIN(next_review_at) AS next_review_at FROM (
+         SELECT next_review_at FROM user_word_reviews WHERE next_review_at > ?
+         UNION ALL SELECT next_review_at FROM user_quote_reviews WHERE next_review_at > ?
+       )`,
+      [now.toISOString(), now.toISOString()],
+    );
+    return {
+      accountCreatedAt: accountRows[0]?.created_at ?? now.toISOString(),
+      activeDays: Number(checkinRows[0]?.active_days ?? 0),
+      completedReviews: Number(checkinRows[0]?.completed_reviews ?? 0),
+      savedItems: Number(savedRows[0]?.saved_items ?? 0),
+      nextReviewAt: nextRows[0]?.next_review_at ?? null,
+    };
+  }, {
+    accountCreatedAt: now.toISOString(),
+    activeDays: 0,
+    completedReviews: 0,
+    savedItems: 0,
+    nextReviewAt: null,
+  });
 }
 
 export interface CheckinSummary {

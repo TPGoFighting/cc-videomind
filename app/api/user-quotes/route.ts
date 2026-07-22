@@ -1,12 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { SaveQuoteRequestSchema } from "@/lib/types";
-import { deleteQuote, getAnalysis, getQuotes, saveQuote } from "@/lib/db/local-store";
+import {
+  deleteQuote,
+  getAnalysis,
+  getQuotes,
+  saveQuote,
+  saveQuoteReviewState,
+} from "@/lib/db/local-store";
 import { isLocalMode } from "@/lib/local-mode";
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { queryTencent } from "@/lib/tencent-db";
+import { queryTencent, withTencentTransaction } from "@/lib/tencent-db";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { recordLearningItemSavedSafely } from "@/lib/product/analytics-store";
+import { getInitialReviewAt } from "@/lib/product/retention";
 
 export async function GET(request: Request) {
   const videoId = new URL(request.url).searchParams.get("videoId") ?? undefined;
@@ -41,18 +48,36 @@ export async function POST(request: Request) {
     if (isLocalMode()) {
       const analysis = await getAnalysis(parsed.data.videoId);
       const id = await saveQuote({ ...parsed.data, videoTitle: analysis?.metadata?.title ?? null });
-      return successResponse({ saved: true, id });
+      const nextReviewAt = getInitialReviewAt();
+      await saveQuoteReviewState({
+        quoteId: id,
+        repetitions: 0,
+        easeFactor: 2.5,
+        intervalDays: 1,
+        nextReviewAt,
+        status: "learning",
+      });
+      return successResponse({ saved: true, id, nextReviewAt });
     }
     const userId = await getAuthenticatedUserId(request);
     if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
     const id = randomUUID();
-    await queryTencent(
-      `INSERT INTO user_quotes (id, user_id, video_id, text_en, text_zh, start_time, end_time, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, userId, parsed.data.videoId, parsed.data.textEn, parsed.data.textZh ?? null, parsed.data.startTime, parsed.data.endTime, parsed.data.notes ?? null],
-    );
+    const nextReviewAt = getInitialReviewAt();
+    await withTencentTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO user_quotes (id, user_id, video_id, text_en, text_zh, start_time, end_time, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [id, userId, parsed.data.videoId, parsed.data.textEn, parsed.data.textZh ?? null, parsed.data.startTime, parsed.data.endTime, parsed.data.notes ?? null],
+      );
+      await client.query(
+        `INSERT INTO user_quote_reviews
+           (user_id, quote_id, repetitions, ease_factor, interval_days, next_review_at, status)
+         VALUES ($1, $2, 0, 2.5, 1, $3, 'learning')`,
+        [userId, id, nextReviewAt],
+      );
+    });
     await recordLearningItemSavedSafely(userId, "quote");
-    return successResponse({ saved: true, id });
+    return successResponse({ saved: true, id, nextReviewAt });
   });
 }
 

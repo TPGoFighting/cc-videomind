@@ -5,6 +5,7 @@ import {
   parseWorkspaceFixtureSaveMode,
 } from "@/lib/video/workspace-fixture";
 import { VideoIdSchema } from "@/lib/youtube/id";
+import { parseVideoStartTime } from "@/lib/product/retention";
 
 export default async function VideoPage({
   params,
@@ -14,6 +15,7 @@ export default async function VideoPage({
   searchParams: Promise<{
     fixture?: string | string[];
     fixtureSave?: string | string[];
+    t?: string | string[];
   }>;
 }) {
   const { videoId } = await params;
@@ -29,6 +31,7 @@ export default async function VideoPage({
   const fixtureSaveMode = fixtureState
     ? parseWorkspaceFixtureSaveMode(query.fixtureSave) ?? "preview"
     : undefined;
+  const initialStartTime = parseVideoStartTime(query.t);
 
   return (
     <VideoWorkspace
@@ -36,6 +39,7 @@ export default async function VideoPage({
       videoId={parsed.data}
       fixtureState={fixtureState}
       fixtureSaveMode={fixtureSaveMode}
+      initialStartTime={initialStartTime}
     />
   );
 }

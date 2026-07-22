@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PrivacyControlsCard } from "@/components/settings/privacy-controls-card";
 import { AdminMetricsPanel } from "@/components/settings/admin-metrics-panel";
+import { ReviewPreferencesCard } from "@/components/settings/review-preferences-card";
 
 type ProviderInfo = { id: string; displayName: string; defaultBaseUrl: string; defaultModel: string };
 type AiConfigData = Record<string, string | null>;
@@ -726,6 +727,8 @@ export default function SettingsPage() {
             </Link>
           </CardContent>
         </Card>
+
+        <ReviewPreferencesCard />
 
         <PrivacyControlsCard />
 

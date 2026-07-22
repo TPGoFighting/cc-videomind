@@ -124,6 +124,7 @@ const SCHEMA: string[] = [
     part_of_speech TEXT,
     example_en TEXT,
     example_zh TEXT,
+    source_time REAL,
     created_at TEXT NOT NULL
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS user_vocabulary_word_idx ON user_vocabulary(word)`,
@@ -139,6 +140,24 @@ const SCHEMA: string[] = [
     updated_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS user_word_reviews_due_idx ON user_word_reviews(next_review_at)`,
+
+  `CREATE TABLE IF NOT EXISTS user_quote_reviews (
+    quote_id TEXT PRIMARY KEY,
+    repetitions INTEGER NOT NULL DEFAULT 0,
+    ease_factor REAL NOT NULL DEFAULT 2.5,
+    interval_days INTEGER NOT NULL DEFAULT 1,
+    next_review_at TEXT NOT NULL,
+    last_reviewed_at TEXT,
+    status TEXT NOT NULL DEFAULT 'learning',
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_quote_reviews_due_idx ON user_quote_reviews(next_review_at)`,
+
+  `CREATE TABLE IF NOT EXISTS user_review_preferences (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    cadence TEXT NOT NULL DEFAULT 'steady' CHECK (cadence IN ('light', 'steady', 'focused')),
+    updated_at TEXT NOT NULL
+  )`,
 
   `CREATE TABLE IF NOT EXISTS notes (
     id TEXT PRIMARY KEY,
@@ -174,6 +193,10 @@ async function ensureSchema(database: Database): Promise<void> {
   if (schemaReady) return;
   for (const stmt of SCHEMA) {
     if (stmt.trim()) database.run(stmt);
+  }
+  const vocabularyColumns = database.exec("PRAGMA table_info(user_vocabulary)")[0]?.values ?? [];
+  if (!vocabularyColumns.some((column) => column[1] === "source_time")) {
+    database.run("ALTER TABLE user_vocabulary ADD COLUMN source_time REAL");
   }
   schemaReady = true;
   await persist();

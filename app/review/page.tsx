@@ -1,90 +1,74 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, BookmarkPlus, CalendarClock, Check, Flame, Play, RefreshCw, Trophy, X } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpenCheck,
+  BookmarkPlus,
+  CalendarClock,
+  Check,
+  Clock3,
+  ExternalLink,
+  Flame,
+  Loader2,
+  Play,
+  RefreshCw,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { StreakCalendar } from "@/components/streak-calendar";
 import { useAuth } from "@/components/auth-context";
-import { cn } from "@/lib/utils/cn";
-import type { CheckinStatus, JsonResponse, ReviewWord } from "@/lib/types";
+import type {
+  ReviewQueueItem,
+  TodayReviewSummary,
+} from "@/lib/product/retention";
+import type { CheckinStatus, JsonResponse } from "@/lib/types";
 
-// ─── 随机4选项多选题 ───
+type WeeklySummary = {
+  status: "ready" | "collecting";
+  activeDays: number;
+  completedReviews: number;
+  savedItems: number;
+  dueCount: number;
+  message: string;
+};
 
-type QuizMode = "word-to-zh" | "zh-to-word";
+type ReviewPayload = {
+  items: ReviewQueueItem[];
+  summary: TodayReviewSummary;
+  weekly: WeeklySummary;
+};
 
-interface QuizQuestion {
-  word: ReviewWord;
-  options: string[];
-  correctIndex: number;
-  mode: QuizMode;
-}
+type ReviewResult = {
+  kind: "word" | "quote";
+  id: string;
+  nextReviewAt: string;
+  explanation: string;
+};
 
-function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function buildQuestions(words: ReviewWord[]): QuizQuestion[] {
-  const allZh = words.map((w) => w.definitionZh);
-  const allWords = words.map((w) => w.lemma);
-
-  return shuffle(
-    words.map((word) => {
-      const mode: QuizMode = Math.random() < 0.5 ? "word-to-zh" : "zh-to-word";
-
-      if (mode === "word-to-zh") {
-        // 选择正确释义：显示英文，选中文
-        const distractors = shuffle(allZh.filter((z) => z !== word.definitionZh)).slice(0, 3);
-        if (distractors.length < 3) {
-          // 不够就用其他单词的中文补
-          for (let i = 0; i < 4 && distractors.length < 3; i++) {
-            const fake = `"${String.fromCharCode(65 + i)}选项"`;
-            if (!distractors.includes(fake)) distractors.push(fake);
-          }
-        }
-        const options = shuffle([word.definitionZh, ...distractors]);
-        return {
-          word,
-          options,
-          correctIndex: options.indexOf(word.definitionZh),
-          mode,
-        };
-      } else {
-        // 选择正确单词：显示中文释义，选英文
-        const distractors = shuffle(allWords.filter((w) => w !== word.lemma)).slice(0, 3);
-        if (distractors.length < 3) {
-          for (let i = 0; distractors.length < 3; i++) {
-            const fake = `word_${i}`;
-            if (!distractors.includes(fake)) distractors.push(fake);
-          }
-        }
-        const options = shuffle([word.lemma, ...distractors]);
-        return {
-          word,
-          options,
-          correctIndex: options.indexOf(word.lemma),
-          mode,
-        };
-      }
-    })
-  );
+function formatReviewTime(value: string | null) {
+  if (!value) return "保存新内容后，这里会出现下一次复习时间";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "下次复习时间待更新";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function ReviewOnboarding({ signedOut }: { signedOut: boolean }) {
   const steps = [
-    { icon: Play, title: "先看一条知识视频", detail: "从字幕、要点或问答里找到真正想留下的内容。" },
-    { icon: BookmarkPlus, title: "保存一个词或句子", detail: "Teach Player 会同时保留原视频和时间点。" },
-    { icon: CalendarClock, title: "明天回到今日复习", detail: "先看记忆提示，再随时跳回出处确认语境。" },
+    { icon: Play, title: "先看一条知识视频", detail: "从字幕里找到真正想留下的词或句子。" },
+    { icon: BookmarkPlus, title: "保存时保留出处", detail: "Teach Player 会记住原视频与准确时间点。" },
+    { icon: CalendarClock, title: "约 24 小时后再见", detail: "先回忆，再揭示答案，随时跳回原语境。" },
   ] as const;
 
   return (
     <section className="mt-8 rounded-[1.25rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5 sm:p-8">
-      <p className="text-sm font-semibold text-[var(--tp-accent)]">你的复习队列从一次保存开始</p>
+      <p className="text-sm font-semibold text-[var(--tp-accent)]">复习队列从一次保存开始</p>
       <h2 className="mt-3 max-w-[18ch] text-3xl font-semibold tracking-[-0.04em]">今天留下一条，明天就有明确任务</h2>
       <div className="mt-7 grid gap-3 md:grid-cols-3">
         {steps.map((step, index) => {
@@ -116,54 +100,89 @@ function ReviewOnboarding({ signedOut }: { signedOut: boolean }) {
   );
 }
 
-// ─── 主页面 ───
+function QueueOverview({ summary }: { summary: TodayReviewSummary }) {
+  return (
+    <section aria-label="今日复习概览" className="grid gap-3 sm:grid-cols-3">
+      <div className="rounded-xl border border-[var(--tp-border)] bg-[var(--tp-surface)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">今日待复习</p>
+        <p className="mt-3 text-3xl font-semibold tracking-[-0.04em]">{summary.dueCount}</p>
+        <p className="mt-1 text-sm text-[var(--tp-text-muted)]">{summary.wordCount} 个词，{summary.quoteCount} 个句子</p>
+      </div>
+      <div className="rounded-xl border border-[var(--tp-border)] bg-[var(--tp-surface)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">复习节奏</p>
+        <p className="mt-3 text-lg font-semibold">{summary.cadence === "light" ? "轻量" : summary.cadence === "focused" ? "强化" : "稳步"}</p>
+        <p className="mt-1 text-sm text-[var(--tp-text-muted)]">每日最多 {summary.dailyLimit} 条</p>
+      </div>
+      <div className="rounded-xl border border-[var(--tp-border)] bg-[var(--tp-surface)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">下一次出现</p>
+        <p className="mt-3 text-sm font-semibold leading-6">{formatReviewTime(summary.nextReviewAt)}</p>
+        <Link href="/settings#review-preferences" className="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[var(--tp-accent)]">
+          <SlidersHorizontal className="h-4 w-4" aria-hidden />
+          调整节奏
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function WeeklyReviewCard({ weekly }: { weekly: WeeklySummary }) {
+  return (
+    <section className="rounded-xl border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">本周回顾</p>
+          <h2 className="mt-2 text-lg font-semibold">{weekly.status === "ready" ? "你的学习节奏" : "正在积累真实数据"}</h2>
+        </div>
+        <BookOpenCheck className="h-5 w-5 text-[var(--tp-accent)]" aria-hidden />
+      </div>
+      <p className="mt-3 text-sm leading-6 text-[var(--tp-text-muted)]">{weekly.message}</p>
+      <dl className="mt-5 grid grid-cols-3 gap-2 border-t border-[var(--tp-border)] pt-4 text-center">
+        <div><dt className="text-xs text-[var(--tp-text-faint)]">活跃天数</dt><dd className="mt-1 font-semibold">{weekly.activeDays}</dd></div>
+        <div><dt className="text-xs text-[var(--tp-text-faint)]">完成复习</dt><dd className="mt-1 font-semibold">{weekly.completedReviews}</dd></div>
+        <div><dt className="text-xs text-[var(--tp-text-faint)]">新增内容</dt><dd className="mt-1 font-semibold">{weekly.savedItems}</dd></div>
+      </dl>
+    </section>
+  );
+}
 
 export default function ReviewPage() {
   const { user, loading: authLoading } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [payload, setPayload] = useState<ReviewPayload | null>(null);
   const [checkin, setCheckin] = useState<CheckinStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [actionStatus, setActionStatus] = useState<string | null>(null);
-
-  // 答题状态
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [currentQ, setCurrentQ] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [correctCount, setCorrectCount] = useState(0);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [answered, setAnswered] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [revealed, setRevealed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [finished, setFinished] = useState(false);
+  const [completed, setCompleted] = useState(0);
+  const [lastResult, setLastResult] = useState<ReviewResult | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  // 加载待复习单词 + 打卡
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) return;
+    if (authLoading || !user) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [wRes, cRes] = await Promise.all([
+        const [reviewResponse, checkinResponse] = await Promise.all([
           fetch("/api/review"),
           fetch("/api/checkin"),
         ]);
-        const wp = (await wRes.json()) as JsonResponse<{ words: ReviewWord[] }>;
-        const cp = (await cRes.json()) as JsonResponse<CheckinStatus>;
-        if (!cancelled) {
-          if (!wp.ok) {
-            setLoadError(wp.error.message || "暂时无法加载复习内容。");
-          } else {
-            setQuestions(buildQuestions(wp.data.words));
-          }
-          if (cp.ok) {
-            setCheckin(cp.data);
-          } else if (wp.ok && wp.data.words.length > 0) {
-            setCheckin({ streak: 0, todayCompleted: false, todayCount: 0, calendar: [] });
-            setLoadError("复习内容已找到，但连续学习状态暂时不可用。请稍后重试。");
-          }
+        const reviewJson = (await reviewResponse.json()) as JsonResponse<ReviewPayload>;
+        const checkinJson = (await checkinResponse.json()) as JsonResponse<CheckinStatus>;
+        if (cancelled) return;
+        if (!reviewJson.ok) {
+          setLoadError(reviewJson.error.message || "暂时无法加载复习内容。");
+        } else {
+          setPayload(reviewJson.data);
+          setCurrentIndex(0);
+          setCompleted(0);
+          setRevealed(false);
+          setLastResult(null);
         }
+        if (checkinJson.ok) setCheckin(checkinJson.data);
       } catch {
         if (!cancelled) setLoadError("暂时无法加载复习内容，请检查网络后重试。");
       } finally {
@@ -174,285 +193,179 @@ export default function ReviewPage() {
     return () => { cancelled = true; };
   }, [authLoading, reloadKey, user]);
 
-  // 选答案
-  const handleSelect = useCallback(
-    async (idx: number) => {
-      if (answered || submitting || currentQ >= questions.length) return;
-      setSelectedIdx(idx);
-      setAnswered(true);
-      setActionStatus(null);
+  const currentItem = payload?.items[currentIndex] ?? null;
+  const finished = Boolean(payload && payload.items.length > 0 && completed >= payload.items.length);
+  const progress = payload?.items.length ? Math.round((completed / payload.items.length) * 100) : 0;
 
-      const isCorrect = idx === questions[currentQ].correctIndex;
-      if (isCorrect) {
-        setCorrectCount((c) => c + 1);
-        setStreak((s) => s + 1);
-      } else {
-        setStreak(0);
+  const primaryText = useMemo(() => {
+    if (!currentItem) return "";
+    return currentItem.kind === "word" ? currentItem.lemma : currentItem.textEn;
+  }, [currentItem]);
+
+  const submitQuality = useCallback(async (quality: number) => {
+    if (!currentItem || submitting) return;
+    setSubmitting(true);
+    setActionError(null);
+    try {
+      const response = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reviews: [currentItem.kind === "word"
+            ? { kind: "word", id: currentItem.id, lemma: currentItem.lemma, quality }
+            : { kind: "quote", id: currentItem.id, quality }],
+        }),
+      });
+      const json = (await response.json()) as JsonResponse<{
+        results: ReviewResult[];
+        checkin?: CheckinStatus;
+      }>;
+      if (!json.ok) {
+        setActionError(json.error.message || "这条复习结果暂时没有保存，请重试。");
+        return;
       }
-
-      // 提交当前单词的评分
-      const quality = isCorrect ? 4 : 0;
-      setSubmitting(true);
-      try {
-        await fetch("/api/review", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reviews: [{ lemma: questions[currentQ].word.lemma, quality }],
-          }),
-        });
-        const cr = await fetch("/api/checkin");
-        const cp = (await cr.json()) as JsonResponse<CheckinStatus>;
-        if (cp.ok) setCheckin(cp.data);
-      } catch {
-        setActionStatus("本题结果暂未同步。继续复习不会关闭页面，请稍后在此页重试。");
-      }
-
-      // 延迟后下一题
-      setTimeout(() => {
-        const next = currentQ + 1;
-        if (next >= questions.length) {
-          setFinished(true);
-        } else {
-          setCurrentQ(next);
-        }
-        setSelectedIdx(null);
-        setAnswered(false);
-        setSubmitting(false);
-      }, isCorrect ? 800 : 1200);
-    },
-    [answered, currentQ, questions, submitting]
-  );
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
-        <Navbar />
-        <main className="mx-auto w-[min(70rem,calc(100%-2rem))] pb-24 pt-24 sm:pt-28 md:pb-16">
-          <p className="text-sm font-semibold text-[var(--tp-accent)]">今日复习</p>
-          <h1 className="mt-3 max-w-[15ch] text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.96] tracking-[-0.055em]">让值得记住的内容，再出现一次</h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--tp-text-muted)]">正在确认你的学习记录，页面会保留在这里。</p>
-          <div role="status" aria-live="polite" className="mt-8 max-w-md space-y-4 rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5">
-            <p className="text-sm font-semibold text-[var(--tp-text-secondary)]">正在加载复习队列</p>
-            <div className="animate-breathe h-3 w-3/4 rounded-full bg-white/6" />
-            <div className="animate-breathe h-40 rounded-xl bg-white/5" />
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  const total = questions.length;
-  const progress = total > 0 ? ((currentQ + (finished ? 1 : 0)) / total) * 100 : 0;
+      setLastResult(json.data.results[0] ?? null);
+      if (json.data.checkin) setCheckin(json.data.checkin);
+      setCompleted((count) => count + 1);
+      setCurrentIndex((index) => index + 1);
+      setRevealed(false);
+    } catch {
+      setActionError("网络中断，这条结果没有保存。内容仍在当前页面，请重试。");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [currentItem, submitting]);
 
   return (
     <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
       <Navbar />
-      <main className="mx-auto w-[min(70rem,calc(100%-2rem))] pb-24 pt-24 sm:pt-28 md:pb-16">
-        <p className="text-sm font-semibold text-[var(--tp-accent)]">今日复习</p>
-        <h1 className="mt-3 max-w-[15ch] text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.96] tracking-[-0.055em]">让值得记住的内容，再出现一次</h1>
-        <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--tp-text-muted)]">
-          保存过的词句会带着原视频和时间点回来。你不需要脱离语境死记。
-        </p>
-
-        {!user ? (
-          <ReviewOnboarding signedOut />
-        ) : loading ? (
-          <div className="mt-8 space-y-4 max-w-md mx-auto">
-            <div className="animate-breathe h-3 w-full rounded-full bg-white/5" />
-            <div className="animate-breathe h-40 rounded-2xl bg-white/5" />
-            <div className="grid grid-cols-2 gap-3">
-              {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="animate-breathe h-14 rounded-xl bg-white/5" />
-              ))}
-            </div>
+      <main className="mx-auto w-[min(72rem,calc(100%-2rem))] pb-24 pt-24 sm:pt-28 md:pb-16">
+        <div className="flex flex-col gap-5 border-b border-[var(--tp-border)] pb-7 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[var(--tp-accent)]">今日复习</p>
+            <h1 className="mt-3 max-w-[15ch] text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.96] tracking-[-0.055em]">让值得记住的内容，再出现一次</h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--tp-text-muted)]">先回忆，再揭示，再告诉系统你的真实感受；每一条都能回到原视频语境。</p>
           </div>
-        ) : loadError && questions.length === 0 ? (
+          {checkin ? (
+            <div className="flex shrink-0 items-center gap-2 rounded-full border border-[var(--tp-border)] px-4 py-2 text-sm text-[var(--tp-text-secondary)]">
+              <Flame className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
+              连续 {checkin.streak} 天
+            </div>
+          ) : null}
+        </div>
+
+        {!user && !authLoading ? <ReviewOnboarding signedOut /> : null}
+
+        {authLoading || loading ? (
+          <div role="status" aria-live="polite" className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.6fr)]">
+            <div className="animate-breathe h-96 rounded-2xl bg-white/5" />
+            <div className="animate-breathe h-64 rounded-2xl bg-white/5" />
+          </div>
+        ) : null}
+
+        {user && !loading && loadError && !payload ? (
           <div role="alert" className="mt-8 rounded-xl border border-red-400/25 bg-red-400/10 p-6">
-            <p className="text-base font-semibold text-red-200">复习内容没有加载成功</p>
-            <p className="mt-2 text-sm text-red-200/80">{loadError}</p>
+            <p className="font-semibold text-red-100">复习内容没有加载成功</p>
+            <p className="mt-2 text-sm text-red-100/80">{loadError}</p>
             <button type="button" onClick={() => setReloadKey((key) => key + 1)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--tp-text)] px-4 text-sm font-semibold text-[var(--tp-bg)]">
               <RefreshCw className="h-4 w-4" aria-hidden />
               重试
             </button>
           </div>
-        ) : !checkin ? null : (
-          <div className="mt-6 max-w-md mx-auto">
-            {/* 打卡小结 */}
-            {questions.length > 0 && !loadError ? <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <Flame className="h-5 w-5 text-amber-400" />
-                <span className="text-[14px] font-medium text-white/70">
-                  {checkin.streak} 天连续
-                </span>
-              </div>
-              <span className="text-[13px] text-white/40">
-                今日 {checkin.todayCount} 词
-              </span>
-            </div> : null}
+        ) : null}
 
-            {loadError ? <p role="status" className="mb-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{loadError}</p> : null}
-            {actionStatus ? <p role="status" className="mb-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{actionStatus}</p> : null}
+        {user && !loading && payload ? (
+          <div className="mt-8 space-y-4">
+            <QueueOverview summary={payload.summary} />
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.55fr)]">
+              <section className="rounded-[1.25rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5 sm:p-7">
+                {actionError ? <p role="alert" className="mb-5 rounded-lg border border-red-400/25 bg-red-400/10 px-4 py-3 text-sm text-red-100">{actionError}</p> : null}
 
-            {/* 完成页面 */}
-            {finished ? (
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-8 text-center">
-                <Trophy className="mx-auto h-12 w-12 text-amber-400" />
-                <p className="mt-4 text-[20px] font-bold">
-                  {correctCount === total ? "🎉 完美！" : correctCount > total * 0.7 ? "👏 不错！" : "💪 继续加油！"}
-                </p>
-                <div className="mt-4 flex items-center justify-center gap-6">
-                  <div className="text-center">
-                    <span className="text-[28px] font-bold text-[#0099ff]">{correctCount}</span>
-                    <span className="text-[12px] text-white/40 ml-1">/ {total}</span>
-                    <p className="text-[11px] text-white/30 mt-0.5">正确率</p>
-                  </div>
-                  <div className="text-center">
-                    <span className="text-[28px] font-bold text-amber-400">{streak}</span>
-                    <p className="text-[11px] text-white/30 mt-0.5">最高连击</p>
-                  </div>
-                  <div className="text-center">
-                    <span className="text-[28px] font-bold text-white">{checkin.todayCount}</span>
-                    <p className="text-[11px] text-white/30 mt-0.5">今日总量</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 flex items-center justify-center gap-3">
-                  <Link
-                    href="/review"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-[#0099ff]/15 px-5 py-2.5 text-[14px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/25"
-                  >
-                    再来一组
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                  <Link
-                    href="/vocabulary"
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-5 py-2.5 text-[14px] text-white/50 transition-colors hover:border-white/20 hover:text-white/70"
-                  >
-                    单词本
-                  </Link>
-                </div>
-
-                {/* 日历 */}
-                <div className="mt-6">
-                  <StreakCalendar data={checkin.calendar} streak={checkin.streak} />
-                </div>
-              </div>
-            ) : questions.length === 0 ? (
-              <ReviewOnboarding signedOut={false} />
-            ) : (
-              <>
-                {/* 答题区域 */}
-                <div className="mb-4">
-                  {/* 进度条 */}
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-[12px] font-mono text-white/30">
-                      {currentQ + 1}/{total}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-white/8 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#0099ff] transition-all duration-500"
-                        style={{ width: `${progress}%` }}
-                      />
+                {finished ? (
+                  <div className="py-8 text-center">
+                    <span className="mx-auto inline-flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(91,168,255,0.14)] text-[var(--tp-accent)]"><Check className="h-6 w-6" aria-hidden /></span>
+                    <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em]">今天的队列已完成</h2>
+                    <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[var(--tp-text-muted)]">你完成了 {completed} 条复习。系统已经按每次自评安排下一次出现。</p>
+                    {lastResult ? (
+                      <div className="mx-auto mt-6 max-w-lg rounded-xl border border-[var(--tp-border)] bg-[var(--tp-bg-secondary)] p-4 text-left">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">下一步</p>
+                        <p className="mt-2 text-sm font-semibold">{formatReviewTime(lastResult.nextReviewAt)}</p>
+                        <p className="mt-1 text-sm leading-6 text-[var(--tp-text-muted)]">{lastResult.explanation}</p>
+                      </div>
+                    ) : null}
+                    <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+                      <Link href="/explore" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[var(--tp-accent)] px-5 text-sm font-semibold text-[#08101a]">继续学习并保存新内容</Link>
+                      <button type="button" onClick={() => setReloadKey((key) => key + 1)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[var(--tp-border-strong)] px-5 text-sm font-semibold">
+                        <RefreshCw className="h-4 w-4" aria-hidden />
+                        刷新队列
+                      </button>
                     </div>
-                    {streak > 2 && (
-                      <span className="text-[12px] font-medium text-amber-400">
-                        🔥 {streak}
-                      </span>
+                  </div>
+                ) : !currentItem ? (
+                  <ReviewOnboarding signedOut={false} />
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-xs text-[var(--tp-text-faint)]">{completed + 1}/{payload.items.length}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-[var(--tp-accent)] transition-[width] duration-300" style={{ width: `${progress}%` }} /></div>
+                      <span className="text-xs text-[var(--tp-text-faint)]">{currentItem.kind === "word" ? "单词" : "句子"}</span>
+                    </div>
+
+                    <div className="mt-8 min-h-48 text-center">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">先凭记忆回答</p>
+                      <p className={`${currentItem.kind === "word" ? "text-4xl sm:text-5xl" : "text-2xl sm:text-3xl"} mx-auto mt-5 max-w-2xl break-words font-semibold leading-tight tracking-[-0.035em]`}>{primaryText}</p>
+                      {currentItem.kind === "word" && currentItem.phonetic ? <p className="mt-2 text-sm text-[var(--tp-text-muted)]">{currentItem.phonetic}</p> : null}
+                      <p className="mt-6 text-sm leading-6 text-[var(--tp-text-muted)]">{currentItem.dueReason}</p>
+                    </div>
+
+                    {!revealed ? (
+                      <button type="button" onClick={() => setRevealed(true)} className="mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-[var(--tp-text)] px-5 text-sm font-semibold text-[var(--tp-bg)]">显示答案</button>
+                    ) : (
+                      <div className="mt-5 border-t border-[var(--tp-border)] pt-5">
+                        <div className="rounded-xl bg-[var(--tp-bg-secondary)] p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">答案</p>
+                          <p className="mt-2 text-base font-semibold leading-7">{currentItem.kind === "word" ? currentItem.definitionZh : currentItem.textZh || "这条句子暂时没有中文翻译，请结合原视频语境确认。"}</p>
+                          {currentItem.kind === "word" && currentItem.exampleEn ? <p className="mt-3 text-sm leading-6 text-[var(--tp-text-muted)]">{currentItem.exampleEn}</p> : null}
+                          <Link href={currentItem.source.href} className="mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-[var(--tp-accent)]">
+                            <ExternalLink className="h-4 w-4" aria-hidden />
+                            回原视频确认语境{currentItem.source.startTime !== null ? ` · ${Math.floor(currentItem.source.startTime)} 秒` : ""}
+                          </Link>
+                        </div>
+                        <p className="mt-5 text-center text-sm text-[var(--tp-text-muted)]">这次回忆得怎么样？</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          {[
+                            { quality: 1, label: "还不熟", detail: "约 10 分钟后再见" },
+                            { quality: 3, label: "有点模糊", detail: "保持当前节奏" },
+                            { quality: 5, label: "记住了", detail: "适当拉长间隔" },
+                          ].map((option) => (
+                            <button key={option.quality} type="button" disabled={submitting} onClick={() => void submitQuality(option.quality)} className="min-h-16 rounded-xl border border-[var(--tp-border-strong)] px-3 py-3 text-left transition-colors hover:bg-white/5 disabled:cursor-wait disabled:opacity-60">
+                              <span className="block text-sm font-semibold">{option.label}</span>
+                              <span className="mt-1 block text-xs text-[var(--tp-text-faint)]">{option.detail}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {submitting ? <p role="status" className="mt-3 flex items-center justify-center gap-2 text-sm text-[var(--tp-text-muted)]"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />正在安排下一次复习</p> : null}
+                      </div>
                     )}
                   </div>
-                </div>
+                )}
+              </section>
 
-                {/* 题目卡片 */}
-                <div className="rounded-2xl border border-white/8 bg-[#0a0a0a] p-6 mb-5">
-                  {/* 问题 */}
-                  <div className="text-center mb-6">
-                    <p className="text-[11px] text-white/25 mb-2">
-                      {questions[currentQ].mode === "word-to-zh" ? "选择正确释义" : "选择正确单词"}
-                    </p>
-                    <p className="text-[24px] font-bold break-words">
-                      {questions[currentQ].mode === "word-to-zh"
-                        ? questions[currentQ].word.lemma
-                        : questions[currentQ].word.definitionZh}
-                    </p>
-                    {questions[currentQ].mode === "word-to-zh" && questions[currentQ].word.phonetic && (
-                      <p className="mt-1 text-[13px] text-white/35">
-                        {questions[currentQ].word.phonetic}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 选项 */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {questions[currentQ].options.map((opt, idx) => {
-                      const isCorrect = idx === questions[currentQ].correctIndex;
-                      const isSelected = idx === selectedIdx;
-                      let btnClass = "border-white/8 bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]";
-
-                      if (answered) {
-                        if (isCorrect) {
-                          btnClass = "border-green-500/40 bg-green-500/10 text-green-400";
-                        } else if (isSelected && !isCorrect) {
-                          btnClass = "border-red-500/40 bg-red-500/10 text-red-400";
-                        } else {
-                          btnClass = "border-white/5 bg-white/[0.01] text-white/20";
-                        }
-                      }
-
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={answered}
-                          onClick={() => handleSelect(idx)}
-                          className={cn(
-                            "btn-press rounded-xl border px-4 py-4 text-[15px] font-medium text-left transition-all duration-200",
-                            "flex items-center gap-3 min-h-[52px]",
-                            "active:scale-[0.97]",
-                            btnClass,
-                            answered && "!cursor-default"
-                          )}
-                        >
-                          <span className={cn(
-                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold",
-                            answered && isCorrect
-                              ? "bg-green-500/20 text-green-400"
-                              : answered && isSelected && !isCorrect
-                                ? "bg-red-500/20 text-red-400"
-                                : "bg-white/8 text-white/30"
-                          )}>
-                            {answered && isCorrect ? <Check className="h-3.5 w-3.5" /> :
-                             answered && isSelected && !isCorrect ? <X className="h-3.5 w-3.5" /> :
-                             String.fromCharCode(65 + idx)}
-                          </span>
-                          <span className="flex-1">{opt}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 答后提示 */}
-                  {answered && (
-                    <div className={cn(
-                      "mt-4 rounded-xl px-4 py-3 text-center text-[13px]",
-                      selectedIdx === questions[currentQ].correctIndex
-                        ? "bg-green-500/5 text-green-400"
-                        : "bg-red-500/5 text-red-400"
-                    )}>
-                      {selectedIdx === questions[currentQ].correctIndex ? (
-                        <span>✅ 正确！{questions[currentQ].word.lemma} — {questions[currentQ].word.definitionZh}</span>
-                      ) : (
-                        <span>
-                          ❌ 正确答案：{questions[currentQ].word.lemma} — {questions[currentQ].word.definitionZh}
-                        </span>
-                      )}
+              <aside className="space-y-4">
+                <WeeklyReviewCard weekly={payload.weekly} />
+                {checkin ? (
+                  <section className="rounded-xl border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5">
+                    <div className="flex items-center justify-between">
+                      <div><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tp-text-faint)]">连续学习</p><p className="mt-2 text-lg font-semibold">{checkin.streak} 天</p></div>
+                      <Clock3 className="h-5 w-5 text-[var(--tp-accent)]" aria-hidden />
                     </div>
-                  )}
-                </div>
-              </>
-            )}
+                    <div className="mt-4"><StreakCalendar data={checkin.calendar} streak={checkin.streak} /></div>
+                  </section>
+                ) : null}
+              </aside>
+            </div>
           </div>
-        )}
+        ) : null}
       </main>
     </div>
   );

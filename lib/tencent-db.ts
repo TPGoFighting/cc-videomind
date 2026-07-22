@@ -142,11 +142,13 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     part_of_speech TEXT,
     example_en TEXT,
     example_zh TEXT,
+    source_time DOUBLE PRECISION,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(user_id, lemma)
   )`,
   `ALTER TABLE user_vocabulary ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  `ALTER TABLE user_vocabulary ADD COLUMN IF NOT EXISTS source_time DOUBLE PRECISION`,
   `CREATE TABLE IF NOT EXISTS word_definitions (
     lemma TEXT PRIMARY KEY,
     phonetic TEXT,
@@ -180,6 +182,25 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     status TEXT NOT NULL DEFAULT 'learning',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (user_id, lemma)
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_word_reviews_due_idx ON user_word_reviews(user_id, next_review_at)`,
+  `CREATE TABLE IF NOT EXISTS user_quote_reviews (
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    quote_id TEXT NOT NULL REFERENCES user_quotes(id) ON DELETE CASCADE,
+    repetitions INTEGER NOT NULL DEFAULT 0,
+    ease_factor DOUBLE PRECISION NOT NULL DEFAULT 2.5,
+    interval_days INTEGER NOT NULL DEFAULT 1,
+    next_review_at TIMESTAMPTZ NOT NULL,
+    last_reviewed_at TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'learning',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, quote_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS user_quote_reviews_due_idx ON user_quote_reviews(user_id, next_review_at)`,
+  `CREATE TABLE IF NOT EXISTS user_review_preferences (
+    user_id TEXT PRIMARY KEY REFERENCES app_users(id) ON DELETE CASCADE,
+    cadence TEXT NOT NULL DEFAULT 'steady' CHECK (cadence IN ('light', 'steady', 'focused')),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE TABLE IF NOT EXISTS user_checkins (
     user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,

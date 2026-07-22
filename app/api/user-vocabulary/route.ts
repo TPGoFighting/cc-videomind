@@ -17,15 +17,16 @@ export async function GET(request: Request) {
       id: entry.id, wordId: entry.id, lemma: entry.word, phonetic: entry.phonetic ?? undefined,
       partOfSpeech: entry.partOfSpeech ?? undefined, definitionZh: entry.definitionZh ?? entry.word,
       definitionEn: entry.definitionEn ?? undefined, exampleEn: entry.exampleEn ?? undefined,
-      exampleZh: entry.exampleZh ?? undefined, videoId: entry.videoId, createdAt: entry.createdAt,
+      exampleZh: entry.exampleZh ?? undefined, videoId: entry.videoId, sourceTime: entry.sourceTime ?? undefined,
+      createdAt: entry.createdAt,
     })) });
   }
   const userId = await getAuthenticatedUserId(request);
   if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
   const result = await queryTencent<{
-    id: string; lemma: string; phonetic: string | null; part_of_speech: string | null; definition_zh: string | null; definition_en: string | null; example_en: string | null; example_zh: string | null; video_id: string; created_at: Date;
+    id: string; lemma: string; phonetic: string | null; part_of_speech: string | null; definition_zh: string | null; definition_en: string | null; example_en: string | null; example_zh: string | null; video_id: string; source_time: number | null; created_at: Date;
   }>(
-    `SELECT id, lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh, video_id, created_at
+    `SELECT id, lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh, video_id, source_time, created_at
      FROM user_vocabulary WHERE user_id = $1 ${videoId ? "AND video_id = $2" : ""} ORDER BY created_at DESC LIMIT 200`,
     videoId ? [userId, videoId] : [userId],
   );
@@ -33,7 +34,8 @@ export async function GET(request: Request) {
     id: row.id, wordId: row.id, lemma: row.lemma, phonetic: row.phonetic ?? undefined,
     partOfSpeech: row.part_of_speech ?? undefined, definitionZh: row.definition_zh ?? row.lemma,
     definitionEn: row.definition_en ?? undefined, exampleEn: row.example_en ?? undefined,
-    exampleZh: row.example_zh ?? undefined, videoId: row.video_id, createdAt: row.created_at.toISOString(),
+    exampleZh: row.example_zh ?? undefined, videoId: row.video_id, sourceTime: row.source_time ?? undefined,
+    createdAt: row.created_at.toISOString(),
   })) });
 }
 
@@ -43,28 +45,50 @@ export async function POST(request: Request) {
     if (!parsed.ok) return parsed.response;
     const lemma = parsed.data.lemma.trim().toLowerCase();
     if (isLocalMode()) {
-      await saveVocabulary([{ word: lemma, videoId: parsed.data.videoId, definitionZh: lemma }]);
+      await saveVocabulary([{
+        word: lemma,
+        videoId: parsed.data.videoId,
+        sourceTime: parsed.data.startTime,
+        definitionZh: lemma,
+      }]);
       const existingReview = await getReviewState(lemma);
       if (!existingReview) await saveReviewState(createInitialReviewState(lemma));
-      return successResponse({ saved: true, lemma, wordId: lemma });
+      return successResponse({
+        saved: true,
+        lemma,
+        wordId: lemma,
+        nextReviewAt: existingReview?.nextReviewAt ?? createInitialReviewState(lemma).nextReviewAt,
+      });
     }
     const userId = await getAuthenticatedUserId(request);
     if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
     const id = randomUUID();
     await queryTencent(
       `WITH saved AS (
-         INSERT INTO user_vocabulary (id, user_id, lemma, video_id, definition_zh)
-         VALUES ($1, $2, $3, $4, $3)
-         ON CONFLICT (user_id, lemma) DO UPDATE SET video_id = EXCLUDED.video_id, updated_at = NOW()
+         INSERT INTO user_vocabulary (id, user_id, lemma, video_id, definition_zh, source_time)
+         VALUES ($1, $2, $3, $4, $3, $5)
+         ON CONFLICT (user_id, lemma) DO UPDATE SET
+           video_id = EXCLUDED.video_id,
+           source_time = EXCLUDED.source_time,
+           updated_at = NOW()
          RETURNING lemma
        )
        INSERT INTO user_word_reviews (user_id, lemma, repetitions, ease_factor, interval_days, next_review_at, status)
        SELECT $2, saved.lemma, 0, 2.5, 1, NOW() + INTERVAL '1 day', 'learning' FROM saved
        ON CONFLICT (user_id, lemma) DO NOTHING`,
-      [id, userId, lemma, parsed.data.videoId],
+      [id, userId, lemma, parsed.data.videoId, parsed.data.startTime ?? null],
     );
     await recordLearningItemSavedSafely(userId, "word");
-    return successResponse({ saved: true, lemma, wordId: id });
+    const review = await queryTencent<{ next_review_at: Date }>(
+      `SELECT next_review_at FROM user_word_reviews WHERE user_id = $1 AND lemma = $2`,
+      [userId, lemma],
+    );
+    return successResponse({
+      saved: true,
+      lemma,
+      wordId: id,
+      nextReviewAt: review.rows[0]?.next_review_at.toISOString(),
+    });
   });
 }
 

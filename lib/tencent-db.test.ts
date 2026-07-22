@@ -24,6 +24,8 @@ describe("Tencent PostgreSQL authoritative schema", () => {
       "user_vocabulary",
       "user_quotes",
       "user_word_reviews",
+      "user_quote_reviews",
+      "user_review_preferences",
       "user_checkins",
       "payment_submissions",
       "video_chunks",
@@ -36,13 +38,22 @@ describe("Tencent PostgreSQL authoritative schema", () => {
   });
 
   it("keeps user-owned tables tied to app_users", () => {
-    for (const table of ["app_sessions", "user_privacy_preferences", "user_ai_settings", "user_videos", "user_notes", "user_vocabulary", "user_quotes", "user_word_reviews", "user_checkins", "payment_submissions"]) {
+    for (const table of ["app_sessions", "user_privacy_preferences", "user_ai_settings", "user_videos", "user_notes", "user_vocabulary", "user_quotes", "user_word_reviews", "user_quote_reviews", "user_review_preferences", "user_checkins", "payment_submissions"]) {
       const statement = TENCENT_SCHEMA_STATEMENTS.find((sql) =>
         sql.toLowerCase().includes(`create table if not exists ${table}`),
       );
       assert.ok(statement, `missing schema statement for ${table}`);
       assert.match(statement.toLowerCase(), /references app_users\(id\)/);
     }
+  });
+
+  it("stores review source time and cascades sentence review state", () => {
+    assert.match(schemaSql, /alter table user_vocabulary add column if not exists source_time double precision/);
+    const quoteReviewStatement = TENCENT_SCHEMA_STATEMENTS.find((sql) =>
+      sql.toLowerCase().includes("create table if not exists user_quote_reviews"),
+    );
+    assert.ok(quoteReviewStatement);
+    assert.match(quoteReviewStatement.toLowerCase(), /references user_quotes\(id\) on delete cascade/);
   });
 
   it("keeps analytics content-free by contract and bounded by expiry", () => {

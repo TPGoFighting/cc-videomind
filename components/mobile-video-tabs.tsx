@@ -18,7 +18,7 @@ interface MobileVideoTabsProps {
   displayMode?: DisplayMode;
   onDisplayModeChange?: (mode: DisplayMode) => void;
   wordDefinitions?: Map<string, WordDefinition>;
-  onSaveWord?: (lemma: string) => Promise<boolean>;
+  onSaveWord?: (lemma: string, startTime?: number) => Promise<boolean>;
   onSaveQuote?: (segment: TranscriptSegment) => Promise<boolean>;
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;

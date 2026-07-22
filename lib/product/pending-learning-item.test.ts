@@ -24,6 +24,18 @@ test("round-trips a pending quote without putting it in the return URL", () => {
   assert.deepEqual(parsePendingLearningItem(serializePendingLearningItem(item), NOW), item);
 });
 
+test("round-trips a pending word with its source time", () => {
+  const item: PendingLearningItem = {
+    kind: "word",
+    videoId: "eIho2S0ZahI",
+    lemma: "listen",
+    startTime: 42.5,
+    createdAt: NOW,
+  };
+
+  assert.deepEqual(parsePendingLearningItem(serializePendingLearningItem(item), NOW), item);
+});
+
 test("rejects malformed, expired, and future pending items", () => {
   assert.equal(parsePendingLearningItem("not-json", NOW), null);
   assert.equal(parsePendingLearningItem(JSON.stringify({ kind: "word" }), NOW), null);

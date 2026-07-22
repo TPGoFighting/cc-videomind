@@ -15,10 +15,11 @@ type VideoPlayerProps = {
   metadata?: VideoMetadata;
   fallbackTitle?: string;
   previewOnly?: boolean;
+  initialStartTime?: number;
 };
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  function VideoPlayer({ videoId, metadata, fallbackTitle, previewOnly = false }, ref) {
+  function VideoPlayer({ videoId, metadata, fallbackTitle, previewOnly = false, initialStartTime }, ref) {
     const playerRef = useRef<YT.Player | null>(null);
     const apiLoadedRef = useRef(false);
 
@@ -29,6 +30,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
       const onReady = (event: YT.PlayerEvent) => {
         playerRef.current = event.target;
+        if (typeof initialStartTime === "number" && initialStartTime > 0) {
+          event.target.seekTo(initialStartTime, true);
+        }
       };
 
       const init = () => {
@@ -58,7 +62,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           (window as unknown as Record<string, unknown>).onYouTubeIframeAPIReady = prev ?? null;
         };
       }
-    }, [previewOnly, videoId]);
+    }, [initialStartTime, previewOnly, videoId]);
 
     useImperativeHandle(
       ref,
@@ -88,7 +92,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             <iframe
               id={`yt-player-${videoId}`}
               className="h-full w-full"
-              src={`https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`}
+              src={`https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1${typeof initialStartTime === "number" && initialStartTime > 0 ? `&start=${Math.floor(initialStartTime)}` : ""}`}
               title={metadata?.title ?? "YouTube 视频播放器"}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               referrerPolicy="strict-origin-when-cross-origin"

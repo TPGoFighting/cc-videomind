@@ -43,7 +43,7 @@ export function TranscriptViewer({
   displayMode?: DisplayMode;
   onDisplayModeChange?: (mode: DisplayMode) => void;
   wordDefinitions?: Map<string, WordDefinition>;
-  onSaveWord?: (lemma: string) => Promise<boolean>;
+  onSaveWord?: (lemma: string, startTime?: number) => Promise<boolean>;
   onSaveQuote?: (segment: TranscriptSegment) => Promise<boolean>;
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
@@ -55,6 +55,7 @@ export function TranscriptViewer({
   const [showJumpButton, setShowJumpButton] = useState(false);
   const [activeWord, setActiveWord] = useState<{
     lemma: string;
+    sourceTime: number;
     position: { top: number; left: number };
   } | null>(null);
   const [savingQuote, setSavingQuote] = useState<Set<string>>(new Set());
@@ -179,7 +180,7 @@ export function TranscriptViewer({
   const isTouchDevice = typeof window !== "undefined" && ('ontouchstart' in window || window.innerWidth < 640);
 
   const handleWordEnter = useCallback(
-    (lemma: string, e: React.MouseEvent) => {
+    (lemma: string, sourceTime: number, e: React.MouseEvent) => {
       if (isTouchDevice) return;
       // 清除隐藏计时器
       if (hideTimerRef.current) {
@@ -189,7 +190,7 @@ export function TranscriptViewer({
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       const rect = (e.target as HTMLElement).getBoundingClientRect();
       hoverTimerRef.current = setTimeout(() => {
-        setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
+        setActiveWord({ lemma, sourceTime, position: { top: rect.bottom + 4, left: rect.left } });
       }, 500);
     },
     [isTouchDevice]
@@ -217,11 +218,11 @@ export function TranscriptViewer({
 
   // 移动端点击备用
   const handleWordClick = useCallback(
-    (lemma: string, e: React.MouseEvent) => {
+    (lemma: string, sourceTime: number, e: React.MouseEvent) => {
       // 移动端优先用 click
       if ('ontouchstart' in window || window.innerWidth < 640) {
         const rect = (e.target as HTMLElement).getBoundingClientRect();
-        setActiveWord({ lemma, position: { top: rect.bottom + 4, left: rect.left } });
+        setActiveWord({ lemma, sourceTime, position: { top: rect.bottom + 4, left: rect.left } });
       }
     },
     []
@@ -238,7 +239,7 @@ export function TranscriptViewer({
         const saved = await onSaveQuote(segment);
         if (saved) {
           setSavedQuotes((previous) => new Set(previous).add(key));
-          setActionStatus("已收藏这句话；可从句子收藏回到原视频与时间点。");
+          setActionStatus("已收藏这句话；约 24 小时后会进入复习，并保留当前时间点。");
         }
       } finally {
         setSavingQuote((prev) => {
@@ -276,7 +277,7 @@ export function TranscriptViewer({
 
   // 渲染带交互单词的文本
   const renderText = useCallback(
-    (text: string) => {
+    (text: string, sourceTime: number) => {
       const tokens = tokenizeText(text);
       return tokens.map((token, i) => {
         if (isAlpha(token) && wordDefinitions) {
@@ -287,9 +288,9 @@ export function TranscriptViewer({
               <span
                 key={i}
                 className="inline-block min-h-6 cursor-pointer text-[var(--tp-accent)] decoration-dotted underline-offset-2 hover:underline"
-                onMouseEnter={(e) => handleWordEnter(lemma, e)}
+                onMouseEnter={(e) => handleWordEnter(lemma, sourceTime, e)}
                 onMouseLeave={handleWordLeave}
-                onClick={(e) => handleWordClick(lemma, e)}
+                onClick={(e) => handleWordClick(lemma, sourceTime, e)}
               >
                 {token}
               </span>
@@ -465,7 +466,7 @@ export function TranscriptViewer({
                             i === activeIndex ? "text-[var(--tp-text)]" : "text-[var(--tp-text-secondary)]"
                           )}
                         >
-                          {renderText(segment.text)}
+                          {renderText(segment.text, segment.startTime)}
                         </span>
                       )}
 
@@ -544,7 +545,9 @@ export function TranscriptViewer({
           definition={activeDefinition}
           position={activeWord.position}
           onClose={closeWordCard}
-          onSave={onSaveWord}
+          onSave={onSaveWord
+            ? (lemma) => onSaveWord(lemma, activeWord.sourceTime)
+            : undefined}
           onMouseEnter={cancelHide}
           onMouseLeave={handleWordLeave}
         />

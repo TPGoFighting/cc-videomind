@@ -122,6 +122,8 @@ export async function processDueAccountDeletions(limit = 20): Promise<{
         for (const table of [
           "app_sessions",
           "user_ai_settings",
+          "user_review_preferences",
+          "user_quote_reviews",
           "user_word_reviews",
           "user_vocabulary",
           "user_quotes",

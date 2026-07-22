@@ -90,7 +90,7 @@ type WorkspaceStage = "transcript" | "analysis" | "ready" | "partial" | "failure
 function savedLearningItemMessage(kind: PendingLearningItem["kind"]): string {
   return kind === "word"
     ? "单词已保存；次日（约 24 小时后）会进入复习，并保留原视频来源。"
-    : "句子已保存到收藏；可从收藏回到原视频与时间点。";
+    : "句子已保存；次日（约 24 小时后）会进入复习，并保留原视频时间点。";
 }
 
 async function persistLearningItem(item: PendingLearningItem): Promise<JsonResponse<unknown>> {
@@ -106,6 +106,7 @@ async function persistLearningItem(item: PendingLearningItem): Promise<JsonRespo
     } : {
       lemma: item.lemma,
       videoId: item.videoId,
+      startTime: item.startTime,
     }),
   });
   return response.json() as Promise<JsonResponse<unknown>>;
@@ -154,10 +155,12 @@ export function VideoWorkspace({
   videoId,
   fixtureState,
   fixtureSaveMode = "preview",
+  initialStartTime,
 }: {
   videoId: string;
   fixtureState?: WorkspaceFixtureState;
   fixtureSaveMode?: WorkspaceFixtureSaveMode;
+  initialStartTime?: number;
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -644,11 +647,12 @@ export function VideoWorkspace({
   }, [authLoading, fixtureState, user, videoId]);
 
   // 收藏单词
-  const handleSaveWord = useCallback(async (lemma: string): Promise<boolean> => {
+  const handleSaveWord = useCallback(async (lemma: string, startTime?: number): Promise<boolean> => {
     return saveLearningItem({
       kind: "word",
       videoId,
       lemma,
+      startTime,
       createdAt: Date.now(),
     });
   }, [saveLearningItem, videoId]);
@@ -712,6 +716,7 @@ export function VideoWorkspace({
               metadata={metadata}
               fallbackTitle={transcriptError ? "视频信息加载失败" : undefined}
               previewOnly={Boolean(fixtureState)}
+              initialStartTime={initialStartTime}
             />
 
             {loading ? (

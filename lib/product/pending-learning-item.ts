@@ -17,6 +17,7 @@ const PendingWordSchema = z.object({
   kind: z.literal("word"),
   videoId: VideoIdSchema,
   lemma: z.string().min(1).max(100),
+  startTime: z.number().nonnegative().optional(),
   createdAt: z.number().int().positive(),
 });
 
