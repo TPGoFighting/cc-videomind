@@ -112,6 +112,27 @@ export function PrivacyControlsCard({ fixture = false }: { fixture?: boolean }) 
     }
   }
 
+  function downloadFixtureExport(event: React.MouseEvent<HTMLAnchorElement>) {
+    if (!fixture) return;
+    event.preventDefault();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      account: { id: "fixture-user", role: "user" },
+      privacy: { analyticsEnabled },
+      learning: { videos: 0, notes: 0, quotes: 0, vocabulary: 0, reviews: 0 },
+      payments: [],
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "teach-player-data-export-fixture.json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setNotice({ type: "success", message: "开发验收：数据副本已生成，且不含密码、会话令牌或个人 API Key。" });
+  }
+
   async function submitDeletion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmittingDeletion(true);
@@ -221,6 +242,7 @@ export function PrivacyControlsCard({ fixture = false }: { fixture?: boolean }) 
               <a
                 href={fixture ? "#account-export-title" : "/api/account/export"}
                 download={fixture ? undefined : true}
+                onClick={downloadFixtureExport}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--radius)] border border-[var(--tp-border-strong)] px-5 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)]"
               >
                 <Download className="h-4 w-4" aria-hidden />
@@ -310,7 +332,7 @@ export function PrivacyControlsCard({ fixture = false }: { fixture?: boolean }) 
             </section>
 
             <p className="border-t border-white/8 pt-4 text-xs leading-5 text-white/40">
-              查看完整处理说明可阅读 <Link href="/privacy" className="text-[var(--tp-accent)]">隐私政策</Link>；产品问题和处理异常可前往 <Link href="/support" className="text-[var(--tp-accent)]">支持页</Link>。
+              查看完整处理说明可阅读 <Link href="/privacy" className="inline-flex min-h-11 items-center px-1 align-middle text-[var(--tp-accent)] sm:min-h-0 sm:px-0">隐私政策</Link>；产品问题和处理异常可前往 <Link href="/support" className="inline-flex min-h-11 items-center px-1 align-middle text-[var(--tp-accent)] sm:min-h-0 sm:px-0">支持页</Link>。
             </p>
           </>
         )}
