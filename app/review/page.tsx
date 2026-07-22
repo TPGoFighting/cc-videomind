@@ -226,6 +226,26 @@ export default function ReviewPage() {
       }
       setLastResult(json.data.results[0] ?? null);
       if (json.data.checkin) setCheckin(json.data.checkin);
+      // The queue totals are server-owned: refresh the compact summary after
+      // each saved rating so the overview and weekly card never claim that an
+      // item is still due after it has already been scheduled.
+      void fetch("/api/review?summary=1")
+        .then((summaryResponse) => summaryResponse.json() as Promise<JsonResponse<{
+          summary: TodayReviewSummary;
+          weekly: WeeklySummary;
+        }>>)
+        .then((summaryJson) => {
+          if (!summaryJson.ok) return;
+          setPayload((current) => current ? {
+            ...current,
+            summary: summaryJson.data.summary,
+            weekly: summaryJson.data.weekly,
+          } : current);
+        })
+        .catch(() => {
+          // The rating has already been saved. Keep the next card usable even
+          // when the non-critical summary refresh cannot complete.
+        });
       setCompleted((count) => count + 1);
       setCurrentIndex((index) => index + 1);
       setRevealed(false);

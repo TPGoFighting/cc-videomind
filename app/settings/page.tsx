@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { PrivacyControlsCard } from "@/components/settings/privacy-controls-card";
 import { AdminMetricsPanel } from "@/components/settings/admin-metrics-panel";
 import { ReviewPreferencesCard } from "@/components/settings/review-preferences-card";
+import { isLocalMode } from "@/lib/local-mode";
 
 type ProviderInfo = { id: string; displayName: string; defaultBaseUrl: string; defaultModel: string };
 type AiConfigData = Record<string, string | null>;
@@ -522,6 +523,7 @@ function PersonalConfigCard({
 export default function SettingsPage() {
   const { user, loading: authLoading, isAdmin, refreshProfile, signOut } = useAuth();
   const router = useRouter();
+  const localMode = isLocalMode();
 
   const [globalConfig, setGlobalConfig] = useState<AiConfigData>({});
   const [personalConfig, setPersonalConfig] = useState<AiConfigData>({});
@@ -539,7 +541,9 @@ export default function SettingsPage() {
 
   // 加载配置
   useEffect(() => {
-    if (!user) return;
+    // Local mode intentionally has no remote admin-settings endpoint. Review
+    // preferences, privacy, and account actions remain available below.
+    if (!user || localMode) return;
     const params = targetUserId ? `?targetUserId=${encodeURIComponent(targetUserId)}` : "";
     fetch(`/api/admin/settings${params}`)
       .then((res) => res.json())
@@ -551,7 +555,7 @@ export default function SettingsPage() {
         setProviders(data.providers ?? []);
       })
       .catch(console.error);
-  }, [user, targetUserId]);
+  }, [localMode, user, targetUserId]);
 
   async function lookupUser() {
     const email = targetUserEmail.trim().toLowerCase();
@@ -586,10 +590,10 @@ export default function SettingsPage() {
 
   // 刷新 profile 确保 isAdmin 同步
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!localMode && !authLoading && user) {
       refreshProfile();
     }
-  }, [authLoading, user, refreshProfile]);
+  }, [authLoading, localMode, user, refreshProfile]);
 
   async function saveKey(scope: "global" | "personal", key: string, value: string) {
     const saveId = `${scope}:${key}`;

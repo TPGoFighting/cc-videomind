@@ -63,6 +63,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyProfile(await loadProfile());
   }, [applyProfile]);
 
+  const refreshProfile = useCallback(async () => {
+    // Local mode has no remote session to refresh. Reading /api/me here used
+    // to replace the deliberate local user with an unauthenticated response,
+    // which made settings (including review cadence) disappear after mount.
+    if (localMode) {
+      setUser(LOCAL_USER);
+      setIsAdmin(false);
+      setSubscriptionTier("free");
+      return;
+    }
+    await fetchProfile();
+  }, [fetchProfile, localMode]);
+
   useEffect(() => {
     if (localMode) return;
     void loadProfile().then(applyProfile).catch(() => {
@@ -78,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [localMode]);
 
   return (
-    <AuthContext.Provider value={{ user, session: null, loading, isAdmin, subscriptionTier, signOut, refreshProfile: fetchProfile }}>
+    <AuthContext.Provider value={{ user, session: null, loading, isAdmin, subscriptionTier, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
