@@ -4,11 +4,26 @@ import { GsapProvider } from "@/components/gsap-provider";
 import { MobileTabBarClient } from "@/components/mobile-tab-bar-client";
 import { MagneticCursor } from "@/components/magnetic-cursor";
 import { ScrollProgress } from "@/components/scroll-progress";
+import { createPageMetadata, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 import "./globals.css";
 
+const homeMetadata = createPageMetadata({
+  title: "把 YouTube 视频变成可复习的双语学习材料",
+  description: SITE_DESCRIPTION,
+  path: "/",
+  index: true,
+});
+
 export const metadata: Metadata = {
-  title: "Teach Player — YouTube 视频 AI 学习工作区",
-  description: "粘贴 YouTube 链接，获取转录、摘要、时间戳要点和对话问答。所有分析基于视频真实内容。",
+  ...homeMetadata,
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
+  title: {
+    default: `${SITE_NAME} — 把 YouTube 视频变成可复习的双语学习材料`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  manifest: "/manifest.webmanifest",
+  category: "education",
 };
 
 export default function RootLayout({
