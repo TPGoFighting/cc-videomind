@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { AlertCircle, ArrowLeft, CircleCheck, Info } from "lucide-react";
+import { AlertCircle, ArrowLeft, CircleCheck, Info, RotateCcw } from "lucide-react";
+import { useAuth } from "@/components/auth-context";
 import { Navbar } from "@/components/navbar";
 import { HighlightsPanel } from "@/components/highlights-panel";
 import { MobileVideoTabs } from "@/components/mobile-video-tabs";
@@ -13,6 +15,18 @@ import { SummaryPanel } from "@/components/summary-panel";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
+import {
+  PENDING_LEARNING_ITEM_KEY,
+  buildPendingSaveLoginHref,
+  decideLearningSave,
+  parsePendingLearningItem,
+  serializePendingLearningItem,
+  type PendingLearningItem,
+} from "@/lib/product/pending-learning-item";
+import {
+  getRecoveryGuidance,
+  type RecoveryGuidance,
+} from "@/lib/product/recovery-guidance";
 import {
   WORKSPACE_FIXTURE,
   type WorkspaceFixtureState,
@@ -70,6 +84,71 @@ type AnalyzePayload = {
   preview: boolean;
 };
 
+type WorkspaceStage = "transcript" | "analysis" | "ready" | "partial" | "failure";
+
+function savedLearningItemMessage(kind: PendingLearningItem["kind"]): string {
+  return kind === "word"
+    ? "单词已保存；次日（约 24 小时后）会进入复习，并保留原视频来源。"
+    : "句子已保存到收藏；可从收藏回到原视频与时间点。";
+}
+
+async function persistLearningItem(item: PendingLearningItem): Promise<JsonResponse<unknown>> {
+  const response = await fetch(item.kind === "quote" ? "/api/user-quotes" : "/api/user-vocabulary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item.kind === "quote" ? {
+      videoId: item.videoId,
+      textEn: item.textEn,
+      textZh: item.textZh,
+      startTime: item.startTime,
+      endTime: item.endTime,
+    } : {
+      lemma: item.lemma,
+      videoId: item.videoId,
+    }),
+  });
+  return response.json() as Promise<JsonResponse<unknown>>;
+}
+
+function WorkspaceProgress({ stage }: { stage: WorkspaceStage }) {
+  const steps = [
+    { id: "transcript", label: "读取字幕", estimate: "通常 5–30 秒" },
+    { id: "analysis", label: "提炼要点", estimate: "字幕出现后约 30–120 秒" },
+    { id: "ready", label: "开始学习", estimate: "阅读、跳转、收藏" },
+  ] as const;
+  const activeIndex = stage === "transcript" || stage === "failure" ? 0 : stage === "analysis" ? 1 : 2;
+
+  return (
+    <ol aria-label="视频处理进度" className="grid gap-2 rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-3 sm:grid-cols-3">
+      {steps.map((step, index) => {
+        const interrupted = (stage === "failure" && index === 0) || (stage === "partial" && index === 1);
+        const complete = stage === "partial"
+          ? index === 0
+          : index < activeIndex || (index === 2 && stage === "ready");
+        const active = index === activeIndex && !interrupted;
+        return (
+          <li key={step.id} className="flex items-center gap-3 rounded-lg px-2 py-2">
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold ${complete
+              ? "border-[var(--tp-accent)] bg-[var(--tp-accent)] text-[var(--tp-bg)]"
+              : interrupted
+                ? "border-amber-300/60 text-amber-200"
+              : active
+                ? "border-[var(--tp-accent)] text-[var(--tp-accent)]"
+                : "border-[var(--tp-border-strong)] text-[var(--tp-text-faint)]"
+            }`}>
+              {complete ? "✓" : interrupted ? "!" : index + 1}
+            </span>
+            <span>
+              <span className={`block text-sm font-semibold ${active || complete ? "text-[var(--tp-text)]" : interrupted ? "text-amber-100" : "text-[var(--tp-text-muted)]"}`}>{step.label}</span>
+              <span className="block text-xs leading-5 text-[var(--tp-text-faint)]">{step.estimate}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export function VideoWorkspace({
   videoId,
   fixtureState,
@@ -77,6 +156,8 @@ export function VideoWorkspace({
   videoId: string;
   fixtureState?: WorkspaceFixtureState;
 }) {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const fixtureHasTranscript = fixtureState === "ready" || fixtureState === "partial";
   const [metadata, setMetadata] = useState<VideoMetadata | undefined>(
     fixtureState && fixtureState !== "failure" ? WORKSPACE_FIXTURE.metadata : undefined
@@ -87,6 +168,13 @@ export function VideoWorkspace({
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(
     fixtureState === "ready" ? WORKSPACE_FIXTURE.analysis : null
   );
+  const [stage, setStage] = useState<WorkspaceStage>(() => {
+    if (fixtureState === "failure" || fixtureState === "empty") return "failure";
+    if (fixtureState === "partial") return "partial";
+    if (fixtureState === "ready") return "ready";
+    return "transcript";
+  });
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [loading, setLoading] = useState(fixtureState ? fixtureState === "loading" : true);
   const [transcriptError, setTranscriptError] = useState<string | null>(
     fixtureState === "failure" ? "这条视频没有可用字幕，暂时无法建立学习工作台。" : null
@@ -94,8 +182,8 @@ export function VideoWorkspace({
   const [errorCode, setErrorCode] = useState<string | null>(
     fixtureState === "failure" ? "NO_CAPTION_TRACKS" : null
   );
-  const [analysisNotice, setAnalysisNotice] = useState<string | null>(
-    fixtureState === "partial" ? "字幕已经可以学习；深入解析暂时不可用，稍后可再试。" : null
+  const [analysisNotice, setAnalysisNotice] = useState<RecoveryGuidance | null>(
+    fixtureState === "partial" ? getRecoveryGuidance("analysis", "analysis_failed") : null
   );
 
   // 要点时刻 + 核心摘要（独立数据源）
@@ -111,11 +199,21 @@ export function VideoWorkspace({
   // 翻译状态
   const [translating, setTranslating] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
 
   const playerRef = useRef<VideoPlayerHandle>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const resumedSaveRef = useRef(false);
+  const retryModeRef = useRef<"all" | "analysis">("all");
+  const metadataRef = useRef(metadata);
+  const transcriptRef = useRef(transcript);
+
+  useEffect(() => {
+    metadataRef.current = metadata;
+    transcriptRef.current = transcript;
+  }, [metadata, transcript]);
 
   useGSAP(() => {
     gsap.fromTo(
@@ -162,8 +260,10 @@ export function VideoWorkspace({
 
     // Step 1: 获取字幕（快速，<30s）
     async function loadTranscript(): Promise<{ metadata: VideoMetadata; transcript: TranscriptSegment[] } | null> {
+      setStage("transcript");
       setLoading(true);
       setTranscriptError(null);
+      setErrorCode(null);
 
       try {
         const transcriptRes = await fetch("/api/transcript", {
@@ -178,6 +278,7 @@ export function VideoWorkspace({
         if (!transcriptPayload.ok) {
           setTranscriptError(transcriptPayload.error.message);
           setErrorCode(transcriptPayload.error.code ?? null);
+          setStage("failure");
           setLoading(false);
           return null;
         }
@@ -185,12 +286,15 @@ export function VideoWorkspace({
         // 立即展示字幕和元数据
         setMetadata(transcriptPayload.data.metadata);
         setTranscript(transcriptPayload.data.transcript);
+        setStage("analysis");
         setLoading(false);
 
         return { metadata: transcriptPayload.data.metadata, transcript: transcriptPayload.data.transcript };
       } catch {
         if (!cancelled) {
           setTranscriptError("无法解析此视频，请确认链接有效后重试。");
+          setErrorCode("network_error");
+          setStage("failure");
           setLoading(false);
         }
         return null;
@@ -214,12 +318,12 @@ export function VideoWorkspace({
           setAnalysis(analyzePayload.data.analysis);
           return analyzePayload.data;
         } else {
-          setAnalysisNotice("字幕已经可以学习；深入解析暂时不可用，稍后可再试。");
+          setAnalysisNotice(getRecoveryGuidance("analysis", analyzePayload.error.code));
           return null;
         }
       } catch {
         if (!cancelled) {
-          setAnalysisNotice("字幕已经可以学习；深入解析暂时不可用，稍后可再试。");
+          setAnalysisNotice(getRecoveryGuidance("analysis", "network_error"));
         }
         return null;
       }
@@ -315,7 +419,13 @@ export function VideoWorkspace({
 
     // 编排：字幕 → 分析 → 从分析结果提取或 fallback
     async function loadAll() {
-      const result = await loadTranscript();
+      const reuseTranscript = retryModeRef.current === "analysis"
+        && metadataRef.current
+        && transcriptRef.current.length > 0;
+      retryModeRef.current = "all";
+      const result = reuseTranscript
+        ? { metadata: metadataRef.current!, transcript: transcriptRef.current }
+        : await loadTranscript();
       if (cancelled || !result) {
         setMomentsLoading(false);
         setSummaryLoading(false);
@@ -323,19 +433,26 @@ export function VideoWorkspace({
       }
 
       // Step 2: 分析
+      if (reuseTranscript) {
+        setStage("analysis");
+        setAnalysisNotice(null);
+      }
       const analyzeData = await loadAnalysis(result.metadata, result.transcript);
 
       if (cancelled) return;
 
+      if (!analyzeData) setStage("partial");
+
       // Step 3: 从分析结果提取 moments/summary，或 fallback
       await loadMomentsAndSummary(analyzeData);
+      if (analyzeData && !cancelled) setStage("ready");
     }
 
     void loadAll();
     return () => {
       cancelled = true;
     };
-  }, [fixtureState, videoId]);
+  }, [fixtureState, retryAttempt, videoId]);
 
   // 切换到中英/中文模式时，懒加载翻译（SSE 流式，逐句返回）
   const ensureTranslation = useCallback(async (mode: string) => {
@@ -359,7 +476,8 @@ export function VideoWorkspace({
         if (payload.ok && payload.data?.transcript) {
           setTranscript(payload.data.transcript);
         } else {
-          setTranslationError(payload.error?.message ?? "翻译失败，请稍后重试。");
+          const guidance = getRecoveryGuidance("translation", payload.error?.code);
+          setTranslationError(`${guidance.title}：${guidance.message}`);
         }
         setTranslating(false);
         return;
@@ -368,6 +486,8 @@ export function VideoWorkspace({
       // 流式读取 SSE
       const reader = res.body?.getReader();
       if (!reader) {
+        const guidance = getRecoveryGuidance("translation", "stream_unavailable");
+        setTranslationError(`${guidance.title}：${guidance.message}`);
         setTranslating(false);
         return;
       }
@@ -398,12 +518,14 @@ export function VideoWorkspace({
               );
             } else if (event.type === "done") {
               if (!receivedTranslation || event.data?.translatedCount === 0) {
-                setTranslationError("未生成可用翻译，请稍后重试。");
+                const guidance = getRecoveryGuidance("translation", "empty_translation");
+                setTranslationError(`${guidance.title}：${guidance.message}`);
               }
               setTranslating(false);
             } else if (event.type === "error") {
               console.error("[Translate] 服务端错误:", event.data?.message);
-              setTranslationError(event.data?.message ?? "翻译失败，请稍后重试。");
+              const guidance = getRecoveryGuidance("translation", event.data?.code);
+              setTranslationError(`${guidance.title}：${guidance.message}`);
               setTranslating(false);
             }
           } catch {
@@ -413,7 +535,8 @@ export function VideoWorkspace({
       }
     } catch (err) {
       console.error("[Translate] 翻译请求失败:", err);
-      setTranslationError("翻译请求失败，请稍后重试。");
+      const guidance = getRecoveryGuidance("translation", "network_error");
+      setTranslationError(`${guidance.title}：${guidance.message}`);
       setTranslating(false);
     }
   }, [transcript, videoId]);
@@ -424,45 +547,129 @@ export function VideoWorkspace({
     ensureTranslation(mode);
   }, [transcriptMode, ensureTranslation]);
 
-  // 收藏单词
-  const handleSaveWord = useCallback(async (lemma: string): Promise<boolean> => {
-    if (fixtureState) return true;
+  const retryTranscript = useCallback(() => {
+    retryModeRef.current = "all";
+    setRetryAttempt((value) => value + 1);
+  }, []);
+
+  const retryAnalysis = useCallback(() => {
+    retryModeRef.current = "analysis";
+    setRetryAttempt((value) => value + 1);
+  }, []);
+
+  const queueLearningItemAndLogin = useCallback((item: PendingLearningItem) => {
     try {
-      const res = await fetch("/api/user-vocabulary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lemma, videoId }),
-      });
-      const payload = await res.json();
-      return payload.ok === true;
+      sessionStorage.setItem(PENDING_LEARNING_ITEM_KEY, serializePendingLearningItem(item));
+      setSaveNotice("学习项已暂存。登录后会自动完成保存；单词会安排到次日复习，句子会保留原视频出处。");
+      router.push(buildPendingSaveLoginHref(videoId));
     } catch {
+      setSaveNotice("浏览器未允许暂存。请登录后再点一次收藏；当前字幕不会消失。");
+    }
+  }, [router, videoId]);
+
+  const saveLearningItem = useCallback(async (item: PendingLearningItem): Promise<boolean> => {
+    const decision = decideLearningSave({
+      fixture: Boolean(fixtureState),
+      authLoading,
+      authenticated: Boolean(user),
+    });
+    if (decision === "preview") {
+      setSaveNotice(item.kind === "word"
+        ? "演示保存成功：正式保存后，单词会在次日进入复习。"
+        : "演示收藏成功：正式保存后，可从句子收藏回到原视频与时间点。"
+      );
+      return true;
+    }
+    if (decision === "wait_for_auth") {
+      setSaveNotice("正在确认登录状态，请稍后再点一次收藏。");
       return false;
     }
-  }, [fixtureState, videoId]);
+    if (decision === "queue_and_login") {
+      queueLearningItemAndLogin(item);
+      return false;
+    }
+
+    setSaveNotice("正在保存学习项…");
+    try {
+      const payload = await persistLearningItem(item);
+      if (payload.ok) {
+        setSaveNotice(savedLearningItemMessage(item.kind));
+        return true;
+      }
+      if (payload.error.code === "unauthorized") {
+        queueLearningItemAndLogin(item);
+        return false;
+      }
+      setSaveNotice("暂时没有保存成功。内容仍在当前页面，请稍后重试。");
+      return false;
+    } catch {
+      setSaveNotice("网络中断，暂时没有保存成功。内容仍在当前页面，请稍后重试。");
+      return false;
+    }
+  }, [authLoading, fixtureState, queueLearningItemAndLogin, user]);
+
+  // 登录返回后，只恢复同一视频、30 分钟内且通过 schema 校验的学习项。
+  useEffect(() => {
+    if (fixtureState || authLoading || !user || resumedSaveRef.current) return;
+    const raw = sessionStorage.getItem(PENDING_LEARNING_ITEM_KEY);
+    const pendingItem = parsePendingLearningItem(raw);
+    if (!pendingItem) {
+      if (raw) sessionStorage.removeItem(PENDING_LEARNING_ITEM_KEY);
+      return;
+    }
+    if (pendingItem.videoId !== videoId) return;
+
+    resumedSaveRef.current = true;
+    void Promise.resolve()
+      .then(() => {
+        setSaveNotice("登录成功，正在完成刚才的收藏…");
+        return persistLearningItem(pendingItem);
+      })
+      .then((payload) => {
+        if (!payload.ok) {
+          setSaveNotice("登录已完成，但学习项还没有保存。内容仍已暂存，请稍后重试。");
+          resumedSaveRef.current = false;
+          return;
+        }
+        sessionStorage.removeItem(PENDING_LEARNING_ITEM_KEY);
+        setSaveNotice(savedLearningItemMessage(pendingItem.kind));
+      })
+      .catch(() => {
+        setSaveNotice("登录已完成，但网络中断。学习项仍已暂存，请稍后重试。");
+        resumedSaveRef.current = false;
+      });
+  }, [authLoading, fixtureState, user, videoId]);
+
+  // 收藏单词
+  const handleSaveWord = useCallback(async (lemma: string): Promise<boolean> => {
+    return saveLearningItem({
+      kind: "word",
+      videoId,
+      lemma,
+      createdAt: Date.now(),
+    });
+  }, [saveLearningItem, videoId]);
 
   // 收藏句子
   const handleSaveQuote = useCallback(async (segment: TranscriptSegment): Promise<boolean> => {
-    if (fixtureState) return true;
-    try {
-      const res = await fetch("/api/user-quotes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoId,
-          textEn: segment.text,
-          textZh: segment.text_zh,
-          startTime: segment.startTime,
-          endTime: segment.endTime,
-        }),
-      });
-      const payload = await res.json();
-      return payload.ok === true;
-    } catch {
-      return false;
-    }
-  }, [fixtureState, videoId]);
+    return saveLearningItem({
+      kind: "quote",
+      videoId,
+      textEn: segment.text,
+      textZh: segment.text_zh,
+      startTime: segment.startTime,
+      endTime: segment.endTime,
+      createdAt: Date.now(),
+    });
+  }, [saveLearningItem, videoId]);
 
   const showLearningPanels = loading || transcript.length > 0;
+  const transcriptGuidance = transcriptError
+    ? getRecoveryGuidance("transcript", errorCode)
+    : null;
+  const transcriptActions = transcriptGuidance
+    ? [transcriptGuidance.primaryAction, transcriptGuidance.secondaryAction]
+    : [];
 
   return (
     <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
@@ -484,6 +691,10 @@ export function VideoWorkspace({
             {fixtureState ? <span className="inline-flex min-h-8 items-center rounded-full border border-[rgba(91,168,255,0.4)] bg-[rgba(91,168,255,0.1)] px-3 text-[var(--tp-accent)]">本地状态：{fixtureState}</span> : null}
           </div>
         </header>
+
+        <div className="mb-5">
+          <WorkspaceProgress stage={stage} />
+        </div>
 
         <div className={showLearningPanels
           ? "grid gap-5 md:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]"
@@ -515,24 +726,30 @@ export function VideoWorkspace({
                 <div className="flex items-start gap-3 text-sm font-medium leading-6 text-red-300">
                   <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden />
                   <div>
-                    <p>{transcriptError}</p>
-                    <p className="mt-1 font-normal text-[var(--tp-text-muted)]">
-                      {errorCode === "NO_CAPTION_TRACKS"
-                        ? "可以换一条带英文字幕的视频，或先在 YouTube 检查字幕是否开启。"
-                        : "输入内容仍可保留；请稍后重试，或换一条已核对的视频。"}
-                    </p>
+                    <p>{transcriptGuidance?.title}</p>
+                    <p className="mt-1 font-normal text-[var(--tp-text-muted)]">{transcriptGuidance?.message}</p>
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href="/explore" className="inline-flex min-h-11 items-center rounded-lg bg-[var(--tp-text)] px-4 text-sm font-semibold text-[var(--tp-bg)] transition-colors hover:bg-white">
-                    选择其他视频
-                  </Link>
-                  <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
-                    在 YouTube 检查
-                  </a>
-                  {errorCode === "quota_exceeded" ? (
+                  {transcriptActions.includes("retry") ? (
+                    <button type="button" onClick={retryTranscript} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--tp-text)] px-4 text-sm font-semibold text-[var(--tp-bg)] transition-colors hover:bg-white">
+                      <RotateCcw className="h-4 w-4" aria-hidden />
+                      重试字幕
+                    </button>
+                  ) : null}
+                  {transcriptActions.includes("choose_video") ? (
+                    <Link href="/explore" className="inline-flex min-h-11 items-center rounded-lg bg-[var(--tp-text)] px-4 text-sm font-semibold text-[var(--tp-bg)] transition-colors hover:bg-white">
+                      选择其他视频
+                    </Link>
+                  ) : null}
+                  {transcriptActions.includes("open_youtube") ? (
+                    <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
+                      在 YouTube 检查
+                    </a>
+                  ) : null}
+                  {transcriptActions.includes("login") ? (
                     <Link href={`/login?next=${encodeURIComponent(`/video/${videoId}`)}`} className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
-                      立即登录
+                      登录后继续
                     </Link>
                   ) : null}
                 </div>
@@ -542,9 +759,15 @@ export function VideoWorkspace({
             {analysisNotice ? (
               <div role="status" className="flex items-start gap-3 rounded-[0.875rem] border border-[var(--tp-border-strong)] bg-[var(--tp-surface)] p-4 text-sm leading-6 text-[var(--tp-text-secondary)]">
                 <Info className="mt-1 h-4 w-4 shrink-0 text-[var(--tp-accent)]" aria-hidden />
-                <div>
-                  <p className="font-semibold text-[var(--tp-text)]">字幕已就绪</p>
-                  <p>{analysisNotice}</p>
+                <div className="flex-1">
+                  <p className="font-semibold text-[var(--tp-text)]">{analysisNotice.title}</p>
+                  <p>{analysisNotice.message}</p>
+                  {analysisNotice.secondaryAction === "retry" || analysisNotice.primaryAction === "retry" ? (
+                    <button type="button" onClick={retryAnalysis} className="mt-2 inline-flex min-h-11 items-center gap-2 font-semibold text-[var(--tp-accent)]">
+                      <RotateCcw className="h-4 w-4" aria-hidden />
+                      重试深入解析
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -578,6 +801,8 @@ export function VideoWorkspace({
                 onSeekTo={handleSeekTo}
                 translating={translating}
                 translationError={translationError}
+                onRetryTranslation={() => void ensureTranslation(transcriptMode.displayMode)}
+                saveNotice={saveNotice}
                 chatEnabled={transcript.length > 0}
               />
             </div> : null}
@@ -615,6 +840,8 @@ export function VideoWorkspace({
                 onSeekTo={handleSeekTo}
                 translating={translating}
                 translationError={translationError}
+                onRetryTranslation={() => void ensureTranslation(transcriptMode.displayMode)}
+                saveNotice={saveNotice}
                 chatEnabled={transcript.length > 0}
               />
             </div>

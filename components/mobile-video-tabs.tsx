@@ -23,6 +23,8 @@ interface MobileVideoTabsProps {
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
   translationError?: string | null;
+  onRetryTranslation?: () => void;
+  saveNotice?: string | null;
   chatEnabled: boolean;
 }
 
@@ -49,6 +51,8 @@ export function MobileVideoTabs({
   onSeekTo,
   translating,
   translationError,
+  onRetryTranslation,
+  saveNotice,
   chatEnabled,
 }: MobileVideoTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
@@ -101,6 +105,8 @@ export function MobileVideoTabs({
             onSeekTo={onSeekTo}
             translating={translating}
             translationError={translationError}
+            onRetryTranslation={onRetryTranslation}
+            saveNotice={saveNotice}
           />
         </div>
         <div id="mobile-video-panel-chat" role="tabpanel" aria-labelledby="mobile-video-tab-chat" hidden={activeTab !== "chat"}>

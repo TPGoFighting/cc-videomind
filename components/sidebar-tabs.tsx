@@ -22,6 +22,8 @@ interface SidebarTabsProps {
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
   translationError?: string | null;
+  onRetryTranslation?: () => void;
+  saveNotice?: string | null;
   chatEnabled: boolean;
 }
 
@@ -48,6 +50,8 @@ export function SidebarTabs({
   onSeekTo,
   translating,
   translationError,
+  onRetryTranslation,
+  saveNotice,
   chatEnabled,
 }: SidebarTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
@@ -96,6 +100,8 @@ export function SidebarTabs({
               onSeekTo={onSeekTo}
               translating={translating}
               translationError={translationError}
+              onRetryTranslation={onRetryTranslation}
+              saveNotice={saveNotice}
             />
         </div>
         <div id="desktop-video-panel-chat" role="tabpanel" aria-labelledby="desktop-video-tab-chat" hidden={activeTab !== "chat"} className="h-full overflow-auto p-4">

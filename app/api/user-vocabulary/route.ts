@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { deleteVocabulary, loadVocabulary, saveVocabulary } from "@/lib/db/local-store";
+import { deleteVocabulary, getReviewState, loadVocabulary, saveReviewState, saveVocabulary } from "@/lib/db/local-store";
 import { isLocalMode } from "@/lib/local-mode";
+import { createInitialReviewState } from "@/lib/product/review-schedule";
 import { withSecurity } from "@/lib/security/middleware";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { queryTencent } from "@/lib/tencent-db";
@@ -39,20 +40,29 @@ export async function POST(request: Request) {
   return withSecurity({ allowedMethods: ["POST"], maxBodySize: 32 * 1024, scope: "user-vocabulary", rateLimit: { maxRequests: 30, windowMs: 60_000 } }).wrap(request, async () => {
     const parsed = await readJson(request, SaveWordRequestSchema);
     if (!parsed.ok) return parsed.response;
+    const lemma = parsed.data.lemma.trim().toLowerCase();
     if (isLocalMode()) {
-      await saveVocabulary([{ word: parsed.data.lemma, videoId: parsed.data.videoId, definitionZh: parsed.data.lemma }]);
-      return successResponse({ saved: true, lemma: parsed.data.lemma, wordId: parsed.data.lemma });
+      await saveVocabulary([{ word: lemma, videoId: parsed.data.videoId, definitionZh: lemma }]);
+      const existingReview = await getReviewState(lemma);
+      if (!existingReview) await saveReviewState(createInitialReviewState(lemma));
+      return successResponse({ saved: true, lemma, wordId: lemma });
     }
     const userId = await getAuthenticatedUserId(request);
     if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
     const id = randomUUID();
     await queryTencent(
-      `INSERT INTO user_vocabulary (id, user_id, lemma, video_id, definition_zh)
-       VALUES ($1, $2, $3, $4, $3)
-       ON CONFLICT (user_id, lemma) DO UPDATE SET video_id = EXCLUDED.video_id, created_at = NOW()`,
-      [id, userId, parsed.data.lemma.toLowerCase(), parsed.data.videoId],
+      `WITH saved AS (
+         INSERT INTO user_vocabulary (id, user_id, lemma, video_id, definition_zh)
+         VALUES ($1, $2, $3, $4, $3)
+         ON CONFLICT (user_id, lemma) DO UPDATE SET video_id = EXCLUDED.video_id, updated_at = NOW()
+         RETURNING lemma
+       )
+       INSERT INTO user_word_reviews (user_id, lemma, repetitions, ease_factor, interval_days, next_review_at, status)
+       SELECT $2, saved.lemma, 0, 2.5, 1, NOW() + INTERVAL '1 day', 'learning' FROM saved
+       ON CONFLICT (user_id, lemma) DO NOTHING`,
+      [id, userId, lemma, parsed.data.videoId],
     );
-    return successResponse({ saved: true, lemma: parsed.data.lemma, wordId: id });
+    return successResponse({ saved: true, lemma, wordId: id });
   });
 }
 

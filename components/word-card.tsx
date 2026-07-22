@@ -41,6 +41,7 @@ export function WordCard({
   const ref = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const adjustedPos = getAdjustedPosition(position.top, position.left);
 
   // 点击外部关闭
@@ -82,9 +83,10 @@ export function WordCard({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-2 top-2 rounded-md p-1.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/60 sm:hidden"
+          className="absolute right-1 top-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-[var(--tp-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--tp-text)] sm:hidden"
+          aria-label="关闭词义卡片"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden />
         </button>
 
         {/* 词条头部 */}
@@ -105,21 +107,29 @@ export function WordCard({
               disabled={saving || saved}
               onClick={async () => {
                 setSaving(true);
-                const ok = await onSave(definition.lemma);
-                if (ok) setSaved(true);
-                setSaving(false);
+                setSaveError(null);
+                try {
+                  const ok = await onSave(definition.lemma);
+                  if (ok) setSaved(true);
+                  else setSaveError("暂未保存；请查看页面提示后重试。");
+                } catch {
+                  setSaveError("暂未保存，请稍后重试。");
+                } finally {
+                  setSaving(false);
+                }
               }}
               className={cn(
-                "shrink-0 rounded-md p-2 transition-colors min-h-[40px] min-w-[40px]",
+                "inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md transition-colors",
                 saved
-                  ? "text-[#0099ff]"
-                  : "text-white/30 hover:bg-[#0099ff]/15 hover:text-[#0099ff]"
+                  ? "text-[var(--tp-accent)]"
+                  : "text-[var(--tp-text-muted)] hover:bg-[rgba(91,168,255,0.15)] hover:text-[var(--tp-accent)]"
               )}
+              aria-label={saved ? "已加入次日复习" : "收藏这个单词"}
             >
               {saved ? (
-                <Check className="h-4 w-4" />
+                <Check className="h-4 w-4" aria-hidden />
               ) : (
-                <BookmarkPlus className="h-4 w-4" />
+                <BookmarkPlus className="h-4 w-4" aria-hidden />
               )}
             </button>
           )}
@@ -130,6 +140,14 @@ export function WordCard({
           <span className="mt-1 inline-block text-[11px] italic text-white/30">
             {definition.partOfSpeech}
           </span>
+        )}
+
+        {saved ? (
+          <p className="mt-2 text-xs font-semibold text-[var(--tp-accent)]">已保存，次日（约 24 小时后）复习会带你回到原视频。</p>
+        ) : saveError ? (
+          <p role="alert" className="mt-2 text-xs font-medium text-red-300">{saveError}</p>
+        ) : (
+          <p className="mt-2 text-xs leading-5 text-[var(--tp-text-muted)]">收藏会保留这个词的来源，并安排到次日复习。</p>
         )}
 
         {/* 中文释义 */}

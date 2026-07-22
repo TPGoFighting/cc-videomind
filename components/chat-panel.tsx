@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { MessageSquare, Send } from "lucide-react";
+import { Fragment, useRef, useState } from "react";
+import { MessageSquare, RotateCcw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { ChatAnswer, JsonResponse } from "@/lib/types";
+import { getRecoveryGuidance, type RecoveryGuidance } from "@/lib/product/recovery-guidance";
 import { formatTimestamp } from "@/lib/utils/time";
 
 /** 解析时间戳文本（如 "0:30", "1:05", "1:30:20"）为秒数 */
@@ -18,6 +19,29 @@ function parseTimestampToSeconds(text: string): number | null {
 }
 
 const TIME_RE = /(\d{1,3}:\d{2}(?::\d{2})?)/g;
+
+function ChatErrorNotice({
+  guidance,
+  onAction,
+}: {
+  guidance: RecoveryGuidance;
+  onAction: () => void;
+}) {
+  return (
+    <div role="alert" className="rounded-lg border border-red-400/25 bg-red-400/[0.07] p-3.5">
+      <p className="text-[13px] font-semibold text-red-200">{guidance.title}</p>
+      <p className="mt-1 text-[13px] leading-5 text-[var(--tp-text-secondary)]">{guidance.message}</p>
+      <button
+        type="button"
+        onClick={onAction}
+        className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-300/25 px-3 text-[13px] font-semibold text-red-200 transition-colors hover:bg-red-300/10"
+      >
+        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+        {guidance.primaryAction === "edit_question" ? "修改问题" : "再次发送"}
+      </button>
+    </div>
+  );
+}
 
 /** 将答案文本中的时间戳渲染为可点击按钮 */
 function renderWithTimestamps(text: string, onSeek: (s: number) => void) {
@@ -64,13 +88,16 @@ export function ChatPanel({
     Array<{ question: string; answer: ChatAnswer }>
   >([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<RecoveryGuidance | null>(null);
+  const [retryQuestion, setRetryQuestion] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function ask(nextQuestion = question) {
     if (disabled || !nextQuestion.trim()) return;
 
     setLoading(true);
     setError(null);
+    setRetryQuestion(nextQuestion);
 
     try {
       const response = await fetch("/api/chat", {
@@ -80,7 +107,7 @@ export function ChatPanel({
       });
       const payload = (await response.json()) as JsonResponse<ChatAnswer>;
       if (!payload.ok) {
-        setError(payload.error.message);
+        setError(getRecoveryGuidance("chat", payload.error.code));
         return;
       }
 
@@ -89,8 +116,9 @@ export function ChatPanel({
         ...current,
       ]);
       setQuestion("");
+      setRetryQuestion(null);
     } catch {
-      setError("无法从转录中找到答案，请换一种问法试试。");
+      setError(getRecoveryGuidance("chat", "network_error"));
     } finally {
       setLoading(false);
     }
@@ -133,6 +161,7 @@ export function ChatPanel({
           }}
         >
           <Input
+            ref={inputRef}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="基于转录内容提问…"
@@ -149,9 +178,15 @@ export function ChatPanel({
           </Button>
         </form>
 
-        {error ? (
-          <p role="alert" className="text-[13px] font-medium text-red-300">{error}</p>
-        ) : null}
+        {error ? <ChatErrorNotice
+          guidance={error}
+          onAction={() => {
+            if (error.primaryAction === "edit_question") {
+              if (!question && retryQuestion) setQuestion(retryQuestion);
+              inputRef.current?.focus();
+            } else void ask(retryQuestion ?? question);
+          }}
+        /> : null}
 
         <div className="space-y-3">
           {answers.map((item) => (
@@ -232,6 +267,7 @@ export function ChatPanel({
           }}
         >
           <Input
+            ref={inputRef}
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="基于转录内容提问…"
@@ -248,9 +284,15 @@ export function ChatPanel({
           </Button>
         </form>
 
-        {error ? (
-          <p role="alert" className="text-[13px] font-medium text-red-300">{error}</p>
-        ) : null}
+        {error ? <ChatErrorNotice
+          guidance={error}
+          onAction={() => {
+            if (error.primaryAction === "edit_question") {
+              if (!question && retryQuestion) setQuestion(retryQuestion);
+              inputRef.current?.focus();
+            } else void ask(retryQuestion ?? question);
+          }}
+        /> : null}
 
         {/* 回答列表 */}
         <div className="space-y-3">

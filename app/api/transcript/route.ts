@@ -146,13 +146,19 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       console.error("Transcript fetch failed", error);
+      const code =
+        error instanceof TranscriptError
+          ? error.code
+          : error instanceof ExternalServiceError
+            ? "metadata_unavailable"
+            : "transcript_failed";
       const message =
         error instanceof TranscriptError
           ? error.message
           : error instanceof ExternalServiceError
             ? "无法获取视频元数据，请检查网络后重试。"
             : "暂时无法获取视频字幕，请稍后重试。";
-      return errorResponse("transcript_failed", message, 502);
+      return errorResponse(code, message, 502);
     }
   });
 }

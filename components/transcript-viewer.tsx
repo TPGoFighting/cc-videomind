@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck, ListVideo, Navigation, Pin, PinOff } from "lucide-react";
+import { Bookmark, BookmarkCheck, Check, Copy, ListVideo, Navigation, Pin, PinOff, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DisplayMode, TranscriptSegment, WordDefinition } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils/time";
@@ -33,6 +33,8 @@ export function TranscriptViewer({
   onSeekTo,
   translating = false,
   translationError,
+  onRetryTranslation,
+  saveNotice,
 }: {
   transcript: TranscriptSegment[];
   loading: boolean;
@@ -46,6 +48,8 @@ export function TranscriptViewer({
   onSeekTo?: (seconds: number) => void;
   translating?: boolean;
   translationError?: string | null;
+  onRetryTranslation?: () => void;
+  saveNotice?: string | null;
 }) {
   const [autoScroll, setAutoScroll] = useState(true);
   const [showJumpButton, setShowJumpButton] = useState(false);
@@ -54,6 +58,9 @@ export function TranscriptViewer({
     position: { top: number; left: number };
   } | null>(null);
   const [savingQuote, setSavingQuote] = useState<Set<string>>(new Set());
+  const [savedQuotes, setSavedQuotes] = useState<Set<string>>(new Set());
+  const [copiedQuote, setCopiedQuote] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -225,16 +232,36 @@ export function TranscriptViewer({
     async (segment: TranscriptSegment) => {
       if (!onSaveQuote) return;
       const key = `${segment.startTime}-${segment.endTime}`;
+      setActionStatus(null);
       setSavingQuote((prev) => new Set(prev).add(key));
-      await onSaveQuote(segment);
-      setSavingQuote((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+      try {
+        const saved = await onSaveQuote(segment);
+        if (saved) {
+          setSavedQuotes((previous) => new Set(previous).add(key));
+          setActionStatus("已收藏这句话；可从句子收藏回到原视频与时间点。");
+        }
+      } finally {
+        setSavingQuote((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     },
     [onSaveQuote]
   );
+
+  const handleCopyQuote = useCallback(async (segment: TranscriptSegment) => {
+    const key = `${segment.startTime}-${segment.endTime}`;
+    setActionStatus(null);
+    try {
+      await navigator.clipboard.writeText(segment.text);
+      setCopiedQuote(key);
+      setActionStatus("原文已复制到剪贴板。");
+    } catch {
+      setActionStatus("浏览器未允许复制。可直接选中文字后复制。");
+    }
+  }, []);
 
   const activeDefinition =
     activeWord ? wordDefinitions?.get(activeWord.lemma) : undefined;
@@ -279,12 +306,12 @@ export function TranscriptViewer({
     <Card className={cn("md:flex md:h-full md:flex-col", hideHeader && "border-0 bg-transparent")}>
       {!hideHeader && (
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-2">
             <CardTitle className="flex items-center gap-2 text-white">
               <ListVideo className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
               转录文本
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
               {onDisplayModeChange && (
                 <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
               )}
@@ -292,7 +319,10 @@ export function TranscriptViewer({
                 <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
               )}
               {translationError ? (
-                <span className="text-[11px] text-red-400">{translationError}</span>
+                <button type="button" onClick={onRetryTranslation} className="inline-flex min-h-11 max-w-full items-center gap-1.5 text-left text-[11px] leading-4 text-red-300">
+                  <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span>{translationError} 点击重试</span>
+                </button>
               ) : needsTranslation && !translating && (
                 <span className="text-[11px] text-white/20">切换至中英/中文模式以触发翻译</span>
               )}
@@ -325,8 +355,8 @@ export function TranscriptViewer({
       )}
       {/* hideHeader 模式下的控制栏 */}
       {hideHeader && (
-        <div className="flex items-center justify-between px-3 pt-3 pb-1">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-2 px-3 pb-1 pt-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             {onDisplayModeChange && (
               <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
             )}
@@ -334,7 +364,10 @@ export function TranscriptViewer({
               <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
             )}
             {translationError ? (
-              <span className="text-[11px] text-red-400">{translationError}</span>
+              <button type="button" onClick={onRetryTranslation} className="inline-flex min-h-11 max-w-full items-center gap-1.5 text-left text-[11px] leading-4 text-red-300">
+                <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span>{translationError} 点击重试</span>
+              </button>
             ) : needsTranslation && !translating && (
               <span className="text-[11px] text-white/20">切换模式以翻译</span>
             )}
@@ -360,7 +393,18 @@ export function TranscriptViewer({
           )}
         </div>
       )}
-      <CardContent className="md:flex-1 md:min-h-0 relative">
+      <CardContent className="relative md:flex md:min-h-0 md:flex-1 md:flex-col">
+        {!loading && transcript.length > 0 ? (
+          <div className="mb-3 rounded-lg border border-[rgba(91,168,255,0.28)] bg-[rgba(91,168,255,0.08)] p-3" aria-live="polite">
+            <p className="text-[13px] font-semibold text-[var(--tp-text)]">先收藏一句，保留它的出处</p>
+            <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">
+              收藏句子会保存原句、视频与时间点；收藏单词会安排到次日复习。未登录时点击收藏才会进入登录，当前字幕不会丢失。
+            </p>
+            {saveNotice || actionStatus ? (
+              <p className="mt-2 text-xs font-semibold leading-5 text-[var(--tp-accent)]">{actionStatus ?? saveNotice}</p>
+            ) : null}
+          </div>
+        ) : null}
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -376,11 +420,13 @@ export function TranscriptViewer({
         ) : (
           <div
             ref={containerRef}
-            className="max-h-[50vh] space-y-3 overflow-auto pr-1 md:max-h-none md:h-full"
+            className="max-h-[50vh] space-y-3 overflow-auto pr-1 md:h-auto md:min-h-0 md:max-h-none md:flex-1"
           >
             {transcript.map((segment, i) => {
               const segKey = `${segment.startTime}-${segment.endTime}`;
               const isSaving = savingQuote.has(segKey);
+              const isSaved = savedQuotes.has(segKey);
+              const isCopied = copiedQuote === segKey;
 
               return (
                 <div
@@ -433,31 +479,42 @@ export function TranscriptViewer({
                       </p>
                     )}
 
-                    {/* 收藏按钮 */}
-                    {onSaveQuote && (
+                    <div className="mt-1 flex flex-wrap gap-1" data-no-seek>
                       <button
                         type="button"
-                        data-no-seek
-                        disabled={isSaving}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSaveQuote(segment);
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleCopyQuote(segment);
                         }}
-                        className={cn(
-                          "mt-1 inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] touch-reveal",
-                          isSaving
-                            ? "text-[var(--tp-accent)]"
-                            : "text-[var(--tp-text-faint)] hover:text-[var(--tp-accent)]"
-                        )}
+                        className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--tp-text-faint)] transition-colors hover:text-[var(--tp-text)]"
                       >
-                        {isSaving ? (
-                          <BookmarkCheck className="h-3 w-3" />
-                        ) : (
-                          <Bookmark className="h-3 w-3" />
-                        )}
-                        收藏句子
+                        {isCopied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+                        {isCopied ? "已复制" : "复制原文"}
                       </button>
-                    )}
+                      {onSaveQuote ? (
+                        <button
+                          type="button"
+                          disabled={isSaving || isSaved}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleSaveQuote(segment);
+                          }}
+                          className={cn(
+                            "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] transition-colors touch-reveal",
+                            isSaving || isSaved
+                              ? "text-[var(--tp-accent)]"
+                              : "text-[var(--tp-text-faint)] hover:text-[var(--tp-accent)]"
+                          )}
+                        >
+                          {isSaving || isSaved ? (
+                            <BookmarkCheck className="h-3.5 w-3.5" aria-hidden />
+                          ) : (
+                            <Bookmark className="h-3.5 w-3.5" aria-hidden />
+                          )}
+                          {isSaved ? "已收藏" : isSaving ? "保存中" : "收藏句子"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               );
