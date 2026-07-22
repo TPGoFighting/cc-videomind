@@ -1,6 +1,6 @@
 # cc-videomind 文档目录
 
-> 本文档是 cc-videomind 项目的完整文档索引，按功能模块分类组织。
+> 本索引包含历史自动生成文档。生产事实以根目录 README、ADR、架构矩阵和当前源代码为准；带 Supabase、Stripe、Vercel、OpenNext 或 Worker 名称的旧页面可能只是归档，不得直接用于发布。
 
 ---
 
@@ -18,6 +18,8 @@
 | [Continue.md.md](Continue.md.md) | 待续事项 |
 | [Difficulty.md.md](Difficulty.md.md) | 难点记录 |
 | [腾讯云自托管架构](tencent-cloud-architecture.md) | PostgreSQL、认证、备份与发布指南 |
+| [ADR-0001](decisions/0001-tencent-runtime-and-data-authority.md) | 唯一生产运行时与数据权威决策 |
+| [API 归属矩阵](architecture/api-ownership-matrix.md) | 全部路由的运行时、数据、鉴权和缓存归属 |
 
 ---
 
@@ -86,8 +88,8 @@
 | 文件 | 端点 | 说明 |
 |------|------|------|
 | [api/payment/submit.md](api/payment/submit.md) | `POST /api/payment/submit` | 提交支付 |
-| [api/stripe/create-checkout-session.md](api/stripe/create-checkout-session.md) | `POST /api/stripe/create-checkout-session` | Stripe 会话 |
-| [api/webhooks/stripe.md](api/webhooks/stripe.md) | `POST /api/webhooks/stripe` | Stripe 回调 |
+| [api/stripe/create-checkout-session.md](api/stripe/create-checkout-session.md) | `POST /api/stripe/create-checkout-session` | 已禁用兼容端点（410） |
+| [api/webhooks/stripe.md](api/webhooks/stripe.md) | `POST /api/webhooks/stripe` | 已禁用兼容端点（410） |
 
 ### 同步功能
 
@@ -129,12 +131,12 @@
 | [lib/bilibili/risk-manager.md](lib/bilibili/risk-manager.md) | 风险管理 |
 | [lib/bilibili/id.md](lib/bilibili/id.md) | B站 ID 解析 |
 
-### Supabase 模块 (`lib/supabase/`)
+### 历史命名的腾讯 PostgreSQL 适配模块 (`lib/supabase/`)
+
+`client.ts` 与 `server.ts` 已删除；下列仍存在的 cache/admin/quota 模块只保留历史路径名，生产实现使用 `lib/tencent-db.ts`。
 
 | 文件 | 说明 |
 |------|------|
-| [lib/supabase/client.md](lib/supabase/client.md) | 客户端配置 |
-| [lib/supabase/server.md](lib/supabase/server.md) | 服务端配置 |
 | [lib/supabase/admin.md](lib/supabase/admin.md) | 管理员功能 |
 | [lib/supabase/quota.md](lib/supabase/quota.md) | 配额管理 |
 | [lib/supabase/quota.test.md](lib/supabase/quota.test.md) | 配额测试 |
@@ -148,7 +150,6 @@
 |------|------|
 | [lib/security/middleware.md](lib/security/middleware.md) | 安全中间件 |
 | [lib/security/rate-limit.md](lib/security/rate-limit.md) | 速率限制 |
-| [lib/security/rate-limiter-do.md](lib/security/rate-limiter-do.md) | Durable Object 限流 |
 
 ### 工具模块 (`lib/utils/`)
 
@@ -192,7 +193,6 @@
 | [lib/navigation.ts.md](lib/navigation.ts.md) | 导航配置 |
 | [lib/plans.ts.md](lib/plans.ts.md) | 套餐计划 |
 | [lib/glb-models.ts.md](lib/glb-models.ts.md) | 3D 模型 |
-| [lib/stripe/server.md](lib/stripe/server.md) | Stripe 服务端 |
 
 ---
 
@@ -283,7 +283,9 @@
 
 ## 🗄️ 数据库文档
 
-### 迁移文件 (`supabase/migrations/`)
+### 历史迁移档案 (`supabase/migrations/`)
+
+这些 SQL 不是当前生产迁移入口；腾讯 schema 权威定义在 `lib/tencent-db.ts`。
 
 | 文件 | 说明 |
 |------|------|
@@ -312,10 +314,6 @@
 | [postcss.config.mjs.md](postcss.config.mjs.md) | PostCSS 配置 |
 | [eslint.config.mjs.md](eslint.config.mjs.md) | ESLint 配置 |
 | [middleware.ts.md](middleware.ts.md) | 中间件配置 |
-| [vercel.json.md](vercel.json.md) | Vercel 配置 |
-| [open-next.config.ts.md](open-next.config.ts.md) | OpenNext 配置 |
-| [worker.ts.md](worker.ts.md) | Worker 配置 |
-| [wrangler.jsonc.md](wrangler.jsonc.md) | Wrangler 配置 |
 
 ---
 

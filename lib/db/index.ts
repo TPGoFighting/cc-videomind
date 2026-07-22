@@ -1,48 +1,16 @@
-import { Pool, PoolClient } from "pg";
+import type { QueryResultRow } from "pg";
+import { queryTencent } from "@/lib/tencent-db";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-
-let _pool: Pool | null = null;
-
-function getPool(): Pool {
-  if (!_pool) {
-    if (!DATABASE_URL) {
-      throw new Error("DATABASE_URL environment variable is not set");
-    }
-    _pool = new Pool({
-      connectionString: DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
-  }
-  return _pool;
-}
-
-export async function query<T = Record<string, unknown>>(
+/**
+ * Compatibility entrypoint for older repository modules.
+ *
+ * Production has one PostgreSQL pool and one schema initializer. New code
+ * should import queryTencent directly; existing vector/task repositories can
+ * continue importing query while they are renamed.
+ */
+export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
-  params?: unknown[]
-): Promise<{ rows: T[]; rowCount: number }> {
-  const pool = getPool();
-  const result = await pool.query(text, params);
-  return { rows: result.rows as T[], rowCount: result.rowCount ?? 0 };
-}
-
-export async function withClient<T>(
-  fn: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const pool = getPool();
-  const client = await pool.connect();
-  try {
-    return await fn(client);
-  } finally {
-    client.release();
-  }
-}
-
-export async function closePool(): Promise<void> {
-  if (_pool) {
-    await _pool.end();
-    _pool = null;
-  }
+  params: unknown[] = [],
+) {
+  return queryTencent<T>(text, params);
 }

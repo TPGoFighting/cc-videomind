@@ -1,229 +1,149 @@
-# 🎬 Teach Player (VideoMind)
+# Teach Player (VideoMind)
 
-> **YouTube AI 学习工作区** — 粘贴 YouTube 链接，快速获取字幕、AI 摘要、时间戳要点、AI 问答和个人笔记。
+Teach Player 把知识型 YouTube 视频转换成可核验、可收藏、可复习的双语学习材料。粘贴一个链接后，用户可以对照字幕与时间点阅读摘要、关键时刻和 AI 回答，再把单词、句子和笔记保存到个人学习库。
 
-📺 **演示视频：** [点击观看 Bilibili 演示](https://www.bilibili.com/video/BV1nJV36KEnV/?spm_id_from=333.1387.homepage.video_card.click)
+- Canonical 生产地址：[https://video.tpgofighting.top](https://video.tpgofighting.top)
+- 兼容地址：[https://teachplayer.tpgofighting.top](https://teachplayer.tpgofighting.top)（尚待配置到 canonical 的显式重定向）
+- Bilibili 演示：[观看视频](https://www.bilibili.com/video/BV1nJV36KEnV/)
 
-🌐 **在线体验：** [https://teachplayer.tpgofighting.top](https://teachplayer.tpgofighting.top)
+## 已实现的核心能力
 
----
+| 能力 | 用户得到什么 |
+| --- | --- |
+| YouTube 解析 | 元数据、带时间点的字幕和学习工作区 |
+| AI 理解 | 可回到原字幕核验的摘要、关键时刻和对话回答 |
+| 双语学习 | 字幕翻译、单词释义、句子收藏和个人笔记 |
+| 后续复习 | SM-2 单词复习、每日打卡和跨会话学习记录 |
+| 账户同步 | 邮箱密码登录，服务端保存历史与个人学习数据 |
+| 次级输入 | Bilibili 解析；登录用户可上传单机自托管的本地媒体 |
 
-## ✨ 主要功能
+## 唯一生产架构
 
-| 功能 | 说明 |
-|------|------|
-| **🎯 一键解析** | 粘贴 YouTube URL 自动拉取视频元数据 + 字幕 |
-| **📝 AI 摘要** | 大模型自动生成视频核心摘要和分段要点 |
-| **🔑 关键时刻** | AI 提取视频中最有价值的学习片段，双语展示 |
-| **💬 AI 对话** | 基于视频内容提问，AI 结合字幕上下文作答 |
-| **📖 单词/句子收藏** | 点击字幕中的单词/句子，一键收藏到生词本或语料库 |
-| **📒 个人笔记** | 每条视频独立笔记，支持 Markdown |
-| **🔄 间隔复习** | SM-2 算法驱动，支持单词、句子、知识点复习 |
-| **📊 学习统计** | 签到打卡、学习数据追踪 |
-| **🌙 深色模式** | 全站深色主题，护眼舒适 |
-
----
-
-## 🏗️ 技术栈
-
-### 前端
-
-| 技术 | 用途 |
-|------|------|
-| **Next.js 16 (App Router)** | React 全栈框架 |
-| **TypeScript** | 类型安全 |
-| **Tailwind CSS** | 样式系统 |
-| **shadcn/ui** | UI 组件库 |
-| **Zod** | 类型定义 + 运行时校验 |
-
-### 后端 & 数据
-
-| 技术 | 用途 |
-|------|------|
-| **腾讯云 PostgreSQL** | 自托管数据库、视频缓存与用户学习数据 |
-| **自托管认证** | 邮箱密码 + HttpOnly Cookie Session |
-| **Anthropic API (LongCat)** | AI 推理（支持 thinking 块解析） |
-| **YouTube Transcript API** | 字幕提取（4 层回退链） |
-| **Supadata API** | 字幕备选来源 |
-
-### 字幕提取回退链
-
-```
-1. YouTube InnerTube API (Android/Web 并发)
-2. YouTube HTML 页面解析
-3. youtube-transcript npm 包
-4. Supadata 外部 API
+```text
+Browser
+  -> Cloudflare (DNS / TLS / proxy / edge protection only)
+  -> Tencent Cloud Nginx
+  -> Next.js 16 on PM2, port 3100
+       -> Tencent PostgreSQL (authoritative data and sessions)
+       -> AI / transcript / ASR providers
+       -> uploads/ (single-host local media only)
 ```
 
-### 部署
+腾讯云的 Next.js + PM2 + PostgreSQL 是唯一生产运行时与数据权威。Cloudflare 不运行应用 Worker、Durable Object、数据库、上传或后台任务；仓库也不再包含 Vercel、OpenNext 或 Wrangler 部署路径。完整决策见 [`docs/decisions/0001-tencent-runtime-and-data-authority.md`](docs/decisions/0001-tencent-runtime-and-data-authority.md)。
 
-| 平台 | 用途 |
-|------|------|
-| **自建服务器** | Next.js 应用（PM2 + Nginx） |
-| **Cloudflare Tunnel** | HTTPS 反向代理 |
-| **腾讯云 PostgreSQL** | 独立 `teachplayer` 数据库（仅本机服务连接） |
+PostgreSQL 保存账户、session、全站共享视频/AI/翻译缓存、用户学习数据、设置、异步任务和人工付款审核。`LOCAL_MODE=1` 的 SQLite 仅供本地开发，生产禁止启用或双写。
 
----
+## 技术栈
 
-## 🚀 快速开始
+- Next.js 16 App Router、React 19、TypeScript、Tailwind CSS、shadcn/ui
+- Node.js 22、PM2、Nginx
+- 腾讯云 PostgreSQL，通过单一 `pg` Pool 访问
+- 自托管邮箱密码认证，scrypt 密码哈希与 HttpOnly Cookie Session
+- OpenAI-compatible / Gemini AI Provider 适配
+- YouTube 多级字幕回退，可选 Supadata；Bilibili/本地媒体可选 ASR
+
+历史目录名 `lib/supabase/` 暂时保留以控制迁移范围，但其中运行时代码已经访问腾讯 PostgreSQL，不代表仍使用 Supabase。新功能必须直接使用 `lib/tencent-db.ts`，不得恢复 Supabase SDK。
+
+## 本地开发
+
+要求 Node.js 22+ 和 npm。
 
 ```bash
-# 安装依赖
-npm install
-
-# 启动本地开发
+cp .env.example .env.local
+npm ci
 npm run dev
-
-# 类型检查
-npm run typecheck
-
-# 构建生产版本
-npm run build
-
-# 启动生产服务
-npm start
 ```
+
+应用默认开发端口由 Next.js 决定；生产 `npm start` 固定监听 `3100`。
 
 ### 环境变量
 
+生产必需：
+
 ```env
-# App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# Tencent Cloud PostgreSQL（仅服务端）
+NEXT_PUBLIC_APP_URL=https://video.tpgofighting.top
 DATABASE_URL=postgresql://teachplayer_app:<password>@127.0.0.1:5432/teachplayer
-AUTH_SESSION_SECRET=<random-secret>
 
-# AI Provider
-AI_PROVIDER=anthropic
-AI_API_BASE_URL=https://api.longcat.chat/anthropic
-AI_API_KEY=
-AI_MODEL=LongCat-2.0
+AI_PROVIDER=openai-compatible
+AI_API_BASE_URL=https://api.example.com/v1
+AI_API_KEY=<server-only-key>
+AI_MODEL=<provider-model>
+```
 
-# Transcript
-TRANSCRIPT_PROVIDER=supadata
+按启用能力选择：
+
+```env
+AI_FALLBACK_MODELS=
+TRANSCRIPT_PROVIDER=youtube
 SUPADATA_API_KEY=
-
-# Local media and Bilibili ASR (server only)
+TRANSCRIPT_FALLBACK_URL=
+ADMIN_EMAIL=owner@example.com
 ASR_API_BASE_URL=https://api.siliconflow.cn/v1
 ASR_API_KEY=
 ASR_MODEL=FunAudioLLM/SenseVoiceSmall
-
-# Debug
-DEBUG_AI=true
 ```
 
-`ASR_API_KEY` 缺失时，本地视频转录接口会返回安全的配置错误，不会使用源码回退值或向 ASR 供应商发出请求。密钥轮换步骤见 [`docs/operations/secret-rotation.md`](docs/operations/secret-rotation.md)。
+- 所有 key 与 `DATABASE_URL` 只能放在服务器环境或密钥管理系统中。
+- `ASR_API_KEY` 缺失时上传/ASR 安全失败，不会使用源码回退值。轮换方法见 [`docs/operations/secret-rotation.md`](docs/operations/secret-rotation.md)。
+- 认证不需要静态 session secret：每次登录生成高熵随机 token，数据库只保存 SHA-256 哈希。
+- 其他开发专用选项以 [`.env.example`](.env.example) 和对应模块为准。
 
----
+## 质量门禁
 
-## 📂 项目结构
+提交或发布前按顺序运行：
 
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm run test
+npm run build
 ```
+
+测试不应访问真实 AI、支付、用户数据库或生产凭证。CI 使用同一组命令；本地构建成功不能替代线上验证。
+
+## 腾讯云发布
+
+仓库不提供会隐藏生产状态的“一键部署”命令。发布负责人应在腾讯云主机上使用固定目录和 PM2 进程执行：
+
+1. 先创建 PostgreSQL 备份并记录当前 Git commit 与 PM2 版本。
+2. 拉取已审核 commit，在 Node.js 22 环境执行上述五项质量门禁。
+3. 确认 `.env.local` 至少包含 canonical URL、数据库和有效 AI 配置。
+4. 用 `npm start` 对应的 PM2 配置在 `3100` 端口启动或 reload；Nginx 只反代该端口。
+5. 验证 canonical 域名、注册/登录、`/api/me`、一次视频解析、保存/删除、复习和上传边界。
+6. 失败时恢复发布前 commit 与数据库备份，不把旧页面仍可访问视为回滚成功。
+
+具体备份、恢复、数据表和扩容边界见 [`docs/tencent-cloud-architecture.md`](docs/tencent-cloud-architecture.md)。本任务只定义路径，不会自动部署、迁移生产数据库、修改 DNS 或轮换密钥。
+
+## 支付边界
+
+首发采用站内付款凭证提交和管理员人工审核。Stripe 创建会话与 webhook 路由被明确禁用并返回 `410 payment_method_disabled`；在真实国内支付能力完成前，不展示或恢复 Stripe 支付承诺。
+
+## 项目结构
+
+```text
 app/
-├── api/                    # API 路由（28 个）
-│   ├── transcript/         # 字幕提取
-│   ├── analyze/            # AI 视频分析
-│   ├── word-definitions/   # 词义生成
-│   ├── generate-moments/   # 关键时刻提取
-│   ├── generate-summary/   # 内容摘要
-│   ├── chat/               # AI 对话
-│   └── translate-transcript/ # 字幕翻译 (SSE)
-├── video/[videoId]/       # 视频工作区（核心页面）
-├── review/                # SM-2 间隔复习
-├── history/               # 浏览历史
-├── vocabulary/            # 生词本
-├── quotes/                # 句子收藏
-└── notes/                 # 笔记管理
-
+  api/                         36 个腾讯云 Next.js API 路由
+  video/[videoId]/             视频学习工作区
+  history/ vocabulary/ quotes/ notes/ review/
 lib/
-├── ai/                    # AI Provider（支持多模型）
-│   ├── provider.ts        # Provider 核心实现
-│   ├── prompts.ts         # Prompt 模板
-│   └── prompts-learn.ts   # 学习功能 Prompt
-├── youtube/               # YouTube 集成
-│   ├── transcript-provider.ts  # 4 层字幕回退链
-│   └── metadata.ts        # 元数据获取
-├── bilibili/              # B站集成
-├── tencent-db.ts          # 腾讯云 PostgreSQL 连接与幂等建表
-├── tencent-auth.ts        # 自托管用户认证与 Cookie Session
-├── security/              # 安全中间件（限速/CSRF）
-└── utils/                 # 工具函数
-
-components/
-├── video-workspace.tsx    # 视频工作区主组件
-├── transcript-viewer.tsx  # 字幕查看器
-├── chat-panel.tsx         # AI 对话面板
-├── notes-panel.tsx        # 笔记面板
-├── word-card.tsx          # 单词卡片
-└── review-flashcard.tsx   # 复习闪卡
-
-docs/                      # 项目文档（151 个文件）
-├── README.md              # 文档目录索引
-├── AI模型API格式参考.md    # 主流 AI 模型 API 格式对比
-└── 项目API格式需求.md      # 项目 AI API 需求
+  ai/                          AI Provider 与 prompts
+  youtube/                     YouTube 元数据和字幕
+  tencent-db.ts                唯一生产数据库连接与 schema
+  tencent-auth.ts              用户和 session
+  supabase/                    历史命名的腾讯 PG 适配模块
+  db/                          LOCAL_MODE 与兼容入口
+  security/                    API 安全中间件
+components/                    页面与业务组件
+docs/                          架构、ADR、API 文档与执行证据
 ```
 
----
+接口级运行时、数据库、认证和缓存归属见 [`docs/architecture/api-ownership-matrix.md`](docs/architecture/api-ownership-matrix.md)，当前产品规格见 [`TEACH_PLAYER_SPEC.md`](TEACH_PLAYER_SPEC.md)，顺序执行进度见 [`CODEX_EXECUTION_TODO.md`](CODEX_EXECUTION_TODO.md)。
 
-## 🧠 架构亮点
+## Android
 
-### 双阶段分析流程
+Expo Android 源码位于 `android-app` 分支，已发布产物以 [GitHub Releases](https://github.com/TPGoFighting/cc-videomind/releases) 为准。Web 构建通过不代表 Android 发布成功，APK 仍需单独验证构建产物、签名和下载链接。
 
-```
-用户输入 URL → /api/transcript (5-30s) → /api/analyze (30-60s)
-                  ↓                           ↓
-              获取字幕                    AI 分析生成
-```
+## License
 
-每个阶段独立运行，均在 Cloudflare 100s 超时限制内。
-
-### AI Thinking 块处理
-
-LongCat API 返回 `thinking` 内容块（推理过程），项目通过 `extractJsonFromThinking()` 智能提取 JSON：
-
-1. 从最后一个 `` ```json `` 代码块提取
-2. 通过键名模式查找（`"definitions":`, `"moments":` 等）
-3. 从后向前提取最后一个完整 JSON 对象
-
-### 性能优化
-
-| 优化 | 效果 |
-|------|------|
-| InnerTube 客户端并发 | 节省 12s |
-| 视频时间轮询降频 | React 渲染减少 2.5x |
-| YouTube HTML 缓存 | 重复请求节省 8-12s |
-| 翻译并发提升 | 从 3 提升到 5 批次 |
-| AI 模型回退超时 | 从 60s 降至 30s |
-
-### 安全机制
-
-- **withSecurity 中间件**：统一接入方法校验 + CSRF + 请求体大小限制 + 限流
-- **Durable Objects 限流**：Cloudflare 上共享计数，本地回退内存实现
-- **服务端数据隔离**：所有个人数据查询强制按当前会话 `user_id` 过滤
-
----
-
-## 📱 移动端
-
-安卓 APP 基于 Expo (React Native) 开发，源码在 [`android-app`](https://github.com/TPGoFighting/cc-videomind/tree/android-app) 分支。
-
-APK 下载：[GitHub Releases](https://github.com/TPGoFighting/cc-videomind/releases)
-
----
-
-## 📚 文档
-
-完整文档见 [`docs/README.md`](docs/README.md)，包含：
-
-- **AI 模型 API 格式参考**：OpenAI / Anthropic / DeepSeek / LongCat 格式对比
-- **项目 API 格式需求**：各功能输入/输出格式说明
-- **API 端点文档**：28 个端点的请求/响应格式
-- **腾讯云架构**：[自托管 PostgreSQL、认证、备份与发布指南](docs/tencent-cloud-architecture.md)
-- **前端组件文档**：所有 UI 组件的使用说明
-
----
-
-## 📄 许可证
-
-MIT License
+MIT

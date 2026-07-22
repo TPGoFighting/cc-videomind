@@ -1,95 +1,117 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides repository guidance for coding agents working on Teach Player.
 
 ## Product
-Teach Player (VideoMind) — YouTube AI 学习工作区。用户粘贴 YouTube 链接获取转录、摘要、时间戳要点、AI 对话问答和个人笔记。
 
-部署地址：`https://video.tpgofighting.top`，部署在 Vercel + Cloudflare Workers（通过 `@opennextjs/cloudflare`）。
+Teach Player (VideoMind) 是面向中文英语学习者的 YouTube AI 学习工作区。用户粘贴知识型 YouTube 链接后获得可回到字幕和时间点核验的双语材料，并通过收藏与复习形成学习闭环。
+
+- 生产 canonical：`https://video.tpgofighting.top`
+- `https://teachplayer.tpgofighting.top`：兼容域名；完成显式重定向前不要把它写成 canonical
+- 唯一生产运行时：腾讯云 Next.js + PM2 + PostgreSQL
+- Cloudflare：只负责 DNS、TLS、代理和边缘防护，不运行 Next.js、数据库、上传或后台任务
+
+架构决策见 `docs/decisions/0001-tencent-runtime-and-data-authority.md`，全部接口归属见 `docs/architecture/api-ownership-matrix.md`。
 
 ## Commands
+
 ```bash
-npm run dev              # 本地开发服务器（Next.js dev）
-npm run build            # 生产构建
-npm run typecheck        # TypeScript 类型检查（tsc --noEmit）
-npm run lint             # ESLint（--max-warnings=0）
-npm run test             # 运行测试（tsx --test）
-npm run preview          # Cloudflare Workers 本地预览（构建 + 预览）
-npm run deploy           # 部署到 Cloudflare Workers
+npm ci                 # 按 lockfile 安装
+npm run dev            # Next.js 本地开发（webpack）
+npm run lint           # ESLint，warning 也会失败
+npm run typecheck      # TypeScript strict 检查
+npm run test           # Node + tsx 测试，不访问生产服务
+npm run build          # Next.js 生产构建（webpack）
+npm start              # 在 3100 端口启动已构建产物
 ```
 
-## Architecture Overview
+仓库不提供 Cloudflare Worker、Vercel 或 Stripe 部署命令。生产发布必须走腾讯云主机上的 PM2/Nginx 流程，并先执行完整质量门禁。
 
-### Data Flow
-1. 用户在首页 (`/`) 粘贴 YouTube URL → `POST /api/video-info` 解析 videoId → 跳转 `/video/[videoId]`
-2. 视频工作区 (`/video/[videoId]`) → `GET /api/video-analysis` 获取全量数据（metadata + transcript + analysis），7 天 Supabase 缓存
-3. AI 生成（摘要/要点/Chat）按需惰性生成，结果存入 `video_analyses` 缓存表
-4. 用户数据（笔记/词汇/句子/复习）全部经过 RLS 保护，API 路由通过 `getAuthenticatedUserId(request)` 获取当前用户
+## Architecture
 
-### Directory Map
-```
-app/                    # Next.js App Router 页面 + API 路由
-  api/                  # 30+ API 路由（video-info, video-analysis, chat, notes, review 等）
-  video/[videoId]/      # 视频工作区（核心页面）
-  review/               # SM-2 间隔复习
-  history/ vocabulary/ quotes/ notes/  # 用户数据页面
+### Request and data flow
+
+1. 首页 `/` 粘贴 YouTube URL，`POST /api/video-info` 解析元数据，再进入 `/video/[videoId]`。
+2. 字幕、分析、摘要、关键时刻和翻译复用腾讯 PostgreSQL 的共享缓存；缓存模块位于历史目录 `lib/supabase/`，但实现不得连接 Supabase。
+3. 笔记、词汇、句子、复习、打卡、历史、设置和付款审核全部以腾讯 PostgreSQL 为唯一权威。
+4. `lib/tencent-auth.ts` 提供邮箱密码认证与 Cookie/Bearer Session；密码使用 scrypt + 随机盐，会话只保存 SHA-256 token hash。
+5. 本地视频上传仅支持腾讯云单机自托管：文件写入进程主机 `uploads/`，读取接口要求登录。不得把该目录视为多实例或 Cloudflare 存储。
+6. `LOCAL_MODE=1` 可在开发环境使用 SQLite；生产不得启用，也不得与 PostgreSQL 双写。
+
+### Directory map
+
+```text
+app/                          Next.js App Router 页面与 API
+  api/                        36 个 route.ts；生产都运行在腾讯云 Next.js
+  video/[videoId]/            视频学习工作区
+  review/                     SM-2 复习
+  history|vocabulary|quotes|notes/
 lib/
-  ai/                   # AI Provider 接口 + 两个实现（OpenAI 兼容 / Gemini）+ Prompt 模板
-    provider.ts         # AiProvider 接口 + OpenAiCompatibleProvider + GeminiProvider
-    provider-registry.ts # 模型回退链（deepseek-v4-flash → qwen → glm → kimi）
-    prompts*.ts         # 按功能拆分：prompts.ts（分析/聊天），prompts-v2.ts（要点/摘要），prompts-learn.ts（词汇/翻译）
-  youtube/              # YouTube 集成：视频ID解析、元数据获取、转录提取
-    transcript-provider.ts  # TranscriptProvider 接口 + 3 层回退（Innertube → Supadata）
-  supabase/             # Supabase 客户端：server.ts（SSR/Service/Anon 三客户端）、admin.ts、
-                        #   cache.ts（video_analyses 7天缓存）、quota.ts（auth + 限额）
-  security/             # middleware.ts（CSRF + rate limit + body size 包装器）、rate-limit.ts（内存实现）
-  utils/                # 工具：api.ts（JsonResponse 统一格式）、chunk.ts（字幕切片）、
-                        #   json.ts（JSON 提取/修复）、moments-validator.ts（AI 输出校验）
-  hooks/                # 客户端 hooks：useWordDefinitions、useCachedFetch、useDisplayMode 等
-  types.ts              # 所有 Zod Schema + 类型定义
-components/
-  navbar.tsx            # 全局导航栏（含用户菜单、安卓APP下载入口）
-  video-workspace.tsx   # 视频工作区主组件（播放器 + 侧边栏）
-  sidebar-tabs.tsx      # 桌面端侧边栏 Tab
-  mobile-video-tabs.tsx # 移动端 Tab 切换
-  transcript-viewer.tsx # 转录文本查看器（时间戳、单词交互、句子收藏）
-  chat-panel.tsx        # AI 对话面板
-  notes-panel.tsx       # 笔记面板
-  word-card.tsx         # 单词卡片（hover/点击弹出）
-  review-flashcard.tsx  # 复习闪卡（答题模式）
-  ui/                   # shadcn/ui 基础组件
+  ai/                         Provider、配置解析与 prompts
+  youtube/                    YouTube 元数据与字幕回退链
+  tencent-db.ts               唯一生产连接池与幂等 schema
+  tencent-auth.ts             自托管认证和 session
+  supabase/                   仅保留历史模块名；运行时实现必须是腾讯 PostgreSQL
+  db/                         LOCAL_MODE 的 SQLite 适配和 PG 兼容入口
+  security/                   CSRF、body size、单实例内存限流
+components/                   页面与业务组件
+docs/                         ADR、架构、运维与执行证据
 ```
 
-### Key Patterns
+### Key patterns
 
-**Provider/Adapter 模式**：AI 和 Transcript 集成使用接口抽象，通过环境变量或数据库配置切换实现：
-- `AiProvider` 接口（`lib/ai/provider.ts`）→ `OpenAiCompatibleProvider` / `GeminiProvider`
-- `TranscriptProvider` 接口（`lib/youtube/transcript-provider.ts`）→ `InnertubeTranscriptProvider` → `ExternalApiTranscriptProvider`（回退链）
-- AI 配置优先级：用户个人设置 > 全局 app_settings > 环境变量
+**Provider/Adapter**
 
-**API 安全包装器**（`lib/security/middleware.ts`）：每个 API 路由通过 `withSecurity(config)` 统一应用：
-1. Method check → 2. CSRF 校验 → 3. Body size 限制 → 4. Rate limit → 5. 执行 handler
-大多数 API 使用 `30 req/min` 速率限制，Chat 使用 `20 req/min`。
+- `AiProvider` → OpenAI-compatible / Gemini；配置优先级为用户设置 > 全局设置 > 环境变量。
+- `TranscriptProvider` → YouTube 内部多级回退；可选 Supadata 或同一受控生产栈的远程回退。
 
-**认证**：Supabase Auth，全局 `AuthProvider` context（`components/auth-context.tsx`）通过 `/api/me` 获取 profile 并缓存 role + subscription_tier。API 端通过 `getAuthenticatedUserId(request)` 从 Supabase session cookie 解析用户。
+**Server-side authority**
 
-**数据库 RLS**：所有表启用行级安全，API 路由不应信任 client-provided userId，始终使用 Supabase server client 获取认证用户。
+- 生产数据访问统一使用 `queryTencent()` / `withTencentTransaction()`。
+- `getAuthenticatedUserId(request)` 是保留兼容名，实际读取腾讯会话。
+- 不信任 client-provided `userId`；个人数据 SQL 必须显式按会话用户过滤。
+- 新代码不得引入 Supabase SDK、Stripe SDK、Cloudflare Worker 数据存储或第二个 PostgreSQL Pool。
 
-**AI 输出校验**：所有 AI 生成结果必须经过 Zod Schema 校验，失败时有 fallback 修复逻辑（`repairAnalysis`、`parseChatAnswer` 等）。
+**API security**
 
-## Reference Docs
-- `TEACH_PLAYER_SPEC.md` — 完整功能规格（页面路由、API 清单、数据库表、交互细节）
-- `DESIGN.md` — Framer 风格设计系统（纯黑背景、GT Walsheim 字体、Framer Blue 强调色）
+- 写接口使用 `withSecurity()` 统一执行 method、CSRF、body size 和 rate limit 检查。
+- 当前限流只适用于单 PM2 进程；多实例扩容前必须先接入共享限流器。Cloudflare/Nginx 仍需提供外围防滥用。
+- 任务查询和本地视频流目前是已认证/不可猜 ID 的 capability 模型；扩大共享范围前必须增加资源所有权校验。
+- AI 输出必须经过 Zod schema 与既有修复逻辑验证。
 
-## Coding Standards
-- TypeScript strict mode，禁止 `any`（除非注明原因）
-- 所有 API 输入用 Zod 校验，返回 `JsonResponse<T>` 类型
-- 外部 API 调用必须带超时（`fetchJsonWithTimeout`）
-- Server-only 逻辑放在 `lib/` 或 API 路由中，绝不泄露到客户端
-- AI prompt 放在 `lib/ai/prompts*.ts` 独立文件中
+**Payment boundary**
 
-## Security
-- 不信任 client-provided userId，用 `getAuthenticatedUserId(request)` 获取认证用户
-- 校验 Stripe webhook 签名，添加幂等处理
-- 速率限制所有昂贵的 API 路由
-- 不在代码中存储原始密钥
+- D3 首发只使用站内人工付款提交与管理员审核。
+- `/api/stripe/create-checkout-session` 和 `/api/webhooks/stripe` 固定返回 `410 payment_method_disabled`。
+- 不得在国内支付能力真正接入前恢复 Stripe 文案或环境变量。
+
+## Environment
+
+复制 `.env.example`，不要提交真实值。生产至少需要 `NEXT_PUBLIC_APP_URL`、`DATABASE_URL` 和一套有效 AI Provider 配置；按启用能力配置字幕或 ASR 密钥。管理员邮箱由 `ADMIN_EMAIL` 控制。
+
+`DATABASE_URL`、AI/ASR key、Cookie、Bearer token、用户文本和完整上传路径不得写入日志、文档、测试 fixture 或 Git。
+
+## Quality and deployment rules
+
+变更提交前依次运行：
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+- 不得用关闭规则、跳过测试、`ignoreBuildErrors` 或临时下载依赖来伪造通过。
+- 构建成功不等于生产验证；线上结论必须包含目标 URL、HTTP/页面身份、时间和实际交互证据。
+- 不自动执行生产数据库迁移、密钥轮换、DNS 变更或部署。
+- 工作区可能包含用户未提交的设计实验；只暂存当前任务明确拥有的文件。
+
+## Reference docs
+
+- `CODEX_EXECUTION_TODO.md` — 已确认的顺序执行清单
+- `TEACH_PLAYER_SPEC.md` — 当前产品功能与边界
+- `docs/tencent-cloud-architecture.md` — 自托管部署、数据和恢复规则
+- `docs/architecture/api-ownership-matrix.md` — 路由运行时、数据、认证、缓存归属
+- `docs/operations/secret-rotation.md` — 凭证轮换手册
+- `DESIGN.md` — 设计基线；正在进行的 Taste 页面实验仍需实际浏览器验收

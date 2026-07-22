@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
+import { isAdmin } from "@/lib/supabase/admin";
 import { OpenAiCompatibleProvider, GeminiProvider } from "@/lib/ai/provider";
 import { readJson } from "@/lib/utils/api";
 import { withSecurity } from "@/lib/security/middleware";
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
       const userId = await getAuthenticatedUserId(request);
       if (!userId) {
         return NextResponse.json({ error: "请先登录" }, { status: 401 });
+      }
+      if (!(await isAdmin(userId))) {
+        return NextResponse.json({ error: "仅管理员可测试全局 AI 配置" }, { status: 403 });
       }
 
       const parsed = await readJson(request, TestSchema);
@@ -56,4 +60,3 @@ export async function POST(request: Request) {
       }
   });
 }
-

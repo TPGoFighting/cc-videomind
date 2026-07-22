@@ -1,5 +1,15 @@
 import type { WordDefinition } from "@/lib/types";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { queryTencent } from "@/lib/tencent-db";
+
+type WordDefinitionRow = {
+  lemma: string;
+  phonetic: string | null;
+  part_of_speech: string | null;
+  definition_zh: string;
+  definition_en: string | null;
+  example_en: string | null;
+  example_zh: string | null;
+};
 
 /**
  * 批量查询已缓存的词义定义。
@@ -10,46 +20,31 @@ export async function getCachedWordDefinitions(
 ): Promise<WordDefinition[]> {
   if (lemmas.length === 0) return [];
 
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    console.error("[Cache:Learn] 服务客户端不可用，无法查询词义缓存");
-    return [];
-  }
+  const result = await queryTencent<WordDefinitionRow>(
+    `SELECT lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh
+     FROM word_definitions WHERE lemma = ANY($1::text[])`,
+    [lemmas],
+  );
 
-  const { data, error } = await supabase
-    .from("word_definitions")
-    .select("lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh")
-    .in("lemma", lemmas);
-
-  if (error) {
-    console.error("[Cache:Learn] 查询词义缓存失败:", error.message, "code:", error.code);
-    return [];
-  }
-
-  console.log("[Cache:Learn] 从缓存查询 %d 个词形，命中 %d 条", lemmas.length, data?.length ?? 0);
-
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    lemma: row.lemma as string,
-    phonetic: row.phonetic as string | undefined,
-    partOfSpeech: row.part_of_speech as string | undefined,
-    definitionZh: row.definition_zh as string,
-    definitionEn: row.definition_en as string | undefined,
-    exampleEn: row.example_en as string | undefined,
-    exampleZh: row.example_zh as string | undefined,
+  return result.rows.map((row) => ({
+    lemma: row.lemma,
+    phonetic: row.phonetic ?? undefined,
+    partOfSpeech: row.part_of_speech ?? undefined,
+    definitionZh: row.definition_zh,
+    definitionEn: row.definition_en ?? undefined,
+    exampleEn: row.example_en ?? undefined,
+    exampleZh: row.example_zh ?? undefined,
   }));
 }
 
 /**
  * 批量写入词义缓存（upsert by lemma）。
- * 使用 service client 绕过 RLS。
+ * 使用腾讯 PostgreSQL 的共享词义缓存。
  */
 export async function upsertWordDefinitions(
   definitions: WordDefinition[]
 ): Promise<void> {
   if (definitions.length === 0) return;
-
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return;
 
   const rows = definitions.map((d) => ({
     lemma: d.lemma,
@@ -61,12 +56,27 @@ export async function upsertWordDefinitions(
     example_zh: d.exampleZh ?? null,
   }));
 
-  // 使用 upsert on conflict 策略
-  const { error } = await supabase
-    .from("word_definitions")
-    .upsert(rows, { onConflict: "lemma", ignoreDuplicates: false });
-
-  if (error) {
-    console.error("[Cache:Learn] 写入词义缓存失败:", error.message);
-  }
+  await queryTencent(
+    `INSERT INTO word_definitions
+       (lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh, updated_at)
+     SELECT lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh, NOW()
+     FROM jsonb_to_recordset($1::jsonb) AS item(
+       lemma TEXT,
+       phonetic TEXT,
+       part_of_speech TEXT,
+       definition_zh TEXT,
+       definition_en TEXT,
+       example_en TEXT,
+       example_zh TEXT
+     )
+     ON CONFLICT (lemma) DO UPDATE SET
+       phonetic = EXCLUDED.phonetic,
+       part_of_speech = EXCLUDED.part_of_speech,
+       definition_zh = EXCLUDED.definition_zh,
+       definition_en = EXCLUDED.definition_en,
+       example_en = EXCLUDED.example_en,
+       example_zh = EXCLUDED.example_zh,
+       updated_at = NOW()`,
+    [JSON.stringify(rows)],
+  );
 }

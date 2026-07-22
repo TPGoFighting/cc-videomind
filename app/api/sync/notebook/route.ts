@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { withSecurity } from "@/lib/security/middleware";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { isLocalMode } from "@/lib/local-mode";
+import { queryTencent, withTencentTransaction } from "@/lib/tencent-db";
 import {
   deleteVocabularyByWord,
   loadVocabulary,
@@ -27,16 +28,15 @@ const SyncRequestSchema = z.object({
   localChanges: z.array(LocalChangeSchema)
 });
 
-type WordDefinitionJoin = {
-  lemma?: string | null;
-  definition_zh?: string | null;
-};
-
 type ServerVocabularyRow = {
   id: string;
-  created_at: string;
+  lemma: string;
+  definition_zh: string | null;
   video_id: string | null;
-  word_definitions: WordDefinitionJoin | WordDefinitionJoin[] | null;
+  changed_at: Date;
+  repetitions: number | null;
+  next_review_at: Date | null;
+  ease_factor: number | null;
 };
 
 /** POST /api/sync/notebook — 生词本增量水位线同步 (艾宾浩斯进度支持) */
@@ -100,11 +100,6 @@ export async function POST(request: Request) {
   }
 
   const { lastSyncTime, localChanges } = parsed.data;
-  const serviceClient = createSupabaseServiceClient();
-  if (!serviceClient) {
-    return errorResponse("db_error", "数据库配置异常。", 500);
-  }
-
   const mergedLogs: string[] = [];
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -113,75 +108,65 @@ export async function POST(request: Request) {
   for (const change of localChanges) {
     try {
       const { lemma, videoId, isDeleted, reviewLevel, nextReviewAt, easeFactor } = change;
-
-      // 首先查找或创建 word_definitions 记录，获取 word_id
-      const { data: existingDef } = await serviceClient
-        .from("word_definitions")
-        .select("id")
-        .eq("lemma", lemma)
-        .single();
-
-      let wordId: string;
-
-      if (existingDef) {
-        wordId = existingDef.id;
-      } else {
+      await withTencentTransaction(async (client) => {
         if (isDeleted) {
-          // 本地已删除的，且云端无该单词释义的，直接跳过
-          continue;
-        }
-        // 新增并且不存在，创建占位
-        const { data: newDef, error: insertErr } = await serviceClient
-          .from("word_definitions")
-          .insert({ lemma, definition_zh: lemma })
-          .select("id")
-          .single();
-
-        if (insertErr || !newDef) {
-          console.error(`[Sync] 单词创建占位失败: ${lemma}`, insertErr);
-          continue;
-        }
-        wordId = newDef.id;
-      }
-
-      if (isDeleted) {
-        // A. 本地已取消收藏 -> 在云端删除该关联
-        const { error: deleteErr } = await serviceClient
-          .from("user_vocabulary")
-          .delete()
-          .eq("user_id", userId)
-          .eq("word_id", wordId);
-
-        if (deleteErr) {
-          console.error(`[Sync] 离线取消收藏同步失败: ${lemma}`, deleteErr);
-        } else {
-          mergedLogs.push(`Deleted ${lemma}`);
-        }
-      } else {
-        // B. 本地新收藏 / 进度同步 -> 在云端 upsert (允许覆盖复习进度，防 ignore 重复)
-        const { error: upsertErr } = await serviceClient
-          .from("user_vocabulary")
-          .upsert(
-            { 
-              user_id: userId, 
-              word_id: wordId, 
-              video_id: videoId || null,
-              review_level: reviewLevel ?? 0,
-              next_review_at: nextReviewAt ? new Date(nextReviewAt).toISOString() : null,
-              ease_factor: easeFactor ?? 2.5
-            },
-            {
-              onConflict: "user_id,word_id",
-              ignoreDuplicates: false // 必须设为 false 才能覆盖更新艾宾浩斯复习参数
-            }
+          await client.query(
+            `DELETE FROM user_word_reviews WHERE user_id = $1 AND lemma = $2`,
+            [userId, lemma],
           );
-
-        if (upsertErr) {
-          console.error(`[Sync] 离线进度同步失败: ${lemma}`, upsertErr);
-        } else {
-          mergedLogs.push(`Synced ${lemma}`);
+          await client.query(
+            `DELETE FROM user_vocabulary WHERE user_id = $1 AND lemma = $2`,
+            [userId, lemma],
+          );
+          return;
         }
-      }
+
+        await client.query(
+          `INSERT INTO user_vocabulary
+             (id, user_id, lemma, video_id, definition_zh, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $3, NOW(), NOW())
+           ON CONFLICT (user_id, lemma) DO UPDATE SET
+             video_id = EXCLUDED.video_id,
+             updated_at = NOW()`,
+          [randomUUID(), userId, lemma, videoId ?? "mobile-sync"],
+        );
+
+        if (reviewLevel !== undefined || nextReviewAt !== undefined || easeFactor !== undefined) {
+          await client.query(
+            `INSERT INTO user_word_reviews
+               (user_id, lemma, repetitions, ease_factor, interval_days, next_review_at, status, updated_at)
+             VALUES (
+               $1,
+               $2,
+               COALESCE($3::integer, 0),
+               COALESCE($4::double precision, 2.5),
+               0,
+               COALESCE($5::timestamptz, NOW()),
+               CASE WHEN COALESCE($3::integer, 0) > 0 THEN 'reviewing' ELSE 'learning' END,
+               NOW()
+             )
+             ON CONFLICT (user_id, lemma) DO UPDATE SET
+               repetitions = COALESCE($3::integer, user_word_reviews.repetitions),
+               ease_factor = COALESCE($4::double precision, user_word_reviews.ease_factor),
+               next_review_at = COALESCE($5::timestamptz, user_word_reviews.next_review_at),
+               status = CASE
+                 WHEN $3::integer IS NULL THEN user_word_reviews.status
+                 WHEN $3::integer > 0 THEN 'reviewing'
+                 ELSE 'learning'
+               END,
+               updated_at = NOW()`,
+            [
+              userId,
+              lemma,
+              reviewLevel ?? null,
+              easeFactor ?? null,
+              nextReviewAt ? new Date(nextReviewAt).toISOString() : null,
+            ],
+          );
+        }
+      });
+
+      mergedLogs.push(`${isDeleted ? "Deleted" : "Synced"} ${lemma}`);
     } catch (err) {
       console.error(`[Sync] 处理本地改动异常:`, err);
     }
@@ -194,33 +179,36 @@ export async function POST(request: Request) {
   const lastSyncDateStr = new Date(lastSyncTime).toISOString();
 
   // 查询在上次同步后新建/修改的 user_vocabulary 记录
-  const { data: serverNewData, error: selectErr } = await serviceClient
-    .from("user_vocabulary")
-    .select("id, created_at, video_id, review_level, next_review_at, ease_factor, word_definitions!inner(*)")
-    .eq("user_id", userId)
-    .gt("created_at", lastSyncDateStr)
-    .order("created_at", { ascending: true });
-
-  if (selectErr) {
-    console.error(`[Sync] 获取服务端最新增量失败:`, selectErr);
-    return errorResponse("db_error", "拉取云端增量失败。", 500);
-  }
+  const serverResult = await queryTencent<ServerVocabularyRow>(
+    `SELECT vocabulary.id,
+            vocabulary.lemma,
+            vocabulary.definition_zh,
+            vocabulary.video_id,
+            GREATEST(vocabulary.updated_at, COALESCE(review.updated_at, vocabulary.updated_at)) AS changed_at,
+            review.repetitions,
+            review.next_review_at,
+            review.ease_factor
+     FROM user_vocabulary vocabulary
+     LEFT JOIN user_word_reviews review
+       ON review.user_id = vocabulary.user_id AND review.lemma = vocabulary.lemma
+     WHERE vocabulary.user_id = $1
+       AND GREATEST(vocabulary.updated_at, COALESCE(review.updated_at, vocabulary.updated_at)) > $2::timestamptz
+     ORDER BY changed_at ASC`,
+    [userId, lastSyncDateStr],
+  );
 
   // 映射为手机端 SQLite 易装载的数据格式
-  const serverRows = (serverNewData ?? []) as unknown as ServerVocabularyRow[];
-  const serverChanges = serverRows.map((row) => {
-    const def = Array.isArray(row.word_definitions)
-      ? row.word_definitions[0]
-      : row.word_definitions;
-    return {
-      id: row.id,
-      lemma: def?.lemma || "",
-      definitionZh: def?.definition_zh || "",
-      videoId: row.video_id,
-      createdAt: new Date(row.created_at).getTime(),
-      isDeleted: false // 增量新增
-    };
-  });
+  const serverChanges = serverResult.rows.map((row) => ({
+    id: row.id,
+    lemma: row.lemma,
+    definitionZh: row.definition_zh ?? row.lemma,
+    videoId: row.video_id,
+    createdAt: row.changed_at.getTime(),
+    isDeleted: false,
+    reviewLevel: row.repetitions ?? 0,
+    nextReviewAt: row.next_review_at?.getTime(),
+    easeFactor: row.ease_factor ?? 2.5,
+  }));
 
   console.log(`[Sync] 增量同步完成，合并了客户端 ${localChanges.length} 项变动，返回服务端 ${serverChanges.length} 项新变动`);
 

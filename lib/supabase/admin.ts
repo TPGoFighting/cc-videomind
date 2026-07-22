@@ -1,19 +1,17 @@
-import { createSupabaseServerClient, createSupabaseServiceClient } from "@/lib/supabase/server";
+import { queryTencent } from "@/lib/tencent-db";
+
+// Legacy import path retained while callers migrate. All production reads and
+// writes in this module use the authoritative Tencent PostgreSQL database.
 
 /**
- * 检查用户是否为管理员（基于 profiles.role 字段）。
+ * 检查用户是否为管理员（基于 app_users.role 字段）。
  */
 export async function isAdmin(userId: string): Promise<boolean> {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return false;
-
-  const { data } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  return data?.role === "admin";
+  const result = await queryTencent<{ role: string }>(
+    `SELECT role FROM app_users WHERE id = $1 LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0]?.role === "admin";
 }
 
 /**
@@ -21,13 +19,12 @@ export async function isAdmin(userId: string): Promise<boolean> {
  * RLS 策略允许所有认证用户读取，但 API key 等敏感字段仅在前端脱敏。
  */
 export async function getAppSettings(): Promise<Record<string, string>> {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) return {};
-
-  const { data } = await supabase.from("app_settings").select("key, value");
+  const result = await queryTencent<{ key: string; value: string }>(
+    `SELECT key, value FROM app_settings`,
+  );
 
   const settings: Record<string, string> = {};
-  for (const row of data ?? []) {
+  for (const row of result.rows) {
     settings[row.key] = row.value;
   }
   return settings;
@@ -37,17 +34,15 @@ export async function getAppSettings(): Promise<Record<string, string>> {
  * 更新单条全局配置（仅 admin 可调用，写入受 RLS 保护）。
  */
 export async function updateAppSetting(key: string, value: string, userId: string) {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) throw new Error("Supabase 未配置");
-
-  const { error } = await supabase.from("app_settings").upsert({
-    key,
-    value,
-    updated_by: userId,
-    updated_at: new Date().toISOString(),
-  });
-
-  if (error) throw error;
+  await queryTencent(
+    `INSERT INTO app_settings (key, value, updated_by, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (key) DO UPDATE SET
+       value = EXCLUDED.value,
+       updated_by = EXCLUDED.updated_by,
+       updated_at = NOW()`,
+    [key, value, userId],
+  );
 }
 
 /**
@@ -55,16 +50,13 @@ export async function updateAppSetting(key: string, value: string, userId: strin
  * 返回 Record<key, value>，空字符串视为未设置。
  */
 export async function getUserAiSettings(userId: string): Promise<Record<string, string>> {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return {};
-
-  const { data } = await supabase
-    .from("user_ai_settings")
-    .select("key, value")
-    .eq("user_id", userId);
+  const result = await queryTencent<{ key: string; value: string }>(
+    `SELECT key, value FROM user_ai_settings WHERE user_id = $1`,
+    [userId],
+  );
 
   const settings: Record<string, string> = {};
-  for (const row of data ?? []) {
+  for (const row of result.rows) {
     if (row.value !== "") {
       settings[row.key] = row.value;
     }
@@ -76,38 +68,27 @@ export async function getUserAiSettings(userId: string): Promise<Record<string, 
  * Upsert 用户个人 AI 配置单条。传 value="" 等效于删除。
  */
 export async function updateUserAiSetting(userId: string, key: string, value: string) {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) throw new Error("Supabase 未配置");
-
-  const { error } = await supabase.from("user_ai_settings").upsert({
-    user_id: userId,
-    key,
-    value,
-    updated_at: new Date().toISOString(),
-  });
-
-  if (error) throw error;
+  await queryTencent(
+    `INSERT INTO user_ai_settings (user_id, key, value, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [userId, key, value],
+  );
 }
 
 /**
  * 删除用户个人 AI 配置单条。
  */
 export async function deleteUserAiSetting(userId: string, key: string) {
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) throw new Error("Supabase 未配置");
-
-  const { error } = await supabase
-    .from("user_ai_settings")
-    .delete()
-    .eq("user_id", userId)
-    .eq("key", key);
-
-  if (error) throw error;
+  await queryTencent(
+    `DELETE FROM user_ai_settings WHERE user_id = $1 AND key = $2`,
+    [userId, key],
+  );
 }
 
 /**
  * 检查用户邮箱是否匹配 ADMIN_EMAIL 环境变量，匹配则自动提升为 admin。
- * 使用 service client 绕过 RLS，因为此时用户的 profile 可能刚创建。
+ * 更新腾讯 PostgreSQL 中的 app_users 角色。
  */
 export async function promoteToAdminIfEligible(
   userId: string,
@@ -121,19 +102,9 @@ export async function promoteToAdminIfEligible(
   if (adminEmails.length === 0 || !email) return false;
   if (!adminEmails.includes(email.toLowerCase())) return false;
 
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) return false;
-
-  const { error } = await supabase
-    .from("profiles")
-    .update({ role: "admin" })
-    .eq("id", userId);
-
-  if (error) {
-    console.error("[Admin] 提升管理员失败:", error.message);
-    return false;
-  }
-
-  console.log("[Admin] 已自动提升用户为管理员:", email);
-  return true;
+  const result = await queryTencent(
+    `UPDATE app_users SET role = 'admin' WHERE id = $1`,
+    [userId],
+  );
+  return (result.rowCount ?? 0) > 0;
 }

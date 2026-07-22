@@ -1,8 +1,14 @@
 import { createReadStream, existsSync, statSync } from "fs";
 import path from "path";
 import { Readable } from "stream";
+import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 
 export async function GET(request: Request) {
+  const userId = await getAuthenticatedUserId(request);
+  if (!userId) {
+    return new Response("Sign in to view uploaded media", { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   if (!id) {
@@ -25,6 +31,12 @@ export async function GET(request: Request) {
     const parts = range.replace(/bytes=/, "").split("-");
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || end >= fileSize) {
+      return new Response("Invalid range", {
+        status: 416,
+        headers: { "Content-Range": `bytes */${fileSize}` },
+      });
+    }
     const chunksize = end - start + 1;
     
     const fileStream = createReadStream(filePath, { start, end });

@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+/**
+ * Legacy Supabase OAuth callback kept for old bookmarks.
+ * Tencent self-hosted email/password sessions are the only launch auth path.
+ */
 export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url);
-  const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") ?? "/";
-
-  if (code) {
-    const supabase = await createSupabaseServerClient();
-    if (supabase) {
-      await supabase.auth.exchangeCodeForSession(code);
-    }
-  }
-
-  return NextResponse.redirect(new URL(next, requestUrl.origin));
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("error", "oauth_not_supported");
+  return NextResponse.redirect(loginUrl);
 }
-

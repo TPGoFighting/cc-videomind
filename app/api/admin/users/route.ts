@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { isAdmin } from "@/lib/supabase/admin";
-import { createSupabaseServiceClient } from "@/lib/supabase/server";
+import { queryTencent } from "@/lib/tencent-db";
 import { errorResponse } from "@/lib/utils/api";
 
 /**
@@ -24,17 +24,10 @@ export async function GET(request: Request) {
     return errorResponse("invalid_request", "缺少 email 参数", 400);
   }
 
-  const supabase = createSupabaseServiceClient();
-  if (!supabase) {
-    return errorResponse("server_error", "数据库不可用", 500);
-  }
+  const result = await queryTencent<{ id: string; email: string }>(
+    `SELECT id, email FROM app_users WHERE LOWER(email) = $1 LIMIT 5`,
+    [email],
+  );
 
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, email")
-    .ilike("email", email)
-    .limit(5);
-
-  return NextResponse.json({ users: data ?? [] });
+  return NextResponse.json({ users: result.rows });
 }
-

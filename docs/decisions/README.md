@@ -14,3 +14,7 @@ Teach Player 使用 ADR 记录会影响生产运行时、数据所有权、产�
 
 - `0000-template.md`：模板，不代表真实决策。
 - `0001-*` 起：正式决策，按创建顺序递增。
+
+## 当前决策
+
+- [`0001-tencent-runtime-and-data-authority.md`](0001-tencent-runtime-and-data-authority.md)：腾讯云 PM2 + PostgreSQL 作为唯一生产权威；Cloudflare 仅承担边缘职责。

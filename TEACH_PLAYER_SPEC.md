@@ -18,7 +18,7 @@
 | `/notes` | 笔记本 | 所有视频笔记汇总 |
 | `/review` | 每日复习 | 答题式间隔复习 + 打卡 |
 | `/settings` | 设置 | 用户设置 / 管理 |
-| `/login` | 登录 | Supabase Auth 登录 |
+| `/login` | 登录 | 自托管邮箱密码登录 |
 | `/register` | 注册 | 注册新账号 |
 
 ---
@@ -159,25 +159,30 @@
 
 ---
 
-### 3.5 Apache Supabase 数据库表
+### 3.5 腾讯 PostgreSQL 数据表
 
 #### 核心业务表
 
 | 表名 | 用途 |
 |------|------|
-| `profiles` | 用户资料（subscription_tier, stripe_customer_id 等） |
+| `app_users` | 用户邮箱、密码哈希、角色和订阅等级 |
+| `app_sessions` | 登录会话 token 哈希与过期时间 |
+| `app_settings` / `user_ai_settings` | 全局与用户 AI 配置 |
+| `payment_submissions` | 人工付款凭证提交与审核状态 |
 | `video_analyses` | 视频解析缓存（metadata, transcript, analysis） |
 | `user_videos` | 用户解析记录（user_id, video_id, created_at） |
 | `user_notes` | 笔记（user_id, video_id, body, timestamp_seconds） |
-| `user_vocabulary` | 单词本（user_id, word_id FK→word_definitions, video_id） |
+| `user_vocabulary` | 单词本（user_id, lemma, video_id 与释义快照） |
 | `word_definitions` | 单词定义（lemma, phonetic, part_of_speech, definition_zh/en, example_en/zh） |
 | `user_quotes` | 句子本（user_id, video_id, text_en, text_zh, start_time, end_time, notes） |
 | `user_word_reviews` | 复习记录（user_id, lemma, repetitions, ease_factor, interval_days, next_review_at, status） |
 | `user_checkins` | 每日打卡（user_id, checkin_date, word_count） |
-| `usage_events` | 用量统计 |
-| `stripe_events` | Stripe 支付事件 |
+| `video_translations` | 按视频、语言、版本保存的字幕翻译 |
+| `ai_results_cache` | 摘要、关键时刻和综合分析共享缓存 |
+| `video_chunks` | RAG 字幕切片与 embedding JSON |
+| `async_tasks` | 异步任务状态、输入与输出 |
 
-所有表启用 RLS（行级安全），各表有对应的 `_own` policy。
+腾讯 PostgreSQL 是唯一生产数据权威。服务端个人数据 SQL 必须从当前 Cookie/Bearer Session 取得用户，并显式按 `user_id` 过滤；不得信任前端传来的用户 ID。`LOCAL_MODE=1` 的 SQLite 仅供本地开发，生产禁止启用或双写。
 
 ---
 
@@ -188,9 +193,14 @@
 | 方法 | 路由 | 功能 |
 |------|------|------|
 | POST | `/api/video-info` | 解析 YouTube 链接，返回 videoId + metadata |
-| GET | `/api/video-analysis?videoId=xxx` | 获取视频全量解析结果（metadata + transcript + analysis），7 天缓存 |
-| GET | `/api/transcript?videoId=xxx` | 获取视频转录文本 |
+| POST | `/api/video-analysis` | 获取或生成视频全量解析结果（metadata + transcript + analysis），使用 PostgreSQL 共享缓存 |
+| POST | `/api/video-analysis/meta` | 先获取元数据，并返回已有完整缓存（如有） |
+| POST | `/api/video-analysis/upload` | 登录用户上传自托管主机媒体并分析 |
+| GET | `/api/video-stream?id=xxx` | 登录用户读取自托管主机媒体 |
+| POST | `/api/transcript` | 获取视频转录文本 |
 | POST | `/api/translate-transcript` | 翻译转录文本（中英文） |
+| GET | `/api/translations` | 读取最新翻译版本 |
+| GET | `/api/bilibili-parse-stream` | Bilibili 流式解析（次级入口） |
 
 ### AI 生成
 
@@ -212,21 +222,29 @@
 | GET/POST | `/api/review` | 复习：GET 获取待复习单词 / POST 提交评分 |
 | GET | `/api/checkin` | 打卡：获取连续天数 + 打卡日历 + 今日状态 |
 | GET | `/api/me` | 当前用户信息 |
-| GET | `/api/word-definitions` | 批量获取单词定义（POST body: `{lemmas: [...]}`） |
+| POST | `/api/word-definitions` | 批量获取单词定义（body: `{lemmas: [...]}`） |
+| POST | `/api/sync/notebook` | 认证用户的移动端增量同步 |
 
 ### 管理 / 设置
 
 | 方法 | 路由 | 功能 |
 |------|------|------|
-| GET/POST | `/api/admin/settings` | 管理员配置 |
-| GET | `/auth/callback` | Supabase OAuth 回调 |
+| GET/PUT | `/api/admin/settings` | 管理员全局设置 / 用户个人 AI 设置 |
+| POST | `/api/admin/settings/test` | 管理员测试 AI 设置 |
+| GET | `/api/admin/users` | 管理员查看用户 |
+| GET | `/api/admin/videos` | 管理员查看视频缓存统计 |
+| GET/PUT | `/api/admin/payments` | 管理员审核人工付款提交 |
+| GET/POST | `/api/payment/submit` | 用户查询/提交付款凭证 |
+| GET | `/auth/callback` | 已废弃 OAuth 入口；同源重定向到登录错误页 |
 
-### Stripe 支付
+### 支付边界
 
 | 方法 | 路由 | 功能 |
 |------|------|------|
-| POST | `/api/stripe/create-checkout-session` | 创建结账会话 |
-| POST | `/api/webhooks/stripe` | Stripe Webhook 接收 |
+| POST | `/api/stripe/create-checkout-session` | 已禁用；返回 `410 payment_method_disabled` |
+| POST | `/api/webhooks/stripe` | 已禁用；返回 `410 payment_method_disabled` |
+
+首发只支持站内提交付款凭证、管理员人工审核。前端不得展示 Stripe 可用状态，也不得把待审核提交表述为已付款。
 
 ---
 
@@ -239,15 +257,23 @@
 - 移动端：单列布局，Tab 切换，触摸友好（min 44px 点击区域）
 
 ### 性能优化
-- ISR 预渲染静态页面（`/` `/history` `/vocabulary` `/quotes` `/notes` `/review` 等）
-- 视频分析结果 7 天缓存
+- 可静态生成的营销页面由 Next.js 构建；用户页面按会话在运行时读取
+- 视频分析、AI 结果、翻译与词义使用腾讯 PostgreSQL 共享缓存
 - YouTube 缩略图懒加载 + `unoptimized`（避免 Next.js 图片处理开销）
 
 ### 身份认证
-- Supabase Auth（邮箱登录 + OAuth）
-- RLS 行级安全策略（每张表只暴露当前用户数据）
-- API 路由统一 `getAuthenticatedUserId(request)` 获取当前用户
-- Rate limiting：`checkRateLimit()` 防滥用（大多数 API 30次/分钟）
+- 自托管邮箱密码认证；密码使用 scrypt + 随机盐
+- 随机会话 token 通过 HttpOnly、SameSite=Lax Cookie 传递，数据库只保存 SHA-256 哈希；移动端可使用 Bearer token
+- API 路由统一从服务端会话获取用户，个人数据 SQL 显式带 `user_id`
+- OAuth、验证邮件和找回密码当前未实现，不得在 UI 中承诺
+- 进程内 rate limit 只保证单 PM2 进程；Cloudflare/Nginx 负责外围防护，多实例前需增加共享限流器
+
+### 生产运行与上传
+
+- Canonical 域名为 `https://video.tpgofighting.top`；`teachplayer.tpgofighting.top` 是待显式重定向的兼容域名
+- Next.js + PM2 + PostgreSQL 运行在腾讯云，Cloudflare 仅承担 DNS/TLS/代理/边缘防护
+- 本地媒体文件只存放在单台自托管主机的 `uploads/`；上传与流读取要求登录，最大文件 200 MB
+- 当前文件 URL 是不可猜随机 ID 的 capability，并不替代所有权字段；在支持共享、多实例或对象存储前必须先增加资源归属与迁移设计
 
 ### 交互细节
 - 触摸设备 `active:scale-[0.97]` 按下反馈
@@ -265,23 +291,9 @@
 
 ---
 
-## 六、附录：当前 Commit 记录
+## 六、架构资料
 
-```
-4efa167 fix: TypeScript null checks in review API
-782dadd fix: 重写复习API — 直接查word_definitions表避免嵌套过滤
-3804a49 fix: APK下载改为GitHub Release链接
-57bfc20 fix: 复习API修复word_definitions join查询
-fd89278 chore: 添加.vercelignore忽略build产物
-e434e32 fix: 复习API自动从单词本同步 — 首次访问不再显示空列表
-ddefe6a feat: 复习页改为答题模式 — 随机题型+选项+正确率+连胜+总结
-7a0bdc6 feat: 单词复习系统 — SM-2间隔重复 + 每日打卡 + 闪卡 + 日历热力图
-85b0bde feat: 导航栏添加安卓APP下载入口（Beta）
-468903b fix: 推荐视频数量(桌面3/移动2) + 移动端单词收藏bug修复 + 移动端标签精简为4个
-dac828d feat: 移动端首页随机推荐视频卡片 — 封面+标题+频道
-c42d7ed feat: 首页推荐视频改为真实元数据随机展示 — 封面+标题+频道
-1150370 fix: TypeScript null filter in example-videos
-ece7490 fix: 历史记录封面和频道名显示 — metadata字段名修正
-7492de7 fix: 移动端导航栏入口 — 笔记本/单词本/句子本全设备可见
-4fdff3f feat: 笔记本系统完善 — 独立笔记本页面 + 单词卡片hover交互 + 多项优化
-```
+- 唯一生产架构：`docs/decisions/0001-tencent-runtime-and-data-authority.md`
+- 全量接口归属：`docs/architecture/api-ownership-matrix.md`
+- 腾讯云部署与恢复：`docs/tencent-cloud-architecture.md`
+- 当前顺序执行进度：`CODEX_EXECUTION_TODO.md`

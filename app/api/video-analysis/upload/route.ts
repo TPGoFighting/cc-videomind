@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from "fs";
 import path from "path";
 import { getAiProvider } from "@/lib/ai/provider";
 import {
@@ -14,6 +14,7 @@ import { errorResponse, successResponse } from "@/lib/utils/api";
 import type { TranscriptSegment } from "@/lib/types";
 
 export const maxDuration = 300;
+const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
 function cleanCaptionText(text: string): string {
   return text
@@ -105,6 +106,15 @@ export async function POST(request: Request) {
     rateLimit: { maxRequests: 8, windowMs: 60_000 },
   }).wrap(request, async () => {
     const userId = await getAuthenticatedUserId(request);
+    if (!userId) {
+      return errorResponse("unauthorized", "登录后才能上传本地视频。", 401);
+    }
+
+    const contentLength = Number(request.headers.get("content-length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_UPLOAD_BYTES + 1024 * 1024) {
+      return errorResponse("file_too_large", "上传文件不能超过 200MB。", 413);
+    }
+
     const quota = await checkAnalysisQuota(userId, request);
     if (!quota.allowed) {
       const msg = quota.anonymous
@@ -129,6 +139,7 @@ export async function POST(request: Request) {
     }
 
     let videoId: string | null = null;
+    let savedPath: string | null = null;
     try {
       const formData = await request.formData();
       const file = formData.get("file") as File | null;
@@ -137,6 +148,9 @@ export async function POST(request: Request) {
 
       if (!file) {
         return errorResponse("no_file", "未检测到上传的文件", 400);
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        return errorResponse("file_too_large", "上传文件不能超过 200MB。", 413);
       }
 
       const duration = durationStr ? parseFloat(durationStr) : 60;
@@ -154,8 +168,8 @@ export async function POST(request: Request) {
       if (!existsSync(uploadsDir)) {
         mkdirSync(uploadsDir, { recursive: true });
       }
-      const savePath = path.join(uploadsDir, `${cleanId}.mp4`);
-      writeFileSync(savePath, buffer);
+      savedPath = path.join(uploadsDir, `${cleanId}.mp4`);
+      writeFileSync(savedPath, buffer);
 
       console.info("[Upload-Analysis] file saved", {
         videoId,
@@ -199,7 +213,7 @@ export async function POST(request: Request) {
       title: originalTitle,
       authorName: "本地导入",
       thumbnailUrl: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=320&auto=format&fit=crop&q=60",
-      providerUrl: `http://10.0.2.2:3000/api/video-stream?id=${videoId}`
+      providerUrl: `${(process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin).replace(/\/$/, "")}/api/video-stream?id=${videoId}`
     };
 
     // 自动翻译文稿逻辑（中文视频译成英文，英文视频译成中文）
@@ -245,7 +259,7 @@ export async function POST(request: Request) {
     console.info("[Upload-Analysis] analysis started", { videoId });
     const analysis = await (await getAiProvider(userId ?? undefined)).generateAnalysis({ title: metadata.title, transcript: finalTranscript });
 
-    // 缓存至 Supabase
+    // 缓存至腾讯 PostgreSQL 权威数据库
     await upsertAnalysisCache({ videoId, metadata, transcript: finalTranscript, analysis });
     await recordAnalysisUsage({ userId, videoId, request });
 
@@ -258,6 +272,13 @@ export async function POST(request: Request) {
       preview: userId === null
     });
     } catch (error) {
+      if (savedPath && existsSync(savedPath)) {
+        try {
+          unlinkSync(savedPath);
+        } catch {
+          console.warn("[Upload-Analysis] failed upload cleanup was not completed", { videoId });
+        }
+      }
       const errorType = error instanceof Error ? error.name : "UnknownError";
       const asrStatus = error instanceof AsrServiceError ? error.status : undefined;
       console.error("[Upload-Analysis] request failed", {

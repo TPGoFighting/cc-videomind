@@ -1,15 +1,13 @@
 /*
  * 速率限制器
  *
- * 部署目标为 Cloudflare Workers（@opennextjs/cloudflare）。进程内存 Map 在 Workers
- * 的多实例/重启场景下不共享，限流会失效、AI 接口可被刷爆。因此生产环境改用
- * Durable Objects（RATE_LIMITER 绑定）做跨实例共享计数；本地 dev 或绑定缺失时
- * 回退到内存 Map 实现，保证本地开发照常工作。
+ * D1 生产运行时是单实例 PM2。应用内使用进程固定窗口计数，外层 Cloudflare/Nginx
+ * 负责边缘防护。若未来扩展为多 PM2 实例，必须先迁移到共享限流存储。
  *
  * 公共签名保持向后兼容（现有直接调用点仍可工作）：
  *   checkRateLimit(key, limit, windowMs)        -> { allowed, remaining, resetAt? }   (同步, 内存兜底)
  *   getClientKey(request, scope)                -> string
- * 新增 checkRateLimitAsync(...) 为 Durable Object 赋能的异步版本，供 withSecurity 使用。
+ * checkRateLimitAsync(...) 保留异步签名，供 withSecurity 使用。
  */
 
 export interface RateLimitResult {
@@ -66,70 +64,13 @@ export function checkRateLimit(key: string, limit: number, windowMs: number): Ra
   return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
 }
 
-// ───────────────────────── Durable Object 绑定类型（避免硬性依赖 workers-types） ─────────────────────────
-
-interface RateLimiterStub {
-  fetch(input: string | URL, init?: RequestInit): Promise<Response>;
-}
-
-interface RateLimiterNamespace {
-  idFromName(name: string): { get(): RateLimiterStub };
-}
-
-declare global {
-  interface CloudflareEnv {
-    RATE_LIMITER?: RateLimiterNamespace;
-  }
-}
-
-/**
- * 是否应尝试走 Durable Object：
- * - 仅在生产（NODE_ENV === 'production'，由 Next 构建产物保证）尝试；
- * - 绑定缺失时由调用方回退到内存实现。
- * 这样本地 dev（NODE_ENV !== 'production'）永远走内存，不会触碰不存在的绑定。
- */
-function shouldUseDurableObject(): boolean {
-  return typeof process !== "undefined" && process.env.NODE_ENV === "production";
-}
-
-async function getRateLimiterNamespace(): Promise<RateLimiterNamespace | undefined> {
-  if (!shouldUseDurableObject()) return undefined;
-  try {
-    const mod = await import("@opennextjs/cloudflare");
-    const ctx = mod.getCloudflareContext({ async: false });
-    return ctx?.env?.RATE_LIMITER;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * 生产版限流：通过 Durable Object 共享计数。
- * 若 Durable Object 绑定不可用（本地 / 异常），自动回退到内存实现。
- */
+/** 异步兼容入口；D1 单实例 PM2 与同步实现共享同一 bucket。 */
 export async function checkRateLimitAsync(
   key: string,
   limit: number,
   windowMs: number
 ): Promise<RateLimitResult> {
-  const ns = await getRateLimiterNamespace();
-  if (!ns) {
-    return checkRateLimit(key, limit, windowMs);
-  }
-  try {
-    const id = ns.idFromName(key);
-    const stub = id.get();
-    const res = await stub.fetch(
-      `https://rate-limiter.internal/check?key=${encodeURIComponent(key)}&limit=${limit}&window=${windowMs}`
-    );
-    if (!res.ok) {
-      return checkRateLimit(key, limit, windowMs);
-    }
-    const data = (await res.json()) as RateLimitResult;
-    return data;
-  } catch {
-    return checkRateLimit(key, limit, windowMs);
-  }
+  return checkRateLimit(key, limit, windowMs);
 }
 
 // ───────────────────────── 客户端标识（B3：优先平台真实 IP） ─────────────────────────

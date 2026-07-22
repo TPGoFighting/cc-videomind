@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 let pool: Pool | null = null;
 let schemaPromise: Promise<void> | null = null;
@@ -22,7 +22,7 @@ export function getTencentPool(): Pool {
   return pool;
 }
 
-const SCHEMA = [
+export const TENCENT_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS app_users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -39,6 +39,19 @@ const SCHEMA = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS app_sessions_user_idx ON app_sessions(user_id)`,
+  `CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_by TEXT REFERENCES app_users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE TABLE IF NOT EXISTS user_ai_settings (
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, key)
+  )`,
   `CREATE TABLE IF NOT EXISTS payment_submissions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -86,7 +99,19 @@ const SCHEMA = [
     example_en TEXT,
     example_zh TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(user_id, lemma)
+  )`,
+  `ALTER TABLE user_vocabulary ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+  `CREATE TABLE IF NOT EXISTS word_definitions (
+    lemma TEXT PRIMARY KEY,
+    phonetic TEXT,
+    part_of_speech TEXT,
+    definition_zh TEXT NOT NULL,
+    definition_en TEXT,
+    example_en TEXT,
+    example_zh TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE TABLE IF NOT EXISTS user_quotes (
     id TEXT PRIMARY KEY,
@@ -143,13 +168,40 @@ const SCHEMA = [
     PRIMARY KEY (video_id, result_type, language, mode, theme)
   )`,
   `CREATE INDEX IF NOT EXISTS ai_results_cache_latest_idx ON ai_results_cache(video_id, result_type, updated_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS video_chunks (
+    id TEXT PRIMARY KEY DEFAULT md5(random()::text || clock_timestamp()::text),
+    video_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    segment_start INTEGER NOT NULL,
+    segment_end INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    embedding JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(video_id, chunk_index)
+  )`,
+  `CREATE INDEX IF NOT EXISTS video_chunks_video_idx ON video_chunks(video_id, chunk_index)`,
+  `CREATE TABLE IF NOT EXISTS async_tasks (
+    id TEXT PRIMARY KEY DEFAULT md5(random()::text || clock_timestamp()::text),
+    task_type TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    user_id TEXT REFERENCES app_users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    input JSONB,
+    output JSONB,
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+  )`,
+  `CREATE INDEX IF NOT EXISTS async_tasks_status_idx ON async_tasks(status, created_at)`,
+  `CREATE INDEX IF NOT EXISTS async_tasks_video_idx ON async_tasks(video_id, created_at DESC)`,
 ];
 
 export async function ensureTencentSchema(): Promise<void> {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       const database = getTencentPool();
-      for (const statement of SCHEMA) {
+      for (const statement of TENCENT_SCHEMA_STATEMENTS) {
         await database.query(statement);
       }
     })().catch((error) => {
@@ -166,4 +218,22 @@ export async function queryTencent<T extends QueryResultRow>(
 ) {
   await ensureTencentSchema();
   return getTencentPool().query<T>(text, values);
+}
+
+export async function withTencentTransaction<T>(
+  operation: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  await ensureTencentSchema();
+  const client = await getTencentPool().connect();
+  try {
+    await client.query("BEGIN");
+    const result = await operation(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
