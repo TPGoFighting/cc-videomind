@@ -1,17 +1,25 @@
 import { notFound } from "next/navigation";
 import { VideoWorkspace } from "@/components/video-workspace";
+import { parseWorkspaceFixture } from "@/lib/video/workspace-fixture";
 import { VideoIdSchema } from "@/lib/youtube/id";
 
 export default async function VideoPage({
-  params
+  params,
+  searchParams,
 }: {
   params: Promise<{ videoId: string }>;
+  searchParams: Promise<{ fixture?: string | string[] }>;
 }) {
   const { videoId } = await params;
+  const query = await searchParams;
   const parsed = VideoIdSchema.safeParse(videoId);
   if (!parsed.success) {
     notFound();
   }
 
-  return <VideoWorkspace videoId={parsed.data} />;
+  const fixtureState = process.env.NODE_ENV === "production"
+    ? undefined
+    : parseWorkspaceFixture(query.fixture);
+
+  return <VideoWorkspace key={`${parsed.data}:${fixtureState ?? "live"}`} videoId={parsed.data} fixtureState={fixtureState} />;
 }

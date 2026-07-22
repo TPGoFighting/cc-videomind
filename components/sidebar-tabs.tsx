@@ -1,8 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useState } from "react";
 import { FileText, Flame, MessageSquare, NotebookPen } from "lucide-react";
 import { TranscriptViewer } from "./transcript-viewer";
 import { ChatPanel } from "./chat-panel";
@@ -31,7 +29,7 @@ type TabId = "transcript" | "chat" | "notes" | "review";
 
 const TABS = [
   { id: "transcript" as TabId, label: "转录文本", icon: FileText },
-  { id: "chat" as TabId, label: "Chat", icon: MessageSquare },
+  { id: "chat" as TabId, label: "提问", icon: MessageSquare },
   { id: "notes" as TabId, label: "笔记", icon: NotebookPen },
   { id: "review" as TabId, label: "复习", icon: Flame },
 ] as const;
@@ -53,21 +51,11 @@ export function SidebarTabs({
   chatEnabled,
 }: SidebarTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useGSAP(() => {
-    if (!contentRef.current) return;
-    gsap.fromTo(
-      contentRef.current,
-      { opacity: 0, y: 6 },
-      { opacity: 1, y: 0, duration: 0.25, ease: "power2.out" }
-    );
-  }, { scope: contentRef, dependencies: [activeTab], revertOnUpdate: true });
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-white/8 bg-[#0d0d0d]">
+    <div className="flex h-full flex-col rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)]">
       {/* 标签页头部 */}
-      <div className="flex items-center gap-1 border-b border-white/8 px-2 py-2">
+      <div className="flex items-center gap-1 border-b border-[var(--tp-border)] px-2 py-2" role="tablist" aria-label="视频学习功能">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -75,11 +63,15 @@ export function SidebarTabs({
             <button
               key={tab.id}
               type="button"
+              id={`desktop-video-tab-${tab.id}`}
+              role="tab"
+              aria-selected={isActive}
+              aria-controls={`desktop-video-panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
+              className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors ${
                 isActive
-                  ? "bg-white/10 text-white"
-                  : "text-white/50 hover:bg-white/5 hover:text-white/70"
+                  ? "bg-[rgba(91,168,255,0.12)] text-[var(--tp-accent)]"
+                  : "text-[var(--tp-text-muted)] hover:bg-white/5 hover:text-[var(--tp-text)]"
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -89,11 +81,8 @@ export function SidebarTabs({
         })}
       </div>
 
-      {/* 标签页内容 */}
-      <div className="flex-1 min-h-0 overflow-hidden" key={activeTab}>
-        <div ref={contentRef} className="h-full">
-        {activeTab === "transcript" && (
-          <div className="h-full">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div id="desktop-video-panel-transcript" role="tabpanel" aria-labelledby="desktop-video-tab-transcript" hidden={activeTab !== "transcript"} className="h-full">
             <TranscriptViewer
               transcript={transcript}
               loading={transcriptLoading}
@@ -108,10 +97,8 @@ export function SidebarTabs({
               translating={translating}
               translationError={translationError}
             />
-          </div>
-        )}
-        {activeTab === "chat" && (
-          <div className="h-full overflow-auto p-4">
+        </div>
+        <div id="desktop-video-panel-chat" role="tabpanel" aria-labelledby="desktop-video-tab-chat" hidden={activeTab !== "chat"} className="h-full overflow-auto p-4">
             <ChatPanel
               videoId={videoId}
               suggestedQuestions={analysis?.suggestedQuestions ?? []}
@@ -119,28 +106,22 @@ export function SidebarTabs({
               onSeekTo={onSeekTo}
               disabled={!chatEnabled}
             />
-          </div>
-        )}
-        {activeTab === "notes" && (
-          <div className="h-full overflow-auto p-4">
+        </div>
+        <div id="desktop-video-panel-notes" role="tabpanel" aria-labelledby="desktop-video-tab-notes" hidden={activeTab !== "notes"} className="h-full overflow-auto p-4">
             <NotesPanel videoId={videoId} compact />
-          </div>
-        )}
-        {activeTab === "review" && (
-          <div className="h-full flex flex-col items-center justify-center text-center gap-3 p-4">
-            <Flame className="h-10 w-10 text-amber-400" />
-            <p className="text-[15px] font-medium text-white/70">每日复习</p>
-            <p className="text-[13px] text-white/35">
-              间隔重复，科学记忆<br/>打开专属页面开始今日打卡
+        </div>
+        <div id="desktop-video-panel-review" role="tabpanel" aria-labelledby="desktop-video-tab-review" hidden={activeTab !== "review"} className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+            <Flame className="h-10 w-10 text-[var(--tp-accent)]" aria-hidden />
+            <p className="text-[15px] font-medium text-[var(--tp-text)]">今日复习</p>
+            <p className="text-[13px] leading-6 text-[var(--tp-text-muted)]">
+              保存词句后，系统会安排下一次回看<br/>从复习页回到原视频语境
             </p>
             <Link
               href="/review"
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-5 py-2.5 text-[14px] font-medium text-amber-400 transition-colors hover:bg-amber-400/25"
+              className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-[var(--tp-accent)] px-5 text-[14px] font-semibold text-[#08101a] transition-colors hover:bg-[var(--tp-accent-hover)]"
             >
               开始复习
             </Link>
-          </div>
-        )}
         </div>
       </div>
     </div>

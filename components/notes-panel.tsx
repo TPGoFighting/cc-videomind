@@ -21,7 +21,7 @@ function formatDate(iso: string): string {
 async function fetchNotes(videoId: string): Promise<UserNote[]> {
   const res = await fetch(`/api/notes?videoId=${encodeURIComponent(videoId)}`);
   const payload = (await res.json()) as JsonResponse<UserNote[]>;
-  if (!payload.ok) return [];
+  if (!payload.ok) throw new Error(payload.error.message);
   return payload.data;
 }
 
@@ -33,6 +33,7 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   const loggedIn = !authLoading && user !== null;
 
@@ -57,7 +58,10 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
         }
       })
       .catch(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setStatus("暂时无法加载笔记，请稍后重试。");
+          setLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -84,8 +88,16 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
 
       setBody("");
       setStatus("已保存");
-      // 重新加载列表以获取完整数据
-      await loadNotes();
+      try {
+        // 优先使用服务端排序；刷新失败时仍保留已经成功写入的笔记，避免误导用户重复提交。
+        await loadNotes();
+      } catch {
+        setNotes((previous) => [
+          payload.data,
+          ...previous.filter((note) => note.id !== payload.data.id),
+        ]);
+        setStatus("笔记已保存，但列表刷新失败。稍后重试即可同步最新顺序。");
+      }
     } catch {
       setStatus("保存失败，请稍后重试。");
     } finally {
@@ -94,16 +106,29 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
   }
 
   async function deleteNote(noteId: string) {
+    if (confirmingDelete !== noteId) {
+      setConfirmingDelete(noteId);
+      setStatus("再按一次“确认删除”即可删除这条笔记。");
+      return;
+    }
     setDeleting((prev) => new Set(prev).add(noteId));
+    setStatus(null);
     try {
-      await fetch("/api/notes", {
+      const response = await fetch("/api/notes", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ noteId }),
       });
+      const payload = (await response.json()) as JsonResponse<{ deleted: boolean }>;
+      if (!payload.ok) {
+        setStatus(payload.error.message || "删除失败，请稍后重试。");
+        return;
+      }
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      setConfirmingDelete(null);
+      setStatus("笔记已删除。");
     } catch {
-      // 静默失败
+      setStatus("删除失败，请检查网络后重试。");
     } finally {
       setDeleting((prev) => {
         const next = new Set(prev);
@@ -125,7 +150,7 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
         className="min-h-[80px]"
       />
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[12px] text-white/35">
+        <p aria-live="polite" className="text-xs text-[var(--tp-text-muted)]">
           {status ?? (loggedIn ? "" : "登录后可保存笔记。")}
         </p>
         <Button
@@ -142,8 +167,8 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
 
       {/* 分隔 */}
       {notes.length > 0 && (
-        <div className="border-t border-white/8 pt-3">
-          <p className="text-[11px] text-white/25 mb-3">
+        <div className="border-t border-[var(--tp-border)] pt-3">
+          <p className="mb-3 text-xs text-[var(--tp-text-faint)]">
             历史笔记 · {notes.length} 条
           </p>
         </div>
@@ -151,37 +176,41 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
 
       {/* 笔记列表 */}
       {loading && loggedIn && (
-        <div className="flex items-center gap-2 text-white/30 text-[13px] py-2">
+        <div className="flex items-center gap-2 py-2 text-[13px] text-[var(--tp-text-muted)]">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           加载中…
         </div>
       )}
 
       {!loading && notes.length === 0 && loggedIn && (
-        <p className="text-[13px] text-white/20 py-2">暂无笔记，保存一条试试。</p>
+        <p className="py-2 text-[13px] text-[var(--tp-text-muted)]">暂无笔记，保存一条试试。</p>
       )}
 
       <div className="space-y-3">
         {notes.map((note) => (
           <div
             key={note.id}
-            className="group rounded-lg bg-white/[0.03] px-3 py-2.5 border border-white/5 hover:border-white/10 transition-colors"
+            className="rounded-lg border border-[var(--tp-border)] bg-white/[0.025] px-3 py-3 transition-colors hover:border-[var(--tp-border-strong)]"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="text-[13px] leading-relaxed text-white/70 whitespace-pre-wrap flex-1 min-w-0">
+              <p className="min-w-0 flex-1 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--tp-text-secondary)]">
                 {note.body}
               </p>
               <button
                 type="button"
                 disabled={deleting.has(note.id)}
                 onClick={() => deleteNote(note.id)}
-                className="shrink-0 rounded p-1 text-white/10 hover:text-red-400 hover:bg-red-400/10 transition-colors opacity-0 group-hover:opacity-100"
-                title="删除笔记"
+                className={confirmingDelete === note.id
+                  ? "inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg bg-red-400/10 text-red-300 transition-colors hover:bg-red-400/15"
+                  : "inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-[var(--tp-text-faint)] transition-colors hover:bg-white/6 hover:text-red-300"
+                }
+                aria-label={confirmingDelete === note.id ? "确认删除这条笔记" : "删除这条笔记"}
+                title={confirmingDelete === note.id ? "确认删除" : "删除笔记"}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <p className="mt-1 text-[11px] text-white/20">
+            <p className="mt-1 text-xs text-[var(--tp-text-faint)]">
               {formatDate(note.created_at)}
             </p>
           </div>
@@ -198,7 +227,7 @@ export function NotesPanel({ videoId, compact }: { videoId: string; compact?: bo
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-white">
-          <NotebookPen className="h-4 w-4 text-[#0099ff]" aria-hidden />
+          <NotebookPen className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
           笔记
         </CardTitle>
       </CardHeader>

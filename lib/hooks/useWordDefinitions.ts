@@ -28,7 +28,7 @@ const fetcher = async (lemmas: string[]): Promise<WordDefinition[]> => {
   return json.data?.definitions ?? [];
 };
 
-export function useWordDefinitions(transcript: TranscriptSegment[]) {
+export function useWordDefinitions(transcript: TranscriptSegment[], enabled = true) {
   const lemmas = useMemo(() => {
     const all = extractLemmas(transcript);
     // 截断到 400，避免超出 API schema 的 max 限制
@@ -36,7 +36,7 @@ export function useWordDefinitions(transcript: TranscriptSegment[]) {
   }, [transcript]);
 
   // 用哈希缩短 SWR key，避免超长 key 引发性能问题
-  const key = lemmas.length > 0 ? `wd:${hashStr(lemmas.join(","))}` : null;
+  const key = enabled && lemmas.length > 0 ? `wd:${hashStr(lemmas.join(","))}` : null;
 
   const { data, error } = useSWR(
     key,

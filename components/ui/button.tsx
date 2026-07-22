@@ -5,31 +5,31 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils/cn";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0099ff] focus-visible:ring-offset-2 focus-visible:ring-offset-black disabled:pointer-events-none disabled:opacity-40",
+  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--tp-bg)] disabled:pointer-events-none disabled:opacity-40",
   {
     variants: {
       variant: {
-        /* 纯白胶囊 — 主 CTA */
+        /* 高对比主 CTA */
         default:
-          "bg-white text-black hover:bg-white/90 active:scale-[0.97] rounded-full",
-        /* 毛玻璃胶囊 — 次级操作 */
+          "rounded-[var(--radius)] bg-[var(--tp-text)] text-[var(--tp-bg)] hover:bg-white active:scale-[0.98]",
+        /* 次级操作 */
         secondary:
-          "bg-white/10 text-white hover:bg-white/18 active:scale-[0.97] rounded-full backdrop-blur-sm",
+          "rounded-[var(--radius)] border border-[var(--tp-border)] bg-[var(--tp-surface-raised)] text-[var(--tp-text)] hover:border-[var(--tp-border-strong)] hover:bg-[#162231] active:scale-[0.98]",
         /* 幽灵按钮 — 最弱操作 */
         outline:
-          "border border-white/20 text-white hover:bg-white/8 rounded-full",
+          "rounded-[var(--radius)] border border-[var(--tp-border-strong)] text-[var(--tp-text)] hover:bg-white/8",
         /* 纯文本 — 导航等 */
         ghost:
-          "text-white/70 hover:text-white hover:bg-white/8 rounded-full",
-        /* Framer Blue 强调按钮 */
+          "rounded-[var(--radius)] text-[var(--tp-text-secondary)] hover:bg-white/8 hover:text-[var(--tp-text)]",
+        /* 唯一行动强调色 */
         accent:
-          "bg-[#0099ff] text-white hover:bg-[#0099ff]/85 active:scale-[0.97] rounded-full",
+          "rounded-[var(--radius)] bg-[var(--tp-accent)] text-[#08101a] hover:bg-[var(--tp-accent-hover)] active:scale-[0.98]",
       },
       size: {
         default: "h-11 px-6 text-[15px]",
         sm: "h-8 px-4 text-[13px]",
         lg: "h-13 px-8 text-[16px]",
-        icon: "h-10 w-10",
+        icon: "h-11 w-11",
       },
     },
     defaultVariants: {

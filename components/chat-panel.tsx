@@ -33,7 +33,7 @@ function renderWithTimestamps(text: string, onSeek: (s: number) => void) {
             e.stopPropagation();
             onSeek(seconds);
           }}
-          className="inline text-[#0099ff] hover:underline font-mono font-semibold cursor-pointer"
+          className="inline-flex min-h-11 cursor-pointer items-center px-1 font-mono font-semibold text-[var(--tp-accent)] hover:underline"
           title={`跳转到 ${part}`}
         >
           {part}
@@ -117,7 +117,7 @@ export function ChatPanel({
                 type="button"
                 onClick={() => ask(item)}
                 disabled={loading}
-                className="rounded-full border border-white/15 bg-white/6 px-3.5 py-1.5 text-[13px] font-medium text-white/70 transition-all hover:bg-white/12 hover:text-white hover:border-white/25 disabled:opacity-40"
+                className="min-h-11 rounded-lg border border-[var(--tp-border)] bg-white/[0.03] px-3.5 text-[13px] font-medium text-[var(--tp-text-secondary)] transition-colors hover:border-[var(--tp-border-strong)] hover:text-[var(--tp-text)] disabled:opacity-40"
               >
                 {item}
               </button>
@@ -150,7 +150,7 @@ export function ChatPanel({
         </form>
 
         {error ? (
-          <p className="text-[13px] font-medium text-red-400">{error}</p>
+          <p role="alert" className="text-[13px] font-medium text-red-300">{error}</p>
         ) : null}
 
         <div className="space-y-3">
@@ -162,7 +162,7 @@ export function ChatPanel({
               <h3 className="text-[14px] font-semibold leading-snug">
                 {item.question}
               </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-[#a6a6a6]">
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--tp-text-secondary)]">
                 {onSeekTo
                   ? renderWithTimestamps(item.answer.answer, onSeekTo)
                   : item.answer.answer}
@@ -177,12 +177,12 @@ export function ChatPanel({
                       <button
                         type="button"
                         onClick={() => onSeekTo(citation.startTime)}
-                        className="font-mono font-semibold text-[#0099ff] hover:underline cursor-pointer"
+                        className="inline-flex min-h-11 cursor-pointer items-center font-mono font-semibold text-[var(--tp-accent)] hover:underline"
                       >
                         {formatTimestamp(citation.startTime)}–{formatTimestamp(citation.endTime)}
                       </button>
                     ) : (
-                      <span className="font-mono font-semibold text-[#0099ff]">
+                      <span className="font-mono font-semibold text-[var(--tp-accent)]">
                         {formatTimestamp(citation.startTime)}–{formatTimestamp(citation.endTime)}
                       </span>
                     )}{" "}
@@ -201,7 +201,7 @@ export function ChatPanel({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-white">
-          <MessageSquare className="h-4 w-4 text-[#0099ff]" aria-hidden />
+          <MessageSquare className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
           向视频提问
         </CardTitle>
       </CardHeader>
@@ -215,7 +215,7 @@ export function ChatPanel({
                 type="button"
                 onClick={() => ask(item)}
                 disabled={loading}
-                className="rounded-full border border-white/15 bg-white/6 px-3.5 py-1.5 text-[13px] font-medium text-white/70 transition-all hover:bg-white/12 hover:text-white hover:border-white/25 disabled:opacity-40"
+                className="min-h-11 rounded-lg border border-[var(--tp-border)] bg-white/[0.03] px-3.5 text-[13px] font-medium text-[var(--tp-text-secondary)] transition-colors hover:border-[var(--tp-border-strong)] hover:text-[var(--tp-text)] disabled:opacity-40"
               >
                 {item}
               </button>
@@ -249,7 +249,7 @@ export function ChatPanel({
         </form>
 
         {error ? (
-          <p className="text-[13px] font-medium text-red-400">{error}</p>
+          <p role="alert" className="text-[13px] font-medium text-red-300">{error}</p>
         ) : null}
 
         {/* 回答列表 */}
@@ -262,7 +262,7 @@ export function ChatPanel({
               <h3 className="text-[14px] font-semibold leading-snug">
                 {item.question}
               </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-[#a6a6a6]">
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--tp-text-secondary)]">
                 {onSeekTo
                   ? renderWithTimestamps(item.answer.answer, onSeekTo)
                   : item.answer.answer}
@@ -277,12 +277,12 @@ export function ChatPanel({
                       <button
                         type="button"
                         onClick={() => onSeekTo(citation.startTime)}
-                        className="font-mono font-semibold text-[#0099ff] hover:underline cursor-pointer"
+                        className="inline-flex min-h-11 cursor-pointer items-center font-mono font-semibold text-[var(--tp-accent)] hover:underline"
                       >
                         {formatTimestamp(citation.startTime)}–{formatTimestamp(citation.endTime)}
                       </button>
                     ) : (
-                      <span className="font-mono font-semibold text-[#0099ff]">
+                      <span className="font-mono font-semibold text-[var(--tp-accent)]">
                         {formatTimestamp(citation.startTime)}–{formatTimestamp(citation.endTime)}
                       </span>
                     )}{" "}

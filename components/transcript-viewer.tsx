@@ -259,7 +259,7 @@ export function TranscriptViewer({
             return (
               <span
                 key={i}
-                className="cursor-pointer text-[#0099ff] hover:underline decoration-dotted underline-offset-2 inline-block min-h-[24px] leading-relaxed"
+                className="inline-block min-h-6 cursor-pointer text-[var(--tp-accent)] decoration-dotted underline-offset-2 hover:underline"
                 onMouseEnter={(e) => handleWordEnter(lemma, e)}
                 onMouseLeave={handleWordLeave}
                 onClick={(e) => handleWordClick(lemma, e)}
@@ -281,7 +281,7 @@ export function TranscriptViewer({
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-white">
-              <ListVideo className="h-4 w-4 text-[#0099ff]" aria-hidden />
+              <ListVideo className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
               转录文本
             </CardTitle>
             <div className="flex items-center gap-2">
@@ -305,9 +305,9 @@ export function TranscriptViewer({
                     setShowJumpButton(!next);
                   }}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors",
+                    "inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium transition-colors",
                     autoScroll
-                      ? "bg-[#0099ff]/15 text-[#0099ff] hover:bg-[#0099ff]/25"
+                      ? "bg-[rgba(91,168,255,0.14)] text-[var(--tp-accent)] hover:bg-[rgba(91,168,255,0.2)]"
                       : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
                   )}
                 >
@@ -344,9 +344,9 @@ export function TranscriptViewer({
               type="button"
               onClick={() => setAutoScroll((v) => !v)}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                "inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors",
                 autoScroll
-                  ? "bg-[#0099ff]/15 text-[#0099ff] hover:bg-[#0099ff]/25"
+                  ? "bg-[rgba(91,168,255,0.14)] text-[var(--tp-accent)] hover:bg-[rgba(91,168,255,0.2)]"
                   : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
               )}
             >
@@ -398,14 +398,14 @@ export function TranscriptViewer({
                   className={cn(
                     "group grid grid-cols-[4.5rem_1fr] gap-3 rounded-lg px-2 py-1.5 text-[14px] transition-colors cursor-pointer",
                     i === activeIndex
-                      ? "bg-[#0099ff]/10 ring-1 ring-[#0099ff]/20"
+                      ? "bg-[rgba(91,168,255,0.1)] ring-1 ring-[rgba(91,168,255,0.22)]"
                       : "hover:bg-white/4"
                   )}
                 >
                   <span
                     className={cn(
                       "font-mono text-xs font-semibold",
-                      i === activeIndex ? "text-[#0099ff]" : "text-[#0099ff]/60"
+                      i === activeIndex ? "text-[var(--tp-accent)]" : "text-[var(--tp-text-muted)]"
                     )}
                   >
                     {formatTimestamp(segment.startTime)}
@@ -416,7 +416,7 @@ export function TranscriptViewer({
                       <p
                         className={cn(
                           "leading-relaxed",
-                          i === activeIndex ? "text-white/90" : "text-[#a6a6a6]"
+                          i === activeIndex ? "text-[var(--tp-text)]" : "text-[var(--tp-text-secondary)]"
                         )}
                       >
                         {renderText(segment.text)}
@@ -444,10 +444,10 @@ export function TranscriptViewer({
                           handleSaveQuote(segment);
                         }}
                         className={cn(
-                          "mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] touch-reveal min-h-[36px]",
+                          "mt-1 inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] touch-reveal",
                           isSaving
-                            ? "text-[#0099ff]"
-                            : "text-white/30 hover:text-[#0099ff]"
+                            ? "text-[var(--tp-accent)]"
+                            : "text-[var(--tp-text-faint)] hover:text-[var(--tp-accent)]"
                         )}
                       >
                         {isSaving ? (
@@ -471,7 +471,7 @@ export function TranscriptViewer({
             <button
               type="button"
               onClick={jumpToCurrent}
-              className="btn-press inline-flex items-center gap-1.5 rounded-full border border-[#0099ff]/30 bg-[#0099ff]/15 px-4 py-2 text-[12px] font-medium text-[#0099ff] backdrop-blur-sm transition-colors hover:bg-[#0099ff]/25 hover:border-[#0099ff]/50 shadow-lg shadow-[#0099ff]/10"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[rgba(91,168,255,0.35)] bg-[rgba(91,168,255,0.14)] px-4 text-xs font-semibold text-[var(--tp-accent)] shadow-lg backdrop-blur-sm transition-colors hover:bg-[rgba(91,168,255,0.22)]"
             >
               <Navigation className="h-3.5 w-3.5" />
               跳转到当前

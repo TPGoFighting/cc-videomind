@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
+import { Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { VideoMetadata } from "@/lib/types";
 
@@ -13,15 +14,17 @@ type VideoPlayerProps = {
   videoId: string;
   metadata?: VideoMetadata;
   fallbackTitle?: string;
+  previewOnly?: boolean;
 };
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  function VideoPlayer({ videoId, metadata, fallbackTitle }, ref) {
+  function VideoPlayer({ videoId, metadata, fallbackTitle, previewOnly = false }, ref) {
     const playerRef = useRef<YT.Player | null>(null);
     const apiLoadedRef = useRef(false);
 
     // 加载 YouTube IFrame API
     useEffect(() => {
+      if (previewOnly) return;
       if (apiLoadedRef.current) return;
 
       const onReady = (event: YT.PlayerEvent) => {
@@ -55,7 +58,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           (window as unknown as Record<string, unknown>).onYouTubeIframeAPIReady = prev ?? null;
         };
       }
-    }, [videoId]);
+    }, [previewOnly, videoId]);
 
     useImperativeHandle(
       ref,
@@ -71,20 +74,30 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     );
 
     return (
-      <section className="overflow-hidden rounded-xl border border-white/10 bg-black shadow-[rgba(0,153,255,0.08)_0px_0px_0px_1px]">
+      <section className="overflow-hidden rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
         <div className="aspect-video w-full">
-          <iframe
-            id={`yt-player-${videoId}`}
-            className="h-full w-full"
-            src={`https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`}
-            title={metadata?.title ?? "YouTube 视频播放器"}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerPolicy="strict-origin-when-cross-origin"
-            allowFullScreen
-          />
+          {previewOnly ? (
+            <div className="flex h-full flex-col items-center justify-center bg-[#0A1119] px-6 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-full border border-[var(--tp-border-strong)] bg-[var(--tp-surface-raised)] text-[var(--tp-accent)]">
+                <Play className="ml-1 h-6 w-6" aria-hidden />
+              </span>
+              <p className="mt-5 text-sm font-semibold text-[var(--tp-text)]">学习工作台演示状态</p>
+              <p className="mt-1 max-w-sm text-sm leading-6 text-[var(--tp-text-muted)]">固定数据用于视觉验收，不加载播放器、不请求字幕或 AI。</p>
+            </div>
+          ) : (
+            <iframe
+              id={`yt-player-${videoId}`}
+              className="h-full w-full"
+              src={`https://www.youtube.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1`}
+              title={metadata?.title ?? "YouTube 视频播放器"}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          )}
         </div>
-        <div className="flex flex-col gap-2 border-t border-white/8 bg-[#090909] p-4 sm:flex-row sm:items-center">
-          <h1 className="text-[17px] font-semibold leading-snug tracking-[-0.01em] sm:flex-1 sm:min-w-0 break-words">
+        <div className="flex flex-col gap-2 border-t border-[var(--tp-border)] bg-[var(--tp-surface)] p-4 sm:flex-row sm:items-center">
+          <h1 className="break-words text-lg font-semibold leading-snug tracking-[-0.02em] text-[var(--tp-text)] sm:min-w-0 sm:flex-1">
             {metadata?.title ?? fallbackTitle ?? "正在加载视频信息…"}
           </h1>
           {metadata?.authorName ? (

@@ -17,17 +17,17 @@ export function DisplayModeToggle({
   onChange: (mode: DisplayMode) => void;
 }) {
   return (
-    <div className="inline-flex items-center rounded-lg bg-white/6 p-0.5">
+    <div className="inline-flex items-center rounded-lg border border-[var(--tp-border)] bg-white/[0.03] p-0.5">
       {MODES.map((m) => (
         <button
           key={m.value}
           type="button"
           onClick={() => onChange(m.value)}
           className={cn(
-            "rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors min-h-[36px]",
+            "min-h-11 rounded-md px-3 text-[13px] font-medium transition-colors",
             value === m.value
-              ? "bg-[#0099ff]/20 text-[#0099ff]"
-              : "text-white/40 hover:text-white/70"
+              ? "bg-[rgba(91,168,255,0.15)] text-[var(--tp-accent)]"
+              : "text-[var(--tp-text-muted)] hover:text-[var(--tp-text)]"
           )}
         >
           {m.label}

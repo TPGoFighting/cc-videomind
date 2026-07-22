@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CircleCheck, Info } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { HighlightsPanel } from "@/components/highlights-panel";
 import { MobileVideoTabs } from "@/components/mobile-video-tabs";
@@ -13,6 +13,10 @@ import { SummaryPanel } from "@/components/summary-panel";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
+import {
+  WORKSPACE_FIXTURE,
+  type WorkspaceFixtureState,
+} from "@/lib/video/workspace-fixture";
 import { hasCompleteTranslation } from "@/lib/utils/translation";
 import type {
   GenerationDebug,
@@ -66,19 +70,43 @@ type AnalyzePayload = {
   preview: boolean;
 };
 
-export function VideoWorkspace({ videoId }: { videoId: string }) {
-  const [metadata, setMetadata] = useState<VideoMetadata | undefined>();
-  const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
-  const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
+export function VideoWorkspace({
+  videoId,
+  fixtureState,
+}: {
+  videoId: string;
+  fixtureState?: WorkspaceFixtureState;
+}) {
+  const fixtureHasTranscript = fixtureState === "ready" || fixtureState === "partial";
+  const [metadata, setMetadata] = useState<VideoMetadata | undefined>(
+    fixtureState && fixtureState !== "failure" ? WORKSPACE_FIXTURE.metadata : undefined
+  );
+  const [transcript, setTranscript] = useState<TranscriptSegment[]>(
+    fixtureHasTranscript ? [...WORKSPACE_FIXTURE.transcript] : []
+  );
+  const [analysis, setAnalysis] = useState<VideoAnalysis | null>(
+    fixtureState === "ready" ? WORKSPACE_FIXTURE.analysis : null
+  );
+  const [loading, setLoading] = useState(fixtureState ? fixtureState === "loading" : true);
+  const [transcriptError, setTranscriptError] = useState<string | null>(
+    fixtureState === "failure" ? "这条视频没有可用字幕，暂时无法建立学习工作台。" : null
+  );
+  const [errorCode, setErrorCode] = useState<string | null>(
+    fixtureState === "failure" ? "NO_CAPTION_TRACKS" : null
+  );
+  const [analysisNotice, setAnalysisNotice] = useState<string | null>(
+    fixtureState === "partial" ? "字幕已经可以学习；深入解析暂时不可用，稍后可再试。" : null
+  );
 
   // 要点时刻 + 核心摘要（独立数据源）
-  const [moments, setMoments] = useState<KeyMoment[]>([]);
-  const [takeaways, setTakeaways] = useState<SummaryTakeaway[]>([]);
-  const [momentsLoading, setMomentsLoading] = useState(true);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [moments, setMoments] = useState<KeyMoment[]>(
+    fixtureState === "ready" ? [...WORKSPACE_FIXTURE.moments] : []
+  );
+  const [takeaways, setTakeaways] = useState<SummaryTakeaway[]>(
+    fixtureState === "ready" ? [...WORKSPACE_FIXTURE.takeaways] : []
+  );
+  const [momentsLoading, setMomentsLoading] = useState(fixtureState ? fixtureState === "loading" : true);
+  const [summaryLoading, setSummaryLoading] = useState(fixtureState ? fixtureState === "loading" : true);
 
   // 翻译状态
   const [translating, setTranslating] = useState(false);
@@ -101,7 +129,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
   const transcriptMode = useDisplayMode("en");
 
   // 词义定义
-  const wordDefinitions = useWordDefinitions(transcript);
+  const wordDefinitions = useWordDefinitions(transcript, !fixtureState);
 
   const handleSeekTo = useCallback((seconds: number) => {
     playerRef.current?.seekTo(seconds);
@@ -123,17 +151,19 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
       loading,
       momentCount: moments.length,
       takeawayCount: takeaways.length,
-      error
+      transcriptError,
+      analysisNotice,
     });
-  }, [momentsLoading, summaryLoading, loading, moments.length, takeaways.length, error]);
+  }, [momentsLoading, summaryLoading, loading, moments.length, takeaways.length, transcriptError, analysisNotice]);
 
   useEffect(() => {
+    if (fixtureState) return;
     let cancelled = false;
 
     // Step 1: 获取字幕（快速，<30s）
     async function loadTranscript(): Promise<{ metadata: VideoMetadata; transcript: TranscriptSegment[] } | null> {
       setLoading(true);
-      setError(null);
+      setTranscriptError(null);
 
       try {
         const transcriptRes = await fetch("/api/transcript", {
@@ -146,7 +176,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         if (cancelled) return null;
 
         if (!transcriptPayload.ok) {
-          setError(transcriptPayload.error.message);
+          setTranscriptError(transcriptPayload.error.message);
           setErrorCode(transcriptPayload.error.code ?? null);
           setLoading(false);
           return null;
@@ -160,7 +190,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
         return { metadata: transcriptPayload.data.metadata, transcript: transcriptPayload.data.transcript };
       } catch {
         if (!cancelled) {
-          setError("无法解析此视频，请确认链接有效后重试。");
+          setTranscriptError("无法解析此视频，请确认链接有效后重试。");
           setLoading(false);
         }
         return null;
@@ -169,6 +199,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
     // Step 2: AI 分析（可能较慢，<120s）
     async function loadAnalysis(metadata: VideoMetadata, transcript: TranscriptSegment[]): Promise<AnalyzePayload | null> {
+      setAnalysisNotice(null);
       try {
         const analyzeRes = await fetch("/api/analyze", {
           method: "POST",
@@ -183,13 +214,12 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
           setAnalysis(analyzePayload.data.analysis);
           return analyzePayload.data;
         } else {
-          setError(analyzePayload.error.message);
-          setErrorCode(analyzePayload.error.code ?? null);
+          setAnalysisNotice("字幕已经可以学习；深入解析暂时不可用，稍后可再试。");
           return null;
         }
       } catch {
         if (!cancelled) {
-          setError("AI 分析失败，请重试。");
+          setAnalysisNotice("字幕已经可以学习；深入解析暂时不可用，稍后可再试。");
         }
         return null;
       }
@@ -199,6 +229,13 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     async function loadMomentsAndSummary(analyzeData: AnalyzePayload | null) {
       setMomentsLoading(true);
       setSummaryLoading(true);
+
+      // 字幕成功但主分析失败时，保留可用工作台，不再自动触发两次额外 AI 请求。
+      if (!analyzeData) {
+        setMomentsLoading(false);
+        setSummaryLoading(false);
+        return;
+      }
 
       // 优先从 comprehensive 结果直接提取
       if (analyzeData?.comprehensive) {
@@ -298,7 +335,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [videoId]);
+  }, [fixtureState, videoId]);
 
   // 切换到中英/中文模式时，懒加载翻译（SSE 流式，逐句返回）
   const ensureTranslation = useCallback(async (mode: string) => {
@@ -389,6 +426,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
 
   // 收藏单词
   const handleSaveWord = useCallback(async (lemma: string): Promise<boolean> => {
+    if (fixtureState) return true;
     try {
       const res = await fetch("/api/user-vocabulary", {
         method: "POST",
@@ -400,10 +438,11 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     } catch {
       return false;
     }
-  }, [videoId]);
+  }, [fixtureState, videoId]);
 
   // 收藏句子
   const handleSaveQuote = useCallback(async (segment: TranscriptSegment): Promise<boolean> => {
+    if (fixtureState) return true;
     try {
       const res = await fetch("/api/user-quotes", {
         method: "POST",
@@ -421,15 +460,35 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
     } catch {
       return false;
     }
-  }, [videoId]);
+  }, [fixtureState, videoId]);
+
+  const showLearningPanels = loading || transcript.length > 0;
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
       <Navbar />
 
-      {/* 主内容 */}
-      <main ref={mainRef} className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
-        <div className="grid gap-4 md:gap-6 md:grid-cols-[1fr_auto]">
+      <main ref={mainRef} className="mx-auto w-full max-w-[90rem] px-4 pb-24 pt-20 sm:px-6 md:pb-16 md:pt-24 lg:px-8">
+        <header className="mb-5 flex flex-col gap-4 border-b border-[var(--tp-border)] pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Link href="/explore" className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-[var(--tp-text-muted)] transition-colors hover:text-[var(--tp-text)]">
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              返回学习选题
+            </Link>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tp-accent)]">学习工作台</p>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--tp-text-muted)]">先读字幕与出处，再看提炼结果；每个要点都保留回到原视频的时间位置。</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs text-[var(--tp-text-muted)]" aria-label="工作台原则">
+            <span className="inline-flex min-h-8 items-center rounded-full border border-[var(--tp-border)] px-3">字幕优先</span>
+            <span className="inline-flex min-h-8 items-center rounded-full border border-[var(--tp-border)] px-3">出处可回看</span>
+            {fixtureState ? <span className="inline-flex min-h-8 items-center rounded-full border border-[rgba(91,168,255,0.4)] bg-[rgba(91,168,255,0.1)] px-3 text-[var(--tp-accent)]">本地状态：{fixtureState}</span> : null}
+          </div>
+        </header>
+
+        <div className={showLearningPanels
+          ? "grid gap-5 md:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]"
+          : "grid max-w-4xl gap-5"
+        }>
           {/* 左侧：视频 + 章节列表 + 核心摘要 */}
           <div className="min-w-0 space-y-6">
             {/* 视频播放器 */}
@@ -437,30 +496,74 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
               ref={playerRef}
               videoId={videoId}
               metadata={metadata}
-              fallbackTitle={error ? "视频信息加载失败" : undefined}
+              fallbackTitle={transcriptError ? "视频信息加载失败" : undefined}
+              previewOnly={Boolean(fixtureState)}
             />
 
-            {error ? (
-              <div>
-                <div className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/8 p-4 text-[14px] font-medium text-red-400">
-                  <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
-                  {error}
+            {loading ? (
+              <div role="status" aria-live="polite" className="flex items-start gap-3 rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-4 text-sm leading-6 text-[var(--tp-text-secondary)]">
+                <Info className="mt-1 h-4 w-4 shrink-0 text-[var(--tp-accent)]" aria-hidden />
+                <div>
+                  <p className="font-semibold text-[var(--tp-text)]">正在读取字幕</p>
+                  <p>先确认视频来源与字幕可用性；理解提炼会在字幕出现后继续。</p>
                 </div>
-                {errorCode === "quota_exceeded" && (
-                  <div className="mt-3 flex gap-2">
-                    <Link href="/login" className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-5 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-white/15">
+              </div>
+            ) : null}
+
+            {transcriptError ? (
+              <div role="alert" className="rounded-[0.875rem] border border-red-400/25 bg-red-400/[0.07] p-4 sm:p-5">
+                <div className="flex items-start gap-3 text-sm font-medium leading-6 text-red-300">
+                  <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden />
+                  <div>
+                    <p>{transcriptError}</p>
+                    <p className="mt-1 font-normal text-[var(--tp-text-muted)]">
+                      {errorCode === "NO_CAPTION_TRACKS"
+                        ? "可以换一条带英文字幕的视频，或先在 YouTube 检查字幕是否开启。"
+                        : "输入内容仍可保留；请稍后重试，或换一条已核对的视频。"}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link href="/explore" className="inline-flex min-h-11 items-center rounded-lg bg-[var(--tp-text)] px-4 text-sm font-semibold text-[var(--tp-bg)] transition-colors hover:bg-white">
+                    选择其他视频
+                  </Link>
+                  <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
+                    在 YouTube 检查
+                  </a>
+                  {errorCode === "quota_exceeded" ? (
+                    <Link href={`/login?next=${encodeURIComponent(`/video/${videoId}`)}`} className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
                       立即登录
                     </Link>
-                    <Link href="/register" className="inline-flex items-center gap-1.5 rounded-full bg-[#0099ff]/15 px-5 py-2.5 text-[13px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/25">
-                      免费注册
-                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {analysisNotice ? (
+              <div role="status" className="flex items-start gap-3 rounded-[0.875rem] border border-[var(--tp-border-strong)] bg-[var(--tp-surface)] p-4 text-sm leading-6 text-[var(--tp-text-secondary)]">
+                <Info className="mt-1 h-4 w-4 shrink-0 text-[var(--tp-accent)]" aria-hidden />
+                <div>
+                  <p className="font-semibold text-[var(--tp-text)]">字幕已就绪</p>
+                  <p>{analysisNotice}</p>
+                </div>
+              </div>
+            ) : null}
+
+            {!loading && !transcriptError && transcript.length === 0 ? (
+              <div role="status" className="rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5">
+                <div className="flex items-start gap-3">
+                  <CircleCheck className="mt-1 h-4 w-4 shrink-0 text-[var(--tp-accent)]" aria-hidden />
+                  <div>
+                    <h2 className="font-semibold text-[var(--tp-text)]">暂时没有可读字幕</h2>
+                    <p className="mt-1 text-sm leading-6 text-[var(--tp-text-muted)]">工作台不会用空白结果冒充分析。请换一条带字幕的视频，或稍后重试。</p>
+                    <Link href="/explore" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--tp-accent)]">查看已核对视频</Link>
                   </div>
-                )}
+                </div>
               </div>
             ) : null}
 
             {/* 移动端：标签页切换（转录文本 / Chat / 笔记） */}
-            <div className="md:hidden mt-6">
+            {showLearningPanels ? <div className="mt-6 md:hidden">
               <MobileVideoTabs
                 videoId={videoId}
                 transcript={transcript}
@@ -477,25 +580,26 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
                 translationError={translationError}
                 chatEnabled={transcript.length > 0}
               />
-            </div>
+            </div> : null}
 
-            {/* 要点时刻（章节列表） */}
-            <HighlightsPanel
-              moments={moments}
-              loading={momentsLoading}
-              onSeekTo={handleSeekTo}
-            />
-
-            {/* 核心摘要 */}
-            <SummaryPanel
-              takeaways={takeaways}
-              loading={summaryLoading}
-              onSeekTo={handleSeekTo}
-            />
+            {showLearningPanels ? (
+              <>
+                <HighlightsPanel
+                  moments={moments}
+                  loading={momentsLoading}
+                  onSeekTo={handleSeekTo}
+                />
+                <SummaryPanel
+                  takeaways={takeaways}
+                  loading={summaryLoading}
+                  onSeekTo={handleSeekTo}
+                />
+              </>
+            ) : null}
           </div>
 
           {/* 右侧：标签页（转录文本 / Chat / 笔记） */}
-          <aside className="hidden md:block md:sticky md:top-20 md:w-[18rem] md:self-start lg:w-[20rem] xl:w-[26rem]">
+          {showLearningPanels ? <aside className="hidden md:sticky md:top-20 md:block md:self-start">
             <div className="h-[calc(100vh-6rem)]">
               <SidebarTabs
                 videoId={videoId}
@@ -514,7 +618,7 @@ export function VideoWorkspace({ videoId }: { videoId: string }) {
                 chatEnabled={transcript.length > 0}
               />
             </div>
-          </aside>
+          </aside> : null}
         </div>
       </main>
     </div>

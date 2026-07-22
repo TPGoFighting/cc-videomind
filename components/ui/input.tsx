@@ -10,9 +10,9 @@ export const Input = React.forwardRef<
   <input
     ref={ref}
     className={cn(
-      "flex h-12 w-full rounded-xl border border-white/15 bg-white/85 px-4 text-[15px] text-gray-900 placeholder:text-gray-400 shadow-sm outline-none transition-all duration-200",
-      "hover:border-white/25 hover:bg-white/95",
-      "focus-visible:border-[#0099ff] focus-visible:ring-2 focus-visible:ring-[rgba(0,153,255,0.15)] focus-visible:bg-white",
+      "flex h-12 w-full rounded-[var(--radius)] border border-[var(--tp-border)] bg-[var(--tp-surface)] px-4 text-base text-[var(--tp-text)] placeholder:text-[var(--tp-text-faint)] shadow-sm outline-none transition-[border-color,background-color,box-shadow] duration-200",
+      "hover:border-[var(--tp-border-strong)] hover:bg-[var(--tp-surface-raised)]",
+      "focus-visible:border-[var(--tp-accent)] focus-visible:bg-[var(--tp-surface-raised)] focus-visible:ring-2 focus-visible:ring-[rgba(91,168,255,0.18)]",
       "disabled:cursor-not-allowed disabled:opacity-40",
       className
     )}

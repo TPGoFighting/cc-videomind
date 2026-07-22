@@ -2,40 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens: lib/design/tokens.ts (canonical source of truth)
-   Anti-AI slop: no purple/indigo gradients, no "赋能/生态/重新定义" words */
+/* Design tokens: lib/design/tokens.ts (canonical source of truth). */
 
 :root {
-  /* Framer 暗黑色彩系统 */
-  --background: 0 0% 0%;
-  --foreground: 0 0% 100%;
-  --card: 0 0% 3.5%;
-  --card-foreground: 0 0% 100%;
-  --primary: 205 100% 50%;
-  --primary-foreground: 0 0% 100%;
-  --muted: 0 0% 65%;
-  --muted-foreground: 0 0% 65%;
-  --accent: 205 100% 50%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 51%;
+  --background: 216 30% 5%;
+  --foreground: 210 38% 97%;
+  --card: 213 40% 8%;
+  --card-foreground: 210 38% 97%;
+  --primary: 212 100% 68%;
+  --primary-foreground: 210 53% 7%;
+  --muted: 213 27% 13%;
+  --muted-foreground: 211 18% 66%;
+  --accent: 212 100% 68%;
+  --accent-foreground: 210 53% 7%;
+  --destructive: 356 100% 72%;
   --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 18%;
-  --input: 0 0% 12%;
-  --ring: 205 100% 50%;
-  --radius: 0.5rem;
+  --border: 211 23% 24%;
+  --input: 211 31% 15%;
+  --ring: 212 100% 68%;
+  --radius: 0.625rem;
 
-  /* Framer 特殊色 */
-  --framer-blue: #0099ff;
-  --framer-blue-ring: rgba(0, 153, 255, 0.15);
+  /* Teach Player 冷调学习工作台 */
+  --tp-bg: #080b0f;
+  --tp-bg-secondary: #0a1017;
+  --tp-surface: #0c131c;
+  --tp-surface-raised: #111a25;
+  --tp-border: rgba(166, 190, 214, 0.18);
+  --tp-border-strong: rgba(166, 190, 214, 0.32);
+  --tp-text: #f4f7fa;
+  --tp-text-secondary: #b8c3ce;
+  --tp-text-muted: #9aa8b7;
+  --tp-text-faint: #718090;
+  --tp-accent: #5ba8ff;
+  --tp-accent-hover: #82beff;
+  --tp-success: #58d68d;
+  --tp-warning: #f2b94b;
+  --tp-error: #ff707a;
+
+  /* 兼容旧组件；新代码使用 --tp-* */
+  --framer-blue: var(--tp-accent);
+  --framer-blue-ring: rgba(91, 168, 255, 0.18);
   --framer-frosted: rgba(255, 255, 255, 0.08);
   --framer-frosted-hover: rgba(255, 255, 255, 0.14);
-  --framer-surface: #090909;
-  --framer-silver: #a6a6a6;
+  --framer-surface: var(--tp-surface);
+  --framer-silver: var(--tp-text-muted);
   --framer-white-edge: rgba(255, 255, 255, 0.08);
 
   /* 中文字体栈 */
-  --font-sans: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", system-ui, -apple-system, sans-serif;
-  --font-display: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Heiti SC", system-ui, sans-serif;
+  --font-sans: "Satoshi", "Avenir Next", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --font-display: "Satoshi", "Avenir Next", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", monospace;
 }
 
@@ -51,12 +66,12 @@ html {
 
 body {
   min-height: 100vh;
-  background: #000000;
+  background: var(--tp-bg);
   color: hsl(var(--foreground));
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.7;
-  letter-spacing: 0.01em;
+  font-size: 16px;
+  line-height: 1.65;
+  letter-spacing: 0;
 }
 
 /* 中文标题的压缩感 — 用负 letter-spacing 仅在大标题上 */
@@ -73,8 +88,8 @@ button, input, textarea, select {
 
 /* 选中颜色 */
 ::selection {
-  background: rgba(0, 153, 255, 0.3);
-  color: #ffffff;
+  background: rgba(91, 168, 255, 0.3);
+  color: var(--tp-text);
 }
 
 /* 滚动条 */
@@ -98,9 +113,9 @@ button, input, textarea, select {
 
 /* 聚焦环 — 统一使用 Framer Blue */
 :focus-visible {
-  outline: 2px solid var(--framer-blue);
+  outline: 2px solid var(--tp-accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 /* 毛玻璃动画工具类 */
@@ -150,14 +165,14 @@ button, input, textarea, select {
 
 /* ── 渐变文字 ── */
 .text-gradient {
-  background: linear-gradient(135deg, #0099ff 0%, #33adff 40%, #a855f7 100%);
+  background: linear-gradient(135deg, #5ba8ff 0%, #82beff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .text-gradient-warm {
-  background: linear-gradient(135deg, #0099ff 0%, #a855f7 50%, #f472b6 100%);
+  background: linear-gradient(135deg, #5ba8ff 0%, #82beff 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -173,7 +188,7 @@ button, input, textarea, select {
 
 .glass-hover:hover {
   background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(0, 153, 255, 0.2);
+  border-color: rgba(91, 168, 255, 0.24);
 }
 
 /* ── 3D 透视容器 ── */
@@ -258,8 +273,8 @@ button, input, textarea, select {
 }
 
 .input-glow:focus {
-  box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.2),
-              0 0 20px rgba(0, 153, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(91, 168, 255, 0.22),
+              0 0 20px rgba(91, 168, 255, 0.08);
 }
 
 /* ── 骨架屏波浪 ── */
@@ -281,9 +296,15 @@ button, input, textarea, select {
 
 /* ── 减少动画偏好 ── */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

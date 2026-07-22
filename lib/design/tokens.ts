@@ -2,7 +2,7 @@
  * 设计系统常量
  *
  * 将设计参数编码为可配置常量，确保每个 AI 生成组件
- * 尊重 Framer 设计系统，消除「AI 味」。
+ * 尊重 Teach Player 的 Taste 设计系统，消除跨页面漂移。
  *
  * @module design-tokens
  */
@@ -25,55 +25,72 @@ export const VISUAL_DENSITY = 0.7;
 // ============================================================================
 
 export const COLORS = {
-  /** 主背景色 - 纯黑 */
-  background: "#000000",
+  /** 主背景色 - 冷调墨黑 */
+  background: "#080B0F",
 
   /** 次要背景色 */
-  backgroundSecondary: "#0A0A0A",
+  backgroundSecondary: "#0A1017",
 
   /** 卡片背景色 */
-  card: "#111111",
+  card: "#0C131C",
+
+  /** 浮起表面 */
+  surfaceRaised: "#111A25",
 
   /** 边框色 */
-  border: "#1F1F1F",
+  border: "rgba(166, 190, 214, 0.18)",
+
+  /** 强边框色 */
+  borderStrong: "rgba(166, 190, 214, 0.32)",
 
   /** 主文字色 */
-  text: "#FFFFFF",
+  text: "#F4F7FA",
 
   /** 次要文字色 */
-  textSecondary: "#888888",
+  textSecondary: "#B8C3CE",
 
-  /** 强调色 - Framer Blue（主强调，保留现有引用） */
-  accent: "#0099FF",
+  /** 辅助文字色 */
+  textMuted: "#9AA8B7",
 
-  /** 鲜艳点缀色 — 红（CTA / 强调 / 危险态） */
-  accentRed: "#FF3B30",
+  /** 最弱文字色；仅用于非关键说明 */
+  textFaint: "#718090",
 
-  /** 鲜艳点缀色 — 黄（高亮 / 标记 / 警示强调） */
-  accentYellow: "#FFCC00",
+  /** 唯一主行动强调色 */
+  accent: "#5BA8FF",
 
-  /** 鲜艳点缀色 — 蓝（次级强调，与 accent 一致，便于语义化引用） */
-  accentBlue: "#0099FF",
+  /** 主行动悬停色 */
+  accentHover: "#82BEFF",
+
+  /** 主行动低强调表面 */
+  accentSoft: "rgba(91, 168, 255, 0.14)",
+
+  /** 兼容旧调用；红色只表示错误或危险 */
+  accentRed: "#FF707A",
+
+  /** 兼容旧调用；黄色只表示警告 */
+  accentYellow: "#F2B94B",
+
+  /** 兼容旧调用；蓝色与唯一主强调一致 */
+  accentBlue: "#5BA8FF",
 
   /** 成功色 */
-  success: "#00CC66",
+  success: "#58D68D",
 
   /** 警告色 */
-  warning: "#FFAA00",
+  warning: "#F2B94B",
 
   /** 错误色 */
-  error: "#FF3333",
+  error: "#FF707A",
 
-  /** 渐变色 - 禁止在 AI 生成内容中使用紫色渐变 */
-  gradient: "linear-gradient(135deg, #0099FF 0%, #00CCFF 100%)",
+  /** 同色系强调渐变；禁止引入竞争性紫色 */
+  gradient: "linear-gradient(135deg, #5BA8FF 0%, #82BEFF 100%)",
 } as const;
 
-// 鲜艳点缀色序列：用于需要「红/黄/蓝」节奏感的地方（卡片图标、滚动进度等），
-// 避免单一蓝色带来的单调，同时保持克制、高级。
+// 兼容旧首页组件的点缀序列；全部收敛到同一冰蓝色阶。
 export const ACCENT_POINTS = [
-  COLORS.accentRed,
-  COLORS.accentYellow,
-  COLORS.accentBlue,
+  "#5BA8FF",
+  "#82BEFF",
+  "#3F8FE8",
 ] as const;
 
 // ============================================================================
@@ -82,10 +99,10 @@ export const ACCENT_POINTS = [
 
 export const TYPOGRAPHY = {
   /** 标题字体 */
-  fontFamily: "'GT Walsheim', 'Inter', sans-serif",
+  fontFamily: "'Satoshi', 'Avenir Next', 'PingFang SC', system-ui, sans-serif",
 
   /** 正文字体 */
-  bodyFontFamily: "'Inter', sans-serif",
+  bodyFontFamily: "'Satoshi', 'Avenir Next', 'PingFang SC', system-ui, sans-serif",
 
   /** 等宽字体 */
   monoFontFamily: "'JetBrains Mono', monospace",
@@ -159,10 +176,13 @@ export const BORDER_RADIUS = {
   sm: "0.375rem",   // 6px
 
   /** 中圆角（卡片） */
-  md: "0.5rem",     // 8px
+  md: "0.625rem",   // 10px
 
   /** 大圆角（模态框） */
-  lg: "0.75rem",    // 12px
+  lg: "0.875rem",   // 14px
+
+  /** 大型工作区与对话框 */
+  xl: "1.25rem",    // 20px
 
   /** 全圆角（头像、标签） */
   full: "9999px",
@@ -177,16 +197,16 @@ export const SHADOWS = {
   none: "none",
 
   /** 小阴影 */
-  sm: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+  sm: "0 1px 2px rgba(0, 0, 0, 0.24)",
 
   /** 中阴影 */
-  md: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+  md: "0 14px 36px rgba(0, 0, 0, 0.28)",
 
   /** 大阴影 */
-  lg: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+  lg: "0 28px 72px rgba(0, 0, 0, 0.42)",
 
   /** 聚焦阴影 */
-  focus: "0 0 0 2px #0099FF",
+  focus: "0 0 0 3px rgba(91, 168, 255, 0.34)",
 } as const;
 
 // ============================================================================
@@ -196,9 +216,9 @@ export const SHADOWS = {
 export const ANIMATION = {
   /** 持续时间 */
   durations: {
-    fast: "150ms",
-    normal: "300ms",
-    slow: "500ms",
+    fast: "120ms",
+    normal: "200ms",
+    slow: "360ms",
   },
 
   /** 缓动函数 */

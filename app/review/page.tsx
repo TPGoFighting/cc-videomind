@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Flame, Trophy, X } from "lucide-react";
+import { ArrowRight, BookmarkPlus, CalendarClock, Check, Flame, Play, RefreshCw, Trophy, X } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { StreakCalendar } from "@/components/streak-calendar";
 import { useAuth } from "@/components/auth-context";
@@ -75,12 +75,56 @@ function buildQuestions(words: ReviewWord[]): QuizQuestion[] {
   );
 }
 
+function ReviewOnboarding({ signedOut }: { signedOut: boolean }) {
+  const steps = [
+    { icon: Play, title: "先看一条知识视频", detail: "从字幕、要点或问答里找到真正想留下的内容。" },
+    { icon: BookmarkPlus, title: "保存一个词或句子", detail: "Teach Player 会同时保留原视频和时间点。" },
+    { icon: CalendarClock, title: "明天回到今日复习", detail: "先看记忆提示，再随时跳回出处确认语境。" },
+  ] as const;
+
+  return (
+    <section className="mt-8 rounded-[1.25rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5 sm:p-8">
+      <p className="text-sm font-semibold text-[var(--tp-accent)]">你的复习队列从一次保存开始</p>
+      <h2 className="mt-3 max-w-[18ch] text-3xl font-semibold tracking-[-0.04em]">今天留下一条，明天就有明确任务</h2>
+      <div className="mt-7 grid gap-3 md:grid-cols-3">
+        {steps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <article key={step.title} className="rounded-xl border border-[var(--tp-border)] bg-[var(--tp-bg-secondary)] p-4">
+              <div className="flex items-center justify-between">
+                <Icon className="h-5 w-5 text-[var(--tp-accent)]" aria-hidden />
+                <span className="font-mono text-xs text-[var(--tp-text-faint)]">0{index + 1}</span>
+              </div>
+              <h3 className="mt-5 text-base font-semibold">{step.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--tp-text-muted)]">{step.detail}</p>
+            </article>
+          );
+        })}
+      </div>
+      <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+        {signedOut ? (
+          <Link href="/login?next=%2Freview" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[var(--tp-accent)] px-5 text-sm font-semibold text-[#08101a] hover:bg-[var(--tp-accent-hover)]">
+            登录并保留复习进度
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        ) : null}
+        <Link href="/explore" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[var(--tp-border-strong)] px-5 text-sm font-semibold text-[var(--tp-text)] hover:bg-white/5">
+          选择一条学习视频
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 // ─── 主页面 ───
 
 export default function ReviewPage() {
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [checkin, setCheckin] = useState<CheckinStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
 
   // 答题状态
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -95,8 +139,11 @@ export default function ReviewPage() {
   // 加载待复习单词 + 打卡
   useEffect(() => {
     if (authLoading) return;
+    if (!user) return;
     let cancelled = false;
     async function load() {
+      setLoading(true);
+      setLoadError(null);
       try {
         const [wRes, cRes] = await Promise.all([
           fetch("/api/review"),
@@ -105,18 +152,27 @@ export default function ReviewPage() {
         const wp = (await wRes.json()) as JsonResponse<{ words: ReviewWord[] }>;
         const cp = (await cRes.json()) as JsonResponse<CheckinStatus>;
         if (!cancelled) {
-          if (wp.ok) setQuestions(buildQuestions(wp.data.words));
-          if (cp.ok) setCheckin(cp.data);
+          if (!wp.ok) {
+            setLoadError(wp.error.message || "暂时无法加载复习内容。");
+          } else {
+            setQuestions(buildQuestions(wp.data.words));
+          }
+          if (cp.ok) {
+            setCheckin(cp.data);
+          } else if (wp.ok && wp.data.words.length > 0) {
+            setCheckin({ streak: 0, todayCompleted: false, todayCount: 0, calendar: [] });
+            setLoadError("复习内容已找到，但连续学习状态暂时不可用。请稍后重试。");
+          }
         }
       } catch {
-        // 静默
+        if (!cancelled) setLoadError("暂时无法加载复习内容，请检查网络后重试。");
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
     void load();
     return () => { cancelled = true; };
-  }, [authLoading]);
+  }, [authLoading, reloadKey, user]);
 
   // 选答案
   const handleSelect = useCallback(
@@ -124,6 +180,7 @@ export default function ReviewPage() {
       if (answered || submitting || currentQ >= questions.length) return;
       setSelectedIdx(idx);
       setAnswered(true);
+      setActionStatus(null);
 
       const isCorrect = idx === questions[currentQ].correctIndex;
       if (isCorrect) {
@@ -148,7 +205,7 @@ export default function ReviewPage() {
         const cp = (await cr.json()) as JsonResponse<CheckinStatus>;
         if (cp.ok) setCheckin(cp.data);
       } catch {
-        // 静默
+        setActionStatus("本题结果暂未同步。继续复习不会关闭页面，请稍后在此页重试。");
       }
 
       // 延迟后下一题
@@ -169,10 +226,17 @@ export default function ReviewPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
         <Navbar />
-        <main className="mx-auto max-w-md px-5 pt-20 pb-20">
-          <div className="animate-breathe h-64 rounded-2xl bg-white/5" />
+        <main className="mx-auto w-[min(70rem,calc(100%-2rem))] pb-24 pt-24 sm:pt-28 md:pb-16">
+          <p className="text-sm font-semibold text-[var(--tp-accent)]">今日复习</p>
+          <h1 className="mt-3 max-w-[15ch] text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.96] tracking-[-0.055em]">让值得记住的内容，再出现一次</h1>
+          <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--tp-text-muted)]">正在确认你的学习记录，页面会保留在这里。</p>
+          <div role="status" aria-live="polite" className="mt-8 max-w-md space-y-4 rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] p-5">
+            <p className="text-sm font-semibold text-[var(--tp-text-secondary)]">正在加载复习队列</p>
+            <div className="animate-breathe h-3 w-3/4 rounded-full bg-white/6" />
+            <div className="animate-breathe h-40 rounded-xl bg-white/5" />
+          </div>
         </main>
       </div>
     );
@@ -182,22 +246,17 @@ export default function ReviewPage() {
   const progress = total > 0 ? ((currentQ + (finished ? 1 : 0)) / total) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
       <Navbar />
-      <main className="mx-auto w-full max-w-full px-3 pt-16 pb-20 sm:max-w-[90%] sm:px-5 sm:pt-20 md:max-w-[85%] lg:max-w-[80%] md:pb-16">
-        <h1 className="text-[24px] font-bold">每日复习</h1>
-        <p className="mt-1 text-[14px] text-white/40">
-          间隔重复，对抗遗忘曲线
+      <main className="mx-auto w-[min(70rem,calc(100%-2rem))] pb-24 pt-24 sm:pt-28 md:pb-16">
+        <p className="text-sm font-semibold text-[var(--tp-accent)]">今日复习</p>
+        <h1 className="mt-3 max-w-[15ch] text-[clamp(2.75rem,7vw,5.5rem)] font-semibold leading-[0.96] tracking-[-0.055em]">让值得记住的内容，再出现一次</h1>
+        <p className="mt-5 max-w-2xl text-base leading-7 text-[var(--tp-text-muted)]">
+          保存过的词句会带着原视频和时间点回来。你不需要脱离语境死记。
         </p>
 
         {!user ? (
-          <div className="mt-8 rounded-xl border border-white/8 bg-white/4 p-8 text-center">
-            <Flame className="mx-auto h-8 w-8 text-white/20" />
-            <p className="mt-3 text-[15px] text-white/50">登录后可开始复习</p>
-            <Link href="/login" className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-white/15">
-              立即登录
-            </Link>
-          </div>
+          <ReviewOnboarding signedOut />
         ) : loading ? (
           <div className="mt-8 space-y-4 max-w-md mx-auto">
             <div className="animate-breathe h-3 w-full rounded-full bg-white/5" />
@@ -208,10 +267,19 @@ export default function ReviewPage() {
               ))}
             </div>
           </div>
+        ) : loadError && questions.length === 0 ? (
+          <div role="alert" className="mt-8 rounded-xl border border-red-400/25 bg-red-400/10 p-6">
+            <p className="text-base font-semibold text-red-200">复习内容没有加载成功</p>
+            <p className="mt-2 text-sm text-red-200/80">{loadError}</p>
+            <button type="button" onClick={() => setReloadKey((key) => key + 1)} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-[var(--tp-text)] px-4 text-sm font-semibold text-[var(--tp-bg)]">
+              <RefreshCw className="h-4 w-4" aria-hidden />
+              重试
+            </button>
+          </div>
         ) : !checkin ? null : (
           <div className="mt-6 max-w-md mx-auto">
             {/* 打卡小结 */}
-            <div className="flex items-center justify-between mb-6">
+            {questions.length > 0 && !loadError ? <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
                 <Flame className="h-5 w-5 text-amber-400" />
                 <span className="text-[14px] font-medium text-white/70">
@@ -221,7 +289,10 @@ export default function ReviewPage() {
               <span className="text-[13px] text-white/40">
                 今日 {checkin.todayCount} 词
               </span>
-            </div>
+            </div> : null}
+
+            {loadError ? <p role="status" className="mb-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{loadError}</p> : null}
+            {actionStatus ? <p role="status" className="mb-4 rounded-lg border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-sm text-amber-100">{actionStatus}</p> : null}
 
             {/* 完成页面 */}
             {finished ? (
@@ -268,14 +339,7 @@ export default function ReviewPage() {
                 </div>
               </div>
             ) : questions.length === 0 ? (
-              <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-10 text-center">
-                <Trophy className="mx-auto h-10 w-10 text-white/15" />
-                <p className="mt-4 text-[16px] font-medium text-white/60">还没有待复习的单词</p>
-                <p className="mt-1 text-[13px] text-white/30">去视频中点击高亮单词收藏，开始词汇学习</p>
-                <Link href="/" className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-[#0099ff]/15 px-5 py-2.5 text-[14px] font-medium text-[#0099ff] transition-colors hover:bg-[#0099ff]/25">
-                  开始学习 <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
+              <ReviewOnboarding signedOut={false} />
             ) : (
               <>
                 {/* 答题区域 */}

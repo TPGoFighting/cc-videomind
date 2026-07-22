@@ -20,7 +20,7 @@ export function HighlightsPanel({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-white">
-            <Sparkles className="h-4 w-4 text-[#0099ff]" aria-hidden />
+            <Sparkles className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
             要点时刻
           </CardTitle>
         </div>
@@ -40,7 +40,7 @@ export function HighlightsPanel({
           ))}
           </div>
         ) : moments.length === 0 ? (
-          <p className="text-[14px] text-[#a6a6a6]">暂未找到可跳转的要点时刻。</p>
+          <p className="text-sm leading-6 text-[var(--tp-text-muted)]">深入解析暂未生成；字幕仍可继续阅读和收藏。</p>
         ) : (
           <div className="stagger-children space-y-3">
           {moments.map((m) => {
@@ -50,7 +50,7 @@ export function HighlightsPanel({
             return (
               <article
                 key={`${m.timestamp}-${m.title}`}
-                className="card-lift rounded-lg border border-white/8 bg-white/4 p-3.5 transition-shadow duration-300 hover:border-white/15 hover:shadow-[rgba(0,153,255,0.08)_0px_0px_0px_1px]"
+                className="rounded-lg border border-[var(--tp-border)] bg-white/[0.025] p-4 transition-colors duration-200 hover:border-[var(--tp-border-strong)]"
               >
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <h3 className="text-[14px] font-semibold leading-snug">
@@ -64,14 +64,14 @@ export function HighlightsPanel({
                   <button
                     type="button"
                     onClick={() => onSeekTo?.(startSeconds)}
-                    className="btn-press shrink-0 font-mono text-xs font-semibold text-[#0099ff] transition-colors hover:text-[#33adff] hover:underline"
+                    className="inline-flex min-h-11 shrink-0 items-center font-mono text-xs font-semibold text-[var(--tp-accent)] transition-colors hover:text-[var(--tp-accent-hover)] hover:underline"
                   >
                     {start}–{end}
                   </button>
                 </div>
 
                 {/* 引用 */}
-                <p className="text-[13px] leading-relaxed text-[#a6a6a6]">
+                <p className="text-[13px] leading-relaxed text-[var(--tp-text-secondary)]">
                   &ldquo;{m.quote}&rdquo;
                 </p>
                 {m.quote_zh && (

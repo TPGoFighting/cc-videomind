@@ -20,7 +20,7 @@ export function SummaryPanel({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-white">
-            <BookOpenCheck className="h-4 w-4 text-[#0099ff]" aria-hidden />
+            <BookOpenCheck className="h-4 w-4 text-[var(--tp-accent)]" aria-hidden />
             核心摘要
           </CardTitle>
         </div>
@@ -38,13 +38,13 @@ export function SummaryPanel({
             </div>
           </div>
         ) : takeaways.length === 0 ? (
-          <p className="text-[14px] text-[#a6a6a6]">AI 未能从此视频提取到摘要要点，请检查字幕质量。</p>
+          <p className="text-sm leading-6 text-[var(--tp-text-muted)]">深入解析暂未生成；字幕仍可继续阅读和收藏。</p>
         ) : (
           <div className="stagger-children space-y-4">
             {takeaways.map((t) => (
               <article
                 key={t.label}
-                className="card-lift rounded-lg border border-white/8 bg-white/4 px-4 py-3 transition-shadow duration-300 hover:border-white/15 hover:shadow-[rgba(0,153,255,0.08)_0px_0px_0px_1px]"
+                className="rounded-lg border border-[var(--tp-border)] bg-white/[0.025] px-4 py-4 transition-colors duration-200 hover:border-[var(--tp-border-strong)]"
               >
                 <h4 className="text-[14px] font-semibold leading-snug">
                   <span>{t.label}</span>
@@ -55,7 +55,7 @@ export function SummaryPanel({
                   )}
                 </h4>
 
-                <p className="mt-1.5 text-[13px] leading-relaxed text-[#a6a6a6]">
+                <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--tp-text-secondary)]">
                   {t.insight}
                 </p>
                 {t.insight_zh && (
@@ -72,7 +72,7 @@ export function SummaryPanel({
                         key={ts}
                         type="button"
                         onClick={() => onSeekTo?.(seconds)}
-                        className="btn-press inline-flex items-center rounded-md bg-[#0099ff]/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-[#0099ff] transition-colors hover:bg-[#0099ff]/20 hover:text-[#33adff]"
+                        className="inline-flex min-h-11 items-center rounded-md bg-[rgba(91,168,255,0.1)] px-3 font-mono text-xs font-semibold text-[var(--tp-accent)] transition-colors hover:bg-[rgba(91,168,255,0.18)] hover:text-[var(--tp-accent-hover)]"
                       >
                         {ts}
                       </button>

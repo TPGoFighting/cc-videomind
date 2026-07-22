@@ -12,6 +12,7 @@ import { GameIcon, type GameIconName } from "./game-icon";
 const ICON_MAP: Record<string, GameIconName> = {
   Play: "play",
   Clock: "time",
+  RefreshCw: "fire",
   BookOpen: "book",
   User: "user",
 };
