@@ -1,6 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import path from "path";
 import { getAiProvider } from "@/lib/ai/provider";
+import {
+  AsrConfigurationError,
+  AsrServiceError,
+  getAsrConfiguration,
+  requestAsrTranscript,
+} from "@/lib/asr/client";
 import { withSecurity } from "@/lib/security/middleware";
 import { upsertAnalysisCache } from "@/lib/supabase/cache";
 import { getAuthenticatedUserId, checkAnalysisQuota, recordAnalysisUsage } from "@/lib/supabase/quota";
@@ -98,79 +104,85 @@ export async function POST(request: Request) {
     scope: "video-analysis-upload",
     rateLimit: { maxRequests: 8, windowMs: 60_000 },
   }).wrap(request, async () => {
-      const userId = await getAuthenticatedUserId(request);
-  const quota = await checkAnalysisQuota(userId, request);
-  if (!quota.allowed) {
-    const msg = quota.anonymous
-      ? "未登录仅限解析1条视频，请登录后继续使用。"
-      : "已达到会员每日/周解析限制，请升级配额。";
-    return errorResponse("quota_exceeded", msg, 402);
-  }
-
-  try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File | null;
-    const durationStr = formData.get("duration") as string | null;
-    const titleStr = formData.get("title") as string | null;
-
-    if (!file) {
-      return errorResponse("no_file", "未检测到上传的文件", 400);
+    const userId = await getAuthenticatedUserId(request);
+    const quota = await checkAnalysisQuota(userId, request);
+    if (!quota.allowed) {
+      const msg = quota.anonymous
+        ? "未登录仅限解析1条视频，请登录后继续使用。"
+        : "已达到会员每日/周解析限制，请升级配额。";
+      return errorResponse("quota_exceeded", msg, 402);
     }
 
-    const duration = durationStr ? parseFloat(durationStr) : 60;
-    const originalTitle = titleStr || file.name || "本地视频";
-    
-    // 生成唯一的 local ID
-    const cleanId = Math.random().toString(36).substring(2, 10);
-    const videoId = `local-${cleanId}`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // 确保 uploads 文件夹存在并保存文件
-    const uploadsDir = path.join(process.cwd(), "uploads");
-    if (!existsSync(uploadsDir)) {
-      mkdirSync(uploadsDir, { recursive: true });
-    }
-    const savePath = path.join(uploadsDir, `${cleanId}.mp4`);
-    writeFileSync(savePath, buffer);
-
-    console.log(`[Upload-Analysis] 保存文件成功: ${savePath}, 大小: ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
-
-    // 调用 SiliconFlow 语音转录 API
-    const asrKey = process.env.ASR_API_KEY || "sk-krxpgqugagzblmuhkkkznmfzduqxiuydobctpyslhcdbhnio";
-    const asrBaseUrl = process.env.ASR_API_BASE_URL || "https://api.siliconflow.cn/v1";
-    const asrModel = process.env.ASR_MODEL || "FunAudioLLM/SenseVoiceSmall";
-
-    console.log(`[Upload-Analysis] 正在调用 ASR API (${asrModel})...`);
-
-    const sfFormData = new FormData();
-    const audioBlob = new Blob([buffer], { type: file.type || "audio/mp4" });
-    sfFormData.append("file", audioBlob, file.name || "audio.m4a");
-    sfFormData.append("model", asrModel);
-
-    const asrResponse = await fetch(`${asrBaseUrl}/audio/transcriptions`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${asrKey}`
-      },
-      body: sfFormData
-    });
-
-    if (!asrResponse.ok) {
-      const errText = await asrResponse.text().catch(() => "");
-      console.error(`[Upload-Analysis] ASR API 错误 (HTTP ${asrResponse.status}):`, errText);
-      throw new Error(`ASR API 错误: ${errText.slice(0, 200)}`);
+    let asrConfiguration;
+    try {
+      asrConfiguration = getAsrConfiguration();
+    } catch (error) {
+      if (error instanceof AsrConfigurationError) {
+        console.error("[Upload-Analysis] ASR configuration unavailable");
+        return errorResponse(
+          "asr_not_configured",
+          "本地视频转录服务暂不可用，请稍后再试。",
+          503,
+        );
+      }
+      throw error;
     }
 
-    const asrData = await asrResponse.json();
-    console.log(`[Upload-Analysis] ASR 转录成功:`, JSON.stringify(asrData).slice(0, 200));
+    let videoId: string | null = null;
+    try {
+      const formData = await request.formData();
+      const file = formData.get("file") as File | null;
+      const durationStr = formData.get("duration") as string | null;
+      const titleStr = formData.get("title") as string | null;
+
+      if (!file) {
+        return errorResponse("no_file", "未检测到上传的文件", 400);
+      }
+
+      const duration = durationStr ? parseFloat(durationStr) : 60;
+      const originalTitle = titleStr || file.name || "本地视频";
+
+      // 生成唯一的 local ID
+      const cleanId = Math.random().toString(36).substring(2, 10);
+      videoId = `local-${cleanId}`;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      // 确保 uploads 文件夹存在并保存文件
+      const uploadsDir = path.join(process.cwd(), "uploads");
+      if (!existsSync(uploadsDir)) {
+        mkdirSync(uploadsDir, { recursive: true });
+      }
+      const savePath = path.join(uploadsDir, `${cleanId}.mp4`);
+      writeFileSync(savePath, buffer);
+
+      console.info("[Upload-Analysis] file saved", {
+        videoId,
+        sizeBytes: buffer.byteLength,
+      });
+
+      console.info("[Upload-Analysis] ASR request started", {
+        videoId,
+        model: asrConfiguration.model,
+      });
+
+      const asrData = await requestAsrTranscript(asrConfiguration, {
+        file: new Blob([buffer], { type: file.type || "audio/mp4" }),
+        filename: file.name || "audio.m4a",
+      });
+
+      console.info("[Upload-Analysis] ASR request completed", {
+        videoId,
+        segmentCount: asrData.segments?.length ?? 0,
+        hasPlainText: Boolean(asrData.text?.trim()),
+      });
 
     let transcript: TranscriptSegment[] = [];
     if (asrData && Array.isArray(asrData.segments)) {
       transcript = asrData.segments
-        .filter((s: any) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end))
-        .map((s: any) => ({
+        .filter((s) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end))
+        .map((s) => ({
           startTime: Number(s.start),
           endTime: Number(s.end),
           text: cleanCaptionText(String(s.text))
@@ -197,10 +209,13 @@ export async function POST(request: Request) {
 
     if (!hasTranslation && transcript.length > 0) {
       try {
-        console.log(`[Translate] 启动上传文稿自动翻译逻辑, 视频ID: ${videoId}...`);
+        console.info("[Upload-Analysis] translation started", { videoId });
         const textSample = transcript.slice(0, 15).map((s) => s.text).join(" ");
         const targetLanguage = containsChinese(textSample) ? "English" : "zh-CN";
-        console.log(`[Translate] 语言检测: ${containsChinese(textSample) ? "中文音频 -> 译成英文" : "英文音频 -> 译成中文"}`);
+        console.info("[Upload-Analysis] translation language detected", {
+          videoId,
+          targetLanguage,
+        });
         
         const aiProvider = await getAiProvider(userId ?? undefined);
 
@@ -215,13 +230,19 @@ export async function POST(request: Request) {
           chunks.map((chunk) => aiProvider.translateTranscript({ segments: chunk, targetLanguage }))
         );
         finalTranscript = translatedChunks.flat();
-        console.log(`[Translate] 上传音频自动翻译成功，翻译总段数: ${finalTranscript.length}`);
+        console.info("[Upload-Analysis] translation completed", {
+          videoId,
+          segmentCount: finalTranscript.length,
+        });
       } catch (err) {
-        console.error(`[Translate] 上传音频自动翻译失败，降级回退到原文字幕:`, err);
+        console.warn("[Upload-Analysis] translation failed; using source transcript", {
+          videoId,
+          errorType: err instanceof Error ? err.name : "UnknownError",
+        });
       }
     }
 
-    console.log(`[Upload-Analysis] 正在生成 AI 分析...`);
+    console.info("[Upload-Analysis] analysis started", { videoId });
     const analysis = await (await getAiProvider(userId ?? undefined)).generateAnalysis({ title: metadata.title, transcript: finalTranscript });
 
     // 缓存至 Supabase
@@ -236,13 +257,28 @@ export async function POST(request: Request) {
       cached: false,
       preview: userId === null
     });
-  } catch (error) {
-    console.error("Local video upload & analysis failed", error);
-    const message =
-      error instanceof Error
-        ? `导入分析失败：${error.message}`
-        : "Failed to import and analyze the local media file.";
-    return errorResponse("analysis_failed", message, 502);
-  }
+    } catch (error) {
+      const errorType = error instanceof Error ? error.name : "UnknownError";
+      const asrStatus = error instanceof AsrServiceError ? error.status : undefined;
+      console.error("[Upload-Analysis] request failed", {
+        videoId,
+        errorType,
+        asrStatus,
+      });
+
+      if (error instanceof AsrServiceError) {
+        return errorResponse(
+          "asr_failed",
+          "语音转录服务暂时不可用，请稍后重试。",
+          502,
+        );
+      }
+
+      return errorResponse(
+        "analysis_failed",
+        "导入分析失败，请稍后重试。",
+        502,
+      );
+    }
   });
 }

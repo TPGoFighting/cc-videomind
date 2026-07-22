@@ -32,6 +32,8 @@
 - 基础 URL：`ASR_API_BASE_URL`（默认 `https://api.siliconflow.cn/v1`）
 - 模型：`ASR_MODEL`（默认 `FunAudioLLM/SenseVoiceSmall`）
 - API Key：`ASR_API_KEY`
+- 缺少 API Key 时：返回 `503 asr_not_configured`，不保存上传文件且不发出 ASR 请求
+- 日志只记录状态、模型别名、字节数和段落数，不记录 Authorization、上传路径、转录正文或第三方响应正文
 
 ### 返回值
 ```json

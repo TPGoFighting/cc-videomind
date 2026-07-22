@@ -104,9 +104,16 @@ AI_MODEL=LongCat-2.0
 TRANSCRIPT_PROVIDER=supadata
 SUPADATA_API_KEY=
 
+# Local media and Bilibili ASR (server only)
+ASR_API_BASE_URL=https://api.siliconflow.cn/v1
+ASR_API_KEY=
+ASR_MODEL=FunAudioLLM/SenseVoiceSmall
+
 # Debug
 DEBUG_AI=true
 ```
+
+`ASR_API_KEY` 缺失时，本地视频转录接口会返回安全的配置错误，不会使用源码回退值或向 ASR 供应商发出请求。密钥轮换步骤见 [`docs/operations/secret-rotation.md`](docs/operations/secret-rotation.md)。
 
 ---
 
