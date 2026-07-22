@@ -65,4 +65,11 @@ describe("Tencent PostgreSQL authoritative schema", () => {
     assert.match(eventStatement.toLowerCase(), /expires_at timestamptz not null/);
     assert.doesNotMatch(eventStatement.toLowerCase(), /transcript|prompt|answer|note_body/);
   });
+
+  it("permits only one unresolved manual-payment submission per user", () => {
+    assert.match(
+      schemaSql,
+      /create unique index if not exists payment_submissions_active_user_idx on payment_submissions\(user_id\) where status = 'pending'/,
+    );
+  });
 });

@@ -17,6 +17,11 @@ const security = {
   rateLimit: { maxRequests: 20, windowMs: 60_000 },
 };
 
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error
+    && (error as { code?: unknown }).code === "23505";
+}
+
 export async function GET(request: Request) {
   return withSecurity(security).wrap(request, async () => {
     const user = await getTencentUser(request);
@@ -42,18 +47,25 @@ export async function POST(request: Request) {
     const parsed = await readJson(request, SubmitSchema);
     if (!parsed.ok) return parsed.response;
 
-    const existing = await queryTencent<{ id: string }>(
-      `SELECT id FROM payment_submissions WHERE user_id = $1 AND tier = $2 AND status = 'pending' LIMIT 1`,
-      [user.id, parsed.data.tier],
+    const existing = await queryTencent<{ id: string; tier: "pro" | "max" }>(
+      `SELECT id, tier FROM payment_submissions WHERE user_id = $1 AND status = 'pending' LIMIT 1`,
+      [user.id],
     );
     if (existing.rowCount) {
-      return errorResponse("pending_submission_exists", "该套餐已有待审核付款提交。", 409);
+      return errorResponse("pending_submission_exists", "你已有一笔待审核付款提交，请等待审核或取消后再提交。", 409);
     }
 
-    await queryTencent(
-      `INSERT INTO payment_submissions (id, user_id, tier, transaction_id) VALUES ($1, $2, $3, $4)`,
-      [randomUUID(), user.id, parsed.data.tier, parsed.data.transactionId],
-    );
+    try {
+      await queryTencent(
+        `INSERT INTO payment_submissions (id, user_id, tier, transaction_id) VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), user.id, parsed.data.tier, parsed.data.transactionId],
+      );
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return errorResponse("pending_submission_exists", "你已有一笔待审核付款提交，请等待审核或取消后再提交。", 409);
+      }
+      throw error;
+    }
     return successResponse({ ok: true });
   });
 }

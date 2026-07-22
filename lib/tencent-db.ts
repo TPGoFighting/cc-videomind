@@ -109,6 +109,7 @@ export const TENCENT_SCHEMA_STATEMENTS = [
   )`,
   `ALTER TABLE payment_submissions DROP CONSTRAINT IF EXISTS payment_submissions_status_check`,
   `ALTER TABLE payment_submissions ADD CONSTRAINT payment_submissions_status_check CHECK (status IN ('pending', 'approved', 'rejected', 'refunded', 'cancelled', 'failed'))`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS payment_submissions_active_user_idx ON payment_submissions(user_id) WHERE status = 'pending'`,
   `CREATE INDEX IF NOT EXISTS payment_submissions_user_idx ON payment_submissions(user_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS payment_submissions_status_idx ON payment_submissions(status, created_at DESC)`,
   `CREATE TABLE IF NOT EXISTS video_analyses (
