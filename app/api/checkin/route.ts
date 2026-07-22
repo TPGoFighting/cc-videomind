@@ -6,6 +6,7 @@ import { getAuthenticatedUserId } from "@/lib/supabase/quota";
 import { queryTencent } from "@/lib/tencent-db";
 import type { CheckinStatus } from "@/lib/types";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { isActiveReviewDay } from "@/lib/product/retention";
 
 const IncrementSchema = z.object({ wordCount: z.number().int().min(1).max(50).optional() });
 type CheckinRow = { checkin_date: string; word_count: number };
@@ -21,13 +22,13 @@ function toStatus(rows: CheckinRow[]): CheckinStatus {
   let streak = 0;
   for (let day = 0; day < 365; day += 1) {
     const date = cursor.toISOString().slice(0, 10);
-    if ((counts.get(date) ?? 0) >= 10) streak += 1;
+    if (isActiveReviewDay(counts.get(date) ?? 0)) streak += 1;
     else if (day > 0) break;
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
   return {
     streak,
-    todayCompleted: (counts.get(today) ?? 0) >= 10,
+    todayCompleted: isActiveReviewDay(counts.get(today) ?? 0),
     todayCount: counts.get(today) ?? 0,
     calendar: rows.slice(0, 30).map((row) => ({ date: asDate(row.checkin_date), count: row.word_count })),
   };

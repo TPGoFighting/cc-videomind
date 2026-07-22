@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // sql.js initializes an Emscripten CommonJS module at runtime. Bundling it into
+  // the Next server chunk breaks its internal `module.exports` hand-off.
+  serverExternalPackages: ["sql.js"],
   async headers() {
     return [
       {

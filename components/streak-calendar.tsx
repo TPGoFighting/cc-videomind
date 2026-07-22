@@ -62,7 +62,7 @@ export function StreakCalendar({
           近30天打卡
         </span>
         <span className="text-[11px] text-white/20">
-          🔥 {streak} 天连续
+          {streak} 天连续
         </span>
       </div>
       <div className="grid grid-cols-7 gap-1">
@@ -81,7 +81,7 @@ export function StreakCalendar({
           return (
             <div
               key={date}
-              title={`${date}: ${countMap.get(date) ?? 0} 个单词`}
+              title={`${date}: ${countMap.get(date) ?? 0} 条复习`}
               className={cn(
                 "aspect-square rounded-[3px] transition-colors",
                 intensityColors[level],

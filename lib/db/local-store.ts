@@ -3,6 +3,7 @@ import type { SqlValue } from "./sqlite";
 import type { AsyncTask, TaskStatus, TaskType } from "@/lib/async/task-manager";
 import type { TranscriptSegment } from "@/lib/types";
 import {
+  isActiveReviewDay,
   ReviewCadenceSchema,
   type ReviewCadence,
 } from "@/lib/product/retention";
@@ -70,6 +71,11 @@ function parseJson<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/** Fail closed before a local-mode API turns an unavailable database into an empty state. */
+export async function ensureLocalStoreReady(): Promise<void> {
+  await getDb();
 }
 
 // ---------------------------------------------------------------------------
@@ -965,7 +971,7 @@ export function getCheckinSummary(): Promise<CheckinSummary> {
     const cursor = new Date(`${today}T00:00:00.000Z`);
     for (let day = 0; day < 365; day += 1) {
       const date = isoDate(cursor);
-      if ((counts.get(date) ?? 0) >= 10) {
+      if (isActiveReviewDay(counts.get(date) ?? 0)) {
         streak += 1;
       } else if (day > 0) {
         break;
@@ -977,7 +983,7 @@ export function getCheckinSummary(): Promise<CheckinSummary> {
     calendarStart.setUTCDate(calendarStart.getUTCDate() - 29);
     return {
       streak,
-      todayCompleted: (counts.get(today) ?? 0) >= 10,
+      todayCompleted: isActiveReviewDay(counts.get(today) ?? 0),
       todayCount: counts.get(today) ?? 0,
       calendar: rows
         .filter((row) => row.checkin_date >= isoDate(calendarStart))

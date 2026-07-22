@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  ensureLocalStoreReady,
   getLocalReviewCadence,
   saveLocalReviewCadence,
 } from "@/lib/db/local-store";
@@ -29,6 +30,7 @@ function preferenceResponse(cadence: "light" | "steady" | "focused") {
 
 export async function GET(request: Request) {
   if (isLocalMode()) {
+    await ensureLocalStoreReady();
     return successResponse(preferenceResponse(await getLocalReviewCadence()));
   }
   const userId = await getAuthenticatedUserId(request);
@@ -52,6 +54,7 @@ export async function PUT(request: Request) {
     if (!body.ok) return body.response;
 
     if (isLocalMode()) {
+      await ensureLocalStoreReady();
       await saveLocalReviewCadence(body.data.cadence);
       return successResponse(preferenceResponse(body.data.cadence));
     }

@@ -360,7 +360,7 @@ npm run build
 - [ ] 用户可以看到为何今天有这些复习项，并跳回来源视频和时间点。页面、API 和播放器起始时间已接通，待双视口浏览器验收。
 - [x] D1 留存可按新用户 cohort 计算；沿用 T06 的内容无关白名单事件与 D1/D7 聚合。
 
-**本地工程证据（2026-07-22）**：`npm run lint`、`npm run typecheck`、181 项测试（含 SQLite 词/句统一队列与级联删除集成测试）和 `next build --webpack`（63 个页面任务）通过；未执行生产 schema 激活，也未将本地构建等同于线上验收。
+**本地工程证据（2026-07-22）**：`npm run lint`、`npm run typecheck`、182 项测试（含 SQLite 词/句统一队列、级联删除和活跃日规则）及 `next build --webpack`（63 个页面任务）通过。隔离本地运行时已实测 `GET/POST /api/review`、`GET/PUT /api/review-preferences` 和 `GET /api/checkin`：词句各 1 条进入队列，来源 42/91 秒，答错约 10 分钟重试，强化节奏答对约 3 天后复习，提交后形成 1 个活跃日。未执行生产 schema 激活，也未将本地 API 验收等同于线上或浏览器验收。
 
 ---
 

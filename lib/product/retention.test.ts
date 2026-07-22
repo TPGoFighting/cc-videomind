@@ -8,6 +8,7 @@ import {
   explainDueReview,
   getReviewCadencePolicy,
   getInitialReviewAt,
+  isActiveReviewDay,
   parseVideoStartTime,
   ReviewSubmissionRequestSchema,
 } from "./retention";
@@ -30,6 +31,11 @@ test("retention cadence keeps the first review promise and changes later pacing"
 test("new learning items always enter the queue about one day later", () => {
   const now = new Date("2026-07-22T04:00:00.000Z");
   assert.equal(getInitialReviewAt(now), "2026-07-23T04:00:00.000Z");
+});
+
+test("a completed scheduled review counts as an active learning day", () => {
+  assert.equal(isActiveReviewDay(1), true);
+  assert.equal(isActiveReviewDay(0), false);
 });
 
 test("a saved word may carry its source timestamp", () => {

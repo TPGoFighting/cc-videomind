@@ -1,6 +1,7 @@
 import {
   getDueReviewQuotes,
   getDueReviewWords,
+  ensureLocalStoreReady,
   getLocalRetentionStats,
   getLocalReviewCadence,
   getQuoteReviewState,
@@ -291,6 +292,7 @@ export async function GET(request: Request) {
   const summaryOnly = new URL(request.url).searchParams.get("summary") === "1";
   const now = new Date();
   if (isLocalMode()) {
+    await ensureLocalStoreReady();
     const payload = await getLocalReviewPayload(now);
     return successResponse(summaryOnly
       ? { summary: payload.summary, weekly: payload.weekly }

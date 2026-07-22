@@ -113,6 +113,10 @@ export function getInitialReviewAt(now = new Date()) {
   ).toISOString();
 }
 
+export function isActiveReviewDay(completedReviews: number) {
+  return Number.isFinite(completedReviews) && completedReviews > 0;
+}
+
 export function calculateReviewSchedule(
   input: {
     quality: number;
