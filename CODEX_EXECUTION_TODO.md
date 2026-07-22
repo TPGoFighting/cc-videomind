@@ -381,7 +381,7 @@ npm run build
 - [ ] 将 `lib/plans.ts` 的权益绑定到真实的、事务安全的用量记录；同一视频的缓存命中不应重复扣量。
 - [ ] 在解析前和达到额度时展示同一份规则；不要让 API 返回无限额度而 UI 宣称有限额度。
 - [ ] 只保留 D3 选定的支付路径；未配置的 Stripe 或人工审核路径不应被用户当作可用购买入口。
-- [ ] 增加支付状态机和幂等性：`pending → paid/failed/refunded/cancelled`，并保留人工审核记录。
+- [-] 增加支付状态机和幂等性：`pending → approved/rejected/cancelled/failed`、`approved → refunded` 已以纯规则测试和单事务管理员审核实现；用户退款/取消入口及其商业规则仍等待产品合同确认。
 - [ ] 增加订阅取消、退款请求和恢复免费权益的可验证流程。
 
 **验收**：

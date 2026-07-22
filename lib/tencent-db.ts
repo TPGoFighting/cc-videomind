@@ -101,12 +101,14 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
     tier TEXT NOT NULL CHECK (tier IN ('pro', 'max')),
     transaction_id TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'refunded', 'cancelled', 'failed')),
     reviewed_by TEXT REFERENCES app_users(id),
     admin_notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     reviewed_at TIMESTAMPTZ
   )`,
+  `ALTER TABLE payment_submissions DROP CONSTRAINT IF EXISTS payment_submissions_status_check`,
+  `ALTER TABLE payment_submissions ADD CONSTRAINT payment_submissions_status_check CHECK (status IN ('pending', 'approved', 'rejected', 'refunded', 'cancelled', 'failed'))`,
   `CREATE INDEX IF NOT EXISTS payment_submissions_user_idx ON payment_submissions(user_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS payment_submissions_status_idx ON payment_submissions(status, created_at DESC)`,
   `CREATE TABLE IF NOT EXISTS video_analyses (
