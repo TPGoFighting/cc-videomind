@@ -16,9 +16,18 @@ export const WORKSPACE_FIXTURE_STATES = [
 
 export type WorkspaceFixtureState = (typeof WORKSPACE_FIXTURE_STATES)[number];
 
+export const WORKSPACE_FIXTURE_SAVE_MODES = ["preview", "guest"] as const;
+
+export type WorkspaceFixtureSaveMode = (typeof WORKSPACE_FIXTURE_SAVE_MODES)[number];
+
 export function parseWorkspaceFixture(value: string | string[] | undefined) {
   if (typeof value !== "string") return undefined;
   return WORKSPACE_FIXTURE_STATES.find((state) => state === value);
+}
+
+export function parseWorkspaceFixtureSaveMode(value: string | string[] | undefined) {
+  if (typeof value !== "string") return undefined;
+  return WORKSPACE_FIXTURE_SAVE_MODES.find((mode) => mode === value);
 }
 
 export const WORKSPACE_FIXTURE = {

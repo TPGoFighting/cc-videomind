@@ -432,54 +432,55 @@ export function TranscriptViewer({
                 <div
                   key={segKey}
                   ref={i === activeIndex ? activeRef : undefined}
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    // 如果点击了收藏按钮或交互单词，不跳转
-                    const target = e.target as HTMLElement;
-                    if (target.closest("[data-no-seek]")) return;
-                    onSeekTo?.(segment.startTime);
-                  }}
-                  onKeyDown={(e) => { if (e.key === "Enter") onSeekTo?.(segment.startTime); }}
                   className={cn(
-                    "group grid grid-cols-[4.5rem_1fr] gap-3 rounded-lg px-2 py-1.5 text-[14px] transition-colors cursor-pointer",
+                    "group grid grid-cols-[4.5rem_1fr] gap-3 rounded-lg px-2 py-1.5 text-[14px] transition-colors",
                     i === activeIndex
                       ? "bg-[rgba(91,168,255,0.1)] ring-1 ring-[rgba(91,168,255,0.22)]"
                       : "hover:bg-white/4"
                   )}
                 >
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => onSeekTo?.(segment.startTime)}
+                    aria-label={`跳转到 ${formatTimestamp(segment.startTime)} 开始播放`}
                     className={cn(
-                      "font-mono text-xs font-semibold",
+                      "inline-flex min-h-11 items-start rounded-md pt-1 font-mono text-xs font-semibold transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)]",
                       i === activeIndex ? "text-[var(--tp-accent)]" : "text-[var(--tp-text-muted)]"
                     )}
                   >
                     {formatTimestamp(segment.startTime)}
-                  </span>
+                  </button>
                   <div className="min-w-0">
-                    {/* 英文原文 */}
-                    {showEn && (
-                      <p
-                        className={cn(
-                          "leading-relaxed",
-                          i === activeIndex ? "text-[var(--tp-text)]" : "text-[var(--tp-text-secondary)]"
-                        )}
-                      >
-                        {renderText(segment.text)}
-                      </p>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => onSeekTo?.(segment.startTime)}
+                      aria-label={`从 ${formatTimestamp(segment.startTime)} 播放：${segment.text}`}
+                      className="block min-h-11 w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)]"
+                    >
+                      {/* 英文原文 */}
+                      {showEn && (
+                        <span
+                          className={cn(
+                            "block leading-relaxed",
+                            i === activeIndex ? "text-[var(--tp-text)]" : "text-[var(--tp-text-secondary)]"
+                          )}
+                        >
+                          {renderText(segment.text)}
+                        </span>
+                      )}
 
-                    {/* 中文翻译 */}
-                    {showZh && segment.text_zh && (
-                      <p className={cn(
-                        "leading-relaxed mt-0.5",
-                        i === activeIndex ? "text-white/70" : "text-white/35"
-                      )}>
-                        {segment.text_zh}
-                      </p>
-                    )}
+                      {/* 中文翻译 */}
+                      {showZh && segment.text_zh && (
+                        <span className={cn(
+                          "mt-0.5 block leading-relaxed",
+                          i === activeIndex ? "text-white/70" : "text-white/35"
+                        )}>
+                          {segment.text_zh}
+                        </span>
+                      )}
+                    </button>
 
-                    <div className="mt-1 flex flex-wrap gap-1" data-no-seek>
+                    <div className="mt-1 flex flex-wrap gap-1">
                       <button
                         type="button"
                         onClick={(event) => {
@@ -500,7 +501,7 @@ export function TranscriptViewer({
                             void handleSaveQuote(segment);
                           }}
                           className={cn(
-                            "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] transition-colors touch-reveal",
+                            "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] transition-colors",
                             isSaving || isSaved
                               ? "text-[var(--tp-accent)]"
                               : "text-[var(--tp-text-faint)] hover:text-[var(--tp-accent)]"

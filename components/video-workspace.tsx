@@ -29,6 +29,7 @@ import {
 } from "@/lib/product/recovery-guidance";
 import {
   WORKSPACE_FIXTURE,
+  type WorkspaceFixtureSaveMode,
   type WorkspaceFixtureState,
 } from "@/lib/video/workspace-fixture";
 import { hasCompleteTranslation } from "@/lib/utils/translation";
@@ -152,9 +153,11 @@ function WorkspaceProgress({ stage }: { stage: WorkspaceStage }) {
 export function VideoWorkspace({
   videoId,
   fixtureState,
+  fixtureSaveMode = "preview",
 }: {
   videoId: string;
   fixtureState?: WorkspaceFixtureState;
+  fixtureSaveMode?: WorkspaceFixtureSaveMode;
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -569,7 +572,7 @@ export function VideoWorkspace({
 
   const saveLearningItem = useCallback(async (item: PendingLearningItem): Promise<boolean> => {
     const decision = decideLearningSave({
-      fixture: Boolean(fixtureState),
+      fixture: Boolean(fixtureState) && fixtureSaveMode !== "guest",
       authLoading,
       authenticated: Boolean(user),
     });
@@ -606,7 +609,7 @@ export function VideoWorkspace({
       setSaveNotice("网络中断，暂时没有保存成功。内容仍在当前页面，请稍后重试。");
       return false;
     }
-  }, [authLoading, fixtureState, queueLearningItemAndLogin, user]);
+  }, [authLoading, fixtureSaveMode, fixtureState, queueLearningItemAndLogin, user]);
 
   // 登录返回后，只恢复同一视频、30 分钟内且通过 schema 校验的学习项。
   useEffect(() => {

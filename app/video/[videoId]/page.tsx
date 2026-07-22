@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { VideoWorkspace } from "@/components/video-workspace";
-import { parseWorkspaceFixture } from "@/lib/video/workspace-fixture";
+import {
+  parseWorkspaceFixture,
+  parseWorkspaceFixtureSaveMode,
+} from "@/lib/video/workspace-fixture";
 import { VideoIdSchema } from "@/lib/youtube/id";
 
 export default async function VideoPage({
@@ -8,7 +11,10 @@ export default async function VideoPage({
   searchParams,
 }: {
   params: Promise<{ videoId: string }>;
-  searchParams: Promise<{ fixture?: string | string[] }>;
+  searchParams: Promise<{
+    fixture?: string | string[];
+    fixtureSave?: string | string[];
+  }>;
 }) {
   const { videoId } = await params;
   const query = await searchParams;
@@ -20,6 +26,16 @@ export default async function VideoPage({
   const fixtureState = process.env.NODE_ENV === "production"
     ? undefined
     : parseWorkspaceFixture(query.fixture);
+  const fixtureSaveMode = fixtureState
+    ? parseWorkspaceFixtureSaveMode(query.fixtureSave) ?? "preview"
+    : undefined;
 
-  return <VideoWorkspace key={`${parsed.data}:${fixtureState ?? "live"}`} videoId={parsed.data} fixtureState={fixtureState} />;
+  return (
+    <VideoWorkspace
+      key={`${parsed.data}:${fixtureState ?? "live"}:${fixtureSaveMode ?? "persist"}`}
+      videoId={parsed.data}
+      fixtureState={fixtureState}
+      fixtureSaveMode={fixtureSaveMode}
+    />
+  );
 }
