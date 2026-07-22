@@ -910,15 +910,26 @@ interface PaymentSubmission {
   admin_notes: string | null;
   created_at: string;
   reviewed_at: string | null;
+  refund_requested_at: string | null;
+  refund_reason: string | null;
+  refunded_at: string | null;
   userEmail: string | null;
 }
 
 function AdminPaymentsPanel() {
   const [submissions, setSubmissions] = useState<PaymentSubmission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "refunded" | "all">("pending");
   const [processing, setProcessing] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
+
+  function getApiMessage(data: { error?: { message?: string }; error_description?: string }, fallback: string) {
+    return data.error?.message ?? data.error_description ?? fallback;
+  }
+
+  function getSubmissions(data: { data?: { submissions?: PaymentSubmission[] }; submissions?: PaymentSubmission[] }) {
+    return data.data?.submissions ?? data.submissions ?? [];
+  }
 
   const loadSubmissions = useCallback(async () => {
     try {
@@ -926,11 +937,11 @@ function AdminPaymentsPanel() {
       const data = await res.json();
       if (!res.ok) {
         console.error("加载付款提交失败:", data);
-        setMessage({ type: "error", text: data.error_description ?? `API 错误 (${res.status})` });
+        setMessage({ type: "error", text: getApiMessage(data, `API 错误 (${res.status})`) });
         setSubmissions([]);
         return;
       }
-      setSubmissions(data.submissions ?? []);
+      setSubmissions(getSubmissions(data));
       setMessage(null);
     } catch {
       console.error("加载付款提交失败");
@@ -946,10 +957,10 @@ function AdminPaymentsPanel() {
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
-          setMessage({ type: "error", text: data.error_description ?? `API 错误 (${res.status})` });
+          setMessage({ type: "error", text: getApiMessage(data, `API 错误 (${res.status})`) });
           setSubmissions([]);
         } else {
-          setSubmissions(data.submissions ?? []);
+          setSubmissions(getSubmissions(data));
           setMessage(null);
         }
       } catch {
@@ -962,7 +973,7 @@ function AdminPaymentsPanel() {
     return () => { cancelled = true; };
   }, [filter]);
 
-  async function handleReview(submissionId: string, action: "approve" | "reject") {
+  async function handleReview(submissionId: string, action: "approve" | "reject" | "refund") {
     setProcessing(submissionId);
     setMessage(null);
     try {
@@ -973,14 +984,14 @@ function AdminPaymentsPanel() {
       });
       const data = await res.json();
       if (res.ok) {
-        setMessage({ type: "success", text: action === "approve" ? "已批准并升级用户方案" : "已拒绝" });
+        setMessage({ type: "success", text: action === "approve" ? "已批准并升级用户方案" : action === "refund" ? "已标记线下退款完成并恢复免费权益" : "已拒绝" });
         setLoading(true);
         loadSubmissions().then(
           () => setLoading(false),
           () => setLoading(false)
         );
       } else {
-        setMessage({ type: "error", text: data.error_description ?? "操作失败" });
+        setMessage({ type: "error", text: getApiMessage(data, "操作失败") });
       }
     } catch {
       setMessage({ type: "error", text: "网络错误" });
@@ -995,6 +1006,7 @@ function AdminPaymentsPanel() {
       case "pending": return { text: "待审核", color: "text-amber-400 bg-amber-400/10" };
       case "approved": return { text: "已通过", color: "text-emerald-400 bg-emerald-400/10" };
       case "rejected": return { text: "已拒绝", color: "text-red-400 bg-red-400/10" };
+      case "refunded": return { text: "已退款", color: "text-sky-300 bg-sky-300/10" };
       default: return { text: s, color: "text-white/40 bg-white/6" };
     }
   };
@@ -1007,13 +1019,13 @@ function AdminPaymentsPanel() {
           付款审核
         </CardTitle>
         <p className="text-[13px] text-white/40">
-          审核用户提交的微信/支付宝付款凭证
+          审核用户提交的支付宝交易单号；退款必须先完成线下原路退款。
         </p>
       </CardHeader>
       <CardContent>
         {/* 过滤器 */}
         <div className="flex gap-2 mb-4">
-          {(["pending", "approved", "rejected", "all"] as const).map((f) => (
+          {(["pending", "approved", "rejected", "refunded", "all"] as const).map((f) => (
             <button
               key={f}
               type="button"
@@ -1024,7 +1036,7 @@ function AdminPaymentsPanel() {
                   : "bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/60"
               }`}
             >
-              {f === "pending" ? "待审核" : f === "approved" ? "已通过" : f === "rejected" ? "已拒绝" : "全部"}
+              {f === "pending" ? "待审核" : f === "approved" ? "已通过" : f === "rejected" ? "已拒绝" : f === "refunded" ? "已退款" : "全部"}
             </button>
           ))}
           <button
@@ -1081,6 +1093,8 @@ function AdminPaymentsPanel() {
                       <p className="text-[11px] text-white/25">
                         {new Date(s.created_at).toLocaleString("zh-CN")}
                       </p>
+                      {s.refund_requested_at && s.status === "approved" && <p className="text-[11px] text-amber-300/70">用户已申请退款；请先在线下确认原路退款到账。</p>}
+                      {s.refund_requested_at && s.refund_reason && <p className="text-[11px] text-white/35">用户说明：{s.refund_reason}</p>}
                     </div>
 
                     {/* 待审核：操作按钮 */}
@@ -1105,6 +1119,16 @@ function AdminPaymentsPanel() {
                           拒绝
                         </button>
                       </div>
+                    )}
+                    {s.status === "approved" && s.refund_requested_at && (
+                      <button
+                        type="button"
+                        disabled={processing === s.id}
+                        onClick={() => handleReview(s.id, "refund")}
+                        className="shrink-0 rounded-lg bg-sky-400/10 px-3 py-1.5 text-[12px] font-medium text-sky-200 transition-colors hover:bg-sky-400/20 disabled:opacity-50"
+                      >
+                        {processing === s.id ? "处理中..." : "已线下退款"}
+                      </button>
                     )}
                   </div>
                 </div>

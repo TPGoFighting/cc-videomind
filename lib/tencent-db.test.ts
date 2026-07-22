@@ -77,7 +77,10 @@ describe("Tencent PostgreSQL authoritative schema", () => {
     assert.match(schemaSql, /subscription_expires_at timestamptz/);
     assert.match(schemaSql, /alter table app_users add column if not exists subscription_expires_at timestamptz/);
     assert.match(schemaSql, /subscription_usage_started_at timestamptz/);
+    assert.match(schemaSql, /subscription_payment_id text/);
     assert.match(schemaSql, /amount_cny integer/);
     assert.match(schemaSql, /access_days integer/);
+    assert.match(schemaSql, /refund_requested_at timestamptz/);
+    assert.match(schemaSql, /refunded_at timestamptz/);
   });
 });

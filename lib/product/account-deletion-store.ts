@@ -138,7 +138,7 @@ export async function processDueAccountDeletions(limit = 20): Promise<{
         await client.query(`UPDATE product_events SET user_id = NULL WHERE user_id = $1`, [userId]);
         await client.query(
           `UPDATE payment_submissions
-           SET transaction_id = md5(transaction_id), admin_notes = NULL
+           SET transaction_id = md5(transaction_id), admin_notes = NULL, refund_reason = NULL
            WHERE user_id = $1`,
           [userId],
         );
@@ -150,7 +150,10 @@ export async function processDueAccountDeletions(limit = 20): Promise<{
              password_hash = $3,
              password_salt = $4,
              role = 'deleted',
-             subscription_tier = 'free'
+             subscription_tier = 'free',
+             subscription_expires_at = NULL,
+             subscription_usage_started_at = NULL,
+             subscription_payment_id = NULL
            WHERE id = $1`,
           [
             userId,

@@ -31,6 +31,17 @@ type BillingData = {
   } | null;
 };
 
+type RefundData = {
+  refund: null | {
+    paymentId: string;
+    tier: Tier;
+    amountCny: number | null;
+    requestedAt: string | null;
+    refundedAt: string | null;
+    eligibility: { eligible: boolean; reason: string | null };
+  };
+};
+
 function formatDate(iso: string | null) {
   if (!iso) return null;
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "long" }).format(new Date(iso));
@@ -41,6 +52,7 @@ export default function BillingPage() {
   const pageRef = useRef<HTMLElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<BillingData | null>(null);
+  const [refund, setRefund] = useState<RefundData["refund"]>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
   const [transactionId, setTransactionId] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -48,11 +60,17 @@ export default function BillingPage() {
   const [busy, setBusy] = useState(false);
 
   const loadBilling = useCallback(async () => {
-    const response = await fetch("/api/payment/submit", { cache: "no-store" });
+    const [response, refundResponse] = await Promise.all([
+      fetch("/api/payment/submit", { cache: "no-store" }),
+      fetch("/api/payment/refund-request", { cache: "no-store" }),
+    ]);
     const payload = await response.json() as { data?: BillingData; error?: { message?: string } };
+    const refundPayload = await refundResponse.json() as { data?: RefundData; error?: { message?: string } };
     if (!response.ok || !payload.data) throw new Error(payload.error?.message ?? "无法加载付款信息。");
+    if (!refundResponse.ok || !refundPayload.data) throw new Error(refundPayload.error?.message ?? "无法加载退款状态。");
     const billingData = payload.data;
     setData(billingData);
+    setRefund(refundPayload.data.refund);
     setSelectedTier((current) => current ?? billingData.pending?.tier ?? null);
   }, []);
 
@@ -130,6 +148,27 @@ export default function BillingPage() {
       setMessage({ type: "success", text: "待审核付款申请已取消，未开通任何权益。" });
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "取消失败，请稍后重试。" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestRefund() {
+    if (busy || !refund?.eligibility.eligible) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/payment/refund-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json() as { error?: { message?: string } };
+      if (!response.ok) throw new Error(payload.error?.message ?? "退款申请提交失败，请稍后重试。");
+      await loadBilling();
+      setMessage({ type: "success", text: "退款申请已提交。我们会在 1 个工作日内回应；退款到账仍以线下处理结果为准。" });
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "退款申请提交失败，请稍后重试。" });
     } finally {
       setBusy(false);
     }
@@ -233,6 +272,28 @@ export default function BillingPage() {
                 ) : (
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm leading-7 text-white/55">当前未配置收款码，新的付款申请已暂停。请稍后再试，不要向公开渠道或个人私信发送付款信息。</div>
                 )}
+              </section>
+            )}
+
+            {refund && (
+              <section data-billing-reveal className="mt-8 rounded-3xl border border-white/10 bg-white/[0.025] p-7 sm:p-9">
+                <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">
+                  <div className="max-w-2xl">
+                    <h2 className="text-xl font-semibold tracking-[-0.035em]">退款状态</h2>
+                    {refund.refundedAt ? (
+                      <p className="mt-3 text-sm leading-7 text-emerald-100/75">该订单已被管理员标记为线下退款完成。权益已恢复为免费版；如到账异常，请通过站内支持继续处理。</p>
+                    ) : refund.requestedAt ? (
+                      <p className="mt-3 text-sm leading-7 text-amber-100/75">退款申请已提交，等待人工处理。请勿重复申请；我们会在 1 个工作日内回应。</p>
+                    ) : refund.eligibility.eligible ? (
+                      <p className="mt-3 text-sm leading-7 text-white/55">这笔已开通订单仍在 7 天退款期内，且开通后尚未完成 AI 视频分析。申请只会创建人工工单，不会自动发起转账。</p>
+                    ) : (
+                      <p className="mt-3 text-sm leading-7 text-white/45">当前订单不满足自动退款资格。若核心服务故障导致无法使用，请通过支持页提交个案说明。</p>
+                    )}
+                  </div>
+                  {refund.eligibility.eligible && (
+                    <button type="button" disabled={busy} onClick={requestRefund} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-200/30 px-4 text-sm font-medium text-amber-100 transition-colors hover:bg-amber-100/10 disabled:opacity-50">申请退款</button>
+                  )}
+                </div>
               </section>
             )}
           </>
