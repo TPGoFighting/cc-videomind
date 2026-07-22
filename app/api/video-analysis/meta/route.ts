@@ -1,12 +1,6 @@
-import { z } from "zod";
 import { errorResponse, successResponse } from "@/lib/utils/api";
-import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
 import { withSecurity } from "@/lib/security/middleware";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
-
-const RequestSchema = z.object({
-  videoId: z.string().min(1).max(100),
-});
 
 /**
  * 快速获取视频元数据（标题、作者、缩略图）
@@ -27,7 +21,7 @@ export async function POST(request: Request) {
   }
 
   const isBilibili = /^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(input);
-  let videoId = input;
+  const videoId = input;
   let metadata: Record<string, unknown> | null = null;
 
   // 1. 查询缓存

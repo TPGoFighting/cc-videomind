@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { fetchWithTimeout } from "@/lib/utils/http";
 
 export const BilibiliVideoIdSchema = z
   .string()

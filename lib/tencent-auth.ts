@@ -5,7 +5,7 @@ import type { NextResponse } from "next/server";
 import { hasTencentDatabase, queryTencent } from "@/lib/tencent-db";
 
 const scrypt = promisify(scryptCallback);
-const SESSION_COOKIE = "teachplayer_session";
+export const TENCENT_SESSION_COOKIE = "teachplayer_session";
 const SESSION_DAYS = 30;
 
 export type TencentUser = {
@@ -14,6 +14,16 @@ export type TencentUser = {
   role: string;
   subscriptionTier: string;
 };
+
+export function getTencentSessionCookieOptions(expires: Date, secure = process.env.NODE_ENV === "production") {
+  return {
+    httpOnly: true,
+    secure,
+    sameSite: "lax" as const,
+    path: "/",
+    expires,
+  };
+}
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -86,24 +96,18 @@ export async function createTencentSession(userId: string, response: NextRespons
     `INSERT INTO app_sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
     [hashToken(token), userId, expires],
   );
-  response.cookies.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    expires,
-  });
+  response.cookies.set(TENCENT_SESSION_COOKIE, token, getTencentSessionCookieOptions(expires));
   return token;
 }
 
-function getBearerToken(request?: Request): string | null {
+export function getTencentBearerToken(request?: Request): string | null {
   const authorization = request?.headers.get("authorization");
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() || null;
 }
 
 async function getSessionToken(request?: Request): Promise<string | null> {
-  return getBearerToken(request) ?? (await cookies()).get(SESSION_COOKIE)?.value ?? null;
+  return getTencentBearerToken(request) ?? (await cookies()).get(TENCENT_SESSION_COOKIE)?.value ?? null;
 }
 
 export async function getTencentUser(request?: Request): Promise<TencentUser | null> {
@@ -130,5 +134,5 @@ export async function clearTencentSession(response: NextResponse, request?: Requ
   if (token) {
     await queryTencent(`DELETE FROM app_sessions WHERE token_hash = $1`, [hashToken(token)]);
   }
-  response.cookies.set(SESSION_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
+  response.cookies.set(TENCENT_SESSION_COOKIE, "", { httpOnly: true, path: "/", maxAge: 0 });
 }

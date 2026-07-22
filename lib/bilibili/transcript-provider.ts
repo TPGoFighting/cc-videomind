@@ -16,15 +16,23 @@ interface BilibiliSubtitleItem {
   content: string;
 }
 
-interface BilibiliSubtitleJson {
-  body: BilibiliSubtitleItem[];
+interface BilibiliSubtitleTrack {
+  lan: string;
+  lan_doc: string;
+  subtitle_url: string;
+  is_ai: boolean;
 }
+
+export type BilibiliMetadata = Awaited<ReturnType<typeof fetchBilibiliMetadata>>;
+export type BilibiliProgressEvent = "metadata" | "soft_subtitle" | "asr_start" | "asr_chunk" | "complete" | "error";
+export type BilibiliProgressData = BilibiliMetadata | TranscriptSegment[] | { duration: number };
+export type BilibiliProgressCallback = (event: BilibiliProgressEvent, data: BilibiliProgressData) => void;
 
 export class BilibiliTranscriptProvider implements TranscriptProvider {
   async getTranscript(
     videoId: string, 
     preferredLang?: string,
-    onProgress?: (event: "metadata" | "soft_subtitle" | "asr_start" | "asr_chunk" | "complete" | "error", data: any) => void
+    onProgress?: BilibiliProgressCallback
   ): Promise<TranscriptSegment[]> {
     console.log(`[Bilibili:Transcript] 开始为视频 ${videoId} 提取字幕，首选语言: ${preferredLang ?? "未指定"}`);
     const riskManager = BilibiliAntiRiskManager.getInstance();
@@ -87,24 +95,31 @@ export class BilibiliTranscriptProvider implements TranscriptProvider {
    * 对 B站 字幕轨道进行优先级排序与降级排列
    * 优先级：手动英文 > 自动英文 > 手动中文 > 自动中文 > 其它手动 > 其它自动
    */
-  private rankBilibiliTracks(tracks: any[], preferredLang?: string): any[] {
+  private rankBilibiliTracks(tracks: unknown[], preferredLang?: string): BilibiliSubtitleTrack[] {
     const preferred = preferredLang?.toLowerCase();
 
     // 格式化轨道信息
-    const formatted = tracks.map((t) => ({
-      lan: String(t.lan ?? "").toLowerCase(),
-      lan_doc: String(t.lan_doc ?? ""),
-      subtitle_url: String(t.subtitle_url ?? "").startsWith("//") ? `https:${t.subtitle_url}` : String(t.subtitle_url ?? ""),
-      is_ai: t.lan?.startsWith("ai-") || t.ai_status === 2 || t.ai_type === 1
-    })).filter(t => t.subtitle_url);
+    const formatted = tracks
+      .filter(isRecord)
+      .map((track): BilibiliSubtitleTrack => {
+        const lan = String(track.lan ?? "").toLowerCase();
+        const rawSubtitleUrl = String(track.subtitle_url ?? "");
+        return {
+          lan,
+          lan_doc: String(track.lan_doc ?? ""),
+          subtitle_url: rawSubtitleUrl.startsWith("//") ? `https:${rawSubtitleUrl}` : rawSubtitleUrl,
+          is_ai: lan.startsWith("ai-") || track.ai_status === 2 || track.ai_type === 1,
+        };
+      })
+      .filter((track) => Boolean(track.subtitle_url));
 
     // 归类
     const manual = formatted.filter((t) => !t.is_ai);
     const auto = formatted.filter((t) => t.is_ai);
 
-    const isMatch = (t: any, lang: string) => t.lan.includes(lang);
+    const isMatch = (track: BilibiliSubtitleTrack, lang: string) => track.lan.includes(lang);
 
-    const result: any[] = [];
+    const result: BilibiliSubtitleTrack[] = [];
 
     // 1. 首选指定语言的非 AI 字幕
     if (preferred) {
@@ -388,4 +403,3 @@ export class BilibiliTranscriptProvider implements TranscriptProvider {
     return segments;
   }
 }
-

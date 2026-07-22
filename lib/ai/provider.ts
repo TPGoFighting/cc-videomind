@@ -1099,7 +1099,7 @@ function repairAnalysis(
   const repaired = VideoAnalysisSchema.safeParse({
     summary: summary || `关于 "${transcript.slice(0, 3).map((s) => s.text).join(" ")}" 的视频分析`,
     takeaways: takeaways.length >= 3 ? takeaways : generateDefaultTakeaways(transcript),
-    suggestedQuestions: suggestedQuestions.length >= 3 ? suggestedQuestions : generateDefaultQuestions(transcript),
+    suggestedQuestions: suggestedQuestions.length >= 3 ? suggestedQuestions : generateDefaultQuestions(),
     highlights: highlights.length >= 5 ? highlights : generateDefaultHighlights(transcript)
   });
 
@@ -1148,7 +1148,7 @@ function generateDefaultTakeaways(transcript: TranscriptSegment[]): string[] {
   ];
 }
 
-function generateDefaultQuestions(transcript: TranscriptSegment[]): string[] {
+function generateDefaultQuestions(): string[] {
   return [
     "视频的主要内容是什么？",
     "有哪些关键观点或发现？",

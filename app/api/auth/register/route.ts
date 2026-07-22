@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { createTencentSession, registerTencentUser } from "@/lib/tencent-auth";
-import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
+import { errorResponse, readJson } from "@/lib/utils/api";
 
 const CredentialsSchema = z.object({
   email: z.string().email().max(320),

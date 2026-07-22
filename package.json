@@ -2,13 +2,16 @@
   "name": "videomind",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "build": "next build --webpack",
+    "dev": "next dev --webpack",
     "start": "next start -p 3100",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx --test lib/ai/provider-failure.test.ts lib/supabase/cache-v2.test.ts lib/utils/comprehensive-cache.test.ts lib/utils/moments-validator.test.ts lib/utils/single-flight.test.ts lib/utils/translation.test.ts lib/utils/video-analysis-cache.test.ts lib/youtube/transcript-provider.test.ts lib/supabase/quota.test.ts",
+    "test": "node --import tsx --test lib/ai/provider-config.test.ts lib/ai/provider-failure.test.ts lib/asr/client.test.ts lib/supabase/cache-v2.test.ts lib/tencent-auth.test.ts lib/utils/comprehensive-cache.test.ts lib/utils/moments-validator.test.ts lib/utils/single-flight.test.ts lib/utils/translation.test.ts lib/utils/video-analysis-cache.test.ts lib/youtube/id.test.ts lib/youtube/transcript-provider.test.ts lib/supabase/quota.test.ts",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
@@ -39,15 +42,16 @@
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.19.10",
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@types/sql.js": "^1.4.11",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
-    "@types/pg": "^8.20.0",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.2",
     "wrangler": "^4.92.0"
   },

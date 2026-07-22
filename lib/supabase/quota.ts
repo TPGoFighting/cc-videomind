@@ -1,4 +1,8 @@
-import { getTencentUser, type TencentUser } from "@/lib/tencent-auth";
+import {
+  getTencentBearerToken,
+  getTencentUser,
+  type TencentUser,
+} from "@/lib/tencent-auth";
 import { queryTencent } from "@/lib/tencent-db";
 import { isLocalMode } from "@/lib/local-mode";
 import { type SubscriptionTier } from "@/lib/plans";
@@ -7,11 +11,7 @@ import { type SubscriptionTier } from "@/lib/plans";
 export const LOCAL_USER_ID = "local";
 export type { SubscriptionTier };
 
-export function getBearerToken(request?: Request) {
-  const authorization = request?.headers.get("authorization");
-  const match = authorization?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
-}
+export const getBearerToken = getTencentBearerToken;
 
 export async function getAuthenticatedUser(request?: Request): Promise<TencentUser | null> {
   if (isLocalMode()) {
@@ -32,6 +32,7 @@ export async function getProfileTier(userId: string): Promise<SubscriptionTier> 
 }
 
 export async function hasUserAnalyzedVideo(userId: string | null, videoId: string, _request?: Request): Promise<boolean> {
+  void _request;
   if (isLocalMode() || !userId) return false;
   const result = await queryTencent<{ exists: boolean }>(
     `SELECT EXISTS(SELECT 1 FROM user_videos WHERE user_id = $1 AND video_id = $2) AS exists`,
@@ -42,6 +43,7 @@ export async function hasUserAnalyzedVideo(userId: string | null, videoId: strin
 
 /** 腾讯云自托管版本不使用 SaaS 配额层，登录与匿名用户均可正常解析。 */
 export async function checkAnalysisQuota(userId: string | null, _request?: Request) {
+  void _request;
   return {
     allowed: true,
     anonymous: !userId,

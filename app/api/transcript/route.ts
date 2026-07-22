@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       if (userId && Array.isArray(transcript) && transcript.length) {
         import("@/lib/embedding/vectorizer")
           .then(({ vectorizeTranscript }) =>
-            vectorizeTranscript(videoId!, transcript as any)
+            vectorizeTranscript(videoId!, transcript)
           )
           .catch(() => {});
       }

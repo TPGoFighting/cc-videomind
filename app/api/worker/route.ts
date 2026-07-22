@@ -8,15 +8,15 @@ const RequestSchema = z.object({ taskId: z.string().uuid() });
 type TaskHandler = (task: AsyncTask) => Promise<Record<string, unknown>>;
 
 const handlers: Record<string, TaskHandler> = {
-  vectorize: async (_task) => {
+  vectorize: async () => {
     // Stub — will implement with RAG module
     return { status: "vectorize stub completed" };
   },
-  bilibili_asr: async (_task) => {
+  bilibili_asr: async () => {
     // Stub — will implement with Bilibili ASR
     return { status: "bilibili_asr stub completed" };
   },
-  comprehensive_analysis: async (_task) => {
+  comprehensive_analysis: async () => {
     // Stub — will implement with summary module
     return { status: "comprehensive_analysis stub completed" };
   },

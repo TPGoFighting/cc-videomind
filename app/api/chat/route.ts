@@ -11,13 +11,14 @@ import { VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { retrieveRelevantChunks, type RetrievedChunk } from "@/lib/embedding/retriever";
+import type { TranscriptSegment } from "@/lib/types";
 
 const RequestSchema = z.object({
   videoId: VideoIdSchema,
   question: z.string().min(3).max(800)
 });
 
-function chunksToSegments(chunks: RetrievedChunk[]) {
+function chunksToSegments(chunks: RetrievedChunk[]): TranscriptSegment[] {
   // Build minimal TranscriptSegment[] from retrieved chunks for the provider
   const segments: { startTime: number; endTime: number; text: string }[] = [];
   for (const c of chunks) {
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       degradedResult = await withChatDegradation(
         () => aiProvider.answerQuestion({
           question: parsed.data.question,
-          transcript: segmentsFromChunks as any,
+          transcript: segmentsFromChunks,
           chunks: ragChunks,
         }),
       );

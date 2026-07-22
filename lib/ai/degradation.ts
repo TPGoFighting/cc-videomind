@@ -10,7 +10,6 @@
  */
 
 import type { TranscriptSegment, VideoAnalysis, ChatAnswer, KeyMoment, SummaryTakeaway, WordDefinition } from "@/lib/types";
-import type { UnifiedTranscript } from "@/lib/types/unified";
 
 // ============================================================================
 // 1. 降级状态枚举

@@ -27,6 +27,18 @@ const SyncRequestSchema = z.object({
   localChanges: z.array(LocalChangeSchema)
 });
 
+type WordDefinitionJoin = {
+  lemma?: string | null;
+  definition_zh?: string | null;
+};
+
+type ServerVocabularyRow = {
+  id: string;
+  created_at: string;
+  video_id: string | null;
+  word_definitions: WordDefinitionJoin | WordDefinitionJoin[] | null;
+};
+
 /** POST /api/sync/notebook — 生词本增量水位线同步 (艾宾浩斯进度支持) */
 export async function POST(request: Request) {
   return withSecurity({
@@ -195,8 +207,11 @@ export async function POST(request: Request) {
   }
 
   // 映射为手机端 SQLite 易装载的数据格式
-  const serverChanges = (serverNewData ?? []).map((row: any) => {
-    const def = row.word_definitions;
+  const serverRows = (serverNewData ?? []) as unknown as ServerVocabularyRow[];
+  const serverChanges = serverRows.map((row) => {
+    const def = Array.isArray(row.word_definitions)
+      ? row.word_definitions[0]
+      : row.word_definitions;
     return {
       id: row.id,
       lemma: def?.lemma || "",

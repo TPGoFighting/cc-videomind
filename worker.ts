@@ -8,7 +8,7 @@
 //
 // wrangler.jsonc 的 "main" 已指向本文件（取代 .open-next/worker.js）。
 
-// @ts-ignore .open-next/worker.js is produced by `opennext build` and exists at deploy time
+// @ts-expect-error .open-next/worker.js is produced by `opennext build` and exists at deploy time
 import openNextHandler from "./.open-next/worker.js";
 import { RateLimiterDO } from "./lib/security/rate-limiter-do";
 

@@ -28,9 +28,9 @@ export async function GET(request: Request) {
     const chunksize = end - start + 1;
     
     const fileStream = createReadStream(filePath, { start, end });
-    const webStream = Readable.toWeb(fileStream);
+    const webStream = Readable.toWeb(fileStream) as ReadableStream<Uint8Array>;
 
-    return new Response(webStream as any, {
+    return new Response(webStream, {
       status: 206,
       headers: {
         "Content-Range": `bytes ${start}-${end}/${fileSize}`,
@@ -41,9 +41,9 @@ export async function GET(request: Request) {
     });
   } else {
     const fileStream = createReadStream(filePath);
-    const webStream = Readable.toWeb(fileStream);
+    const webStream = Readable.toWeb(fileStream) as ReadableStream<Uint8Array>;
 
-    return new Response(webStream as any, {
+    return new Response(webStream, {
       headers: {
         "Content-Length": String(fileSize),
         "Content-Type": "video/mp4",

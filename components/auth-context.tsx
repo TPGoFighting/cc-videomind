@@ -34,16 +34,20 @@ type Profile = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const LOCAL_USER: AppUser = { id: "local", email: "local@local" };
 
+async function loadProfile(): Promise<Profile> {
+  const response = await fetch("/api/me", { cache: "no-store" });
+  if (!response.ok) throw new Error("Unable to load account profile.");
+  return response.json() as Promise<Profile>;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const localMode = isLocalMode();
+  const [user, setUser] = useState<AppUser | null>(() => localMode ? LOCAL_USER : null);
+  const [loading, setLoading] = useState(() => !localMode);
   const [isAdmin, setIsAdmin] = useState(false);
   const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>("free");
 
-  const fetchProfile = useCallback(async () => {
-    const response = await fetch("/api/me", { cache: "no-store" });
-    if (!response.ok) throw new Error("Unable to load account profile.");
-    const profile = await response.json() as Profile;
+  const applyProfile = useCallback((profile: Profile) => {
     if (profile.authenticated && profile.id) {
       setUser({ id: profile.id, email: profile.email });
       setIsAdmin(profile.role === "admin");
@@ -55,23 +59,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchProfile = useCallback(async () => {
+    applyProfile(await loadProfile());
+  }, [applyProfile]);
+
   useEffect(() => {
-    if (isLocalMode()) {
-      setUser(LOCAL_USER);
-      setLoading(false);
-      return;
-    }
-    void fetchProfile().catch(() => {
+    if (localMode) return;
+    void loadProfile().then(applyProfile).catch(() => {
       setUser(null);
     }).finally(() => setLoading(false));
-  }, [fetchProfile]);
+  }, [applyProfile, localMode]);
 
   const signOut = useCallback(async () => {
-    if (!isLocalMode()) await fetch("/api/auth/logout", { method: "POST" });
-    setUser(isLocalMode() ? LOCAL_USER : null);
+    if (!localMode) await fetch("/api/auth/logout", { method: "POST" });
+    setUser(localMode ? LOCAL_USER : null);
     setIsAdmin(false);
     setSubscriptionTier("free");
-  }, []);
+  }, [localMode]);
 
   return (
     <AuthContext.Provider value={{ user, session: null, loading, isAdmin, subscriptionTier, signOut, refreshProfile: fetchProfile }}>

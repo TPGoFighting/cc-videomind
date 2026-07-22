@@ -11,7 +11,7 @@ import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { runSingleFlight } from "@/lib/utils/single-flight";
 import { deriveComprehensiveFromAnalysis } from "@/lib/utils/comprehensive-cache";
 import { hasReusableVideoAnalysis } from "@/lib/utils/video-analysis-cache";
-import type { TranscriptSegment, VideoMetadata } from "@/lib/types";
+import type { VideoMetadata } from "@/lib/types";
 
 const TranscriptSegmentSchema = z.object({
   startTime: z.number(),

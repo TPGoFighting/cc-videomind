@@ -19,9 +19,9 @@ function getPool(): Pool {
   return _pool;
 }
 
-export async function query<T = any>(
+export async function query<T = Record<string, unknown>>(
   text: string,
-  params?: any[]
+  params?: unknown[]
 ): Promise<{ rows: T[]; rowCount: number }> {
   const pool = getPool();
   const result = await pool.query(text, params);
