@@ -12,6 +12,7 @@ import { getPlanConfig } from "@/lib/plans";
 import { GameIcon } from "@/components/game-icon";
 import { YouTubeStatusBanner } from "@/components/youtube-status-banner";
 import { useYouTubeStatus } from "@/lib/hooks/useYouTubeStatus";
+import { TodayReviewLink } from "@/components/retention/today-review-link";
 
 const TIER_STYLES: Record<string, string> = {
   free: "bg-white/8 text-white/40 border-white/10",
@@ -126,14 +127,7 @@ export function Navbar() {
               </button>
               {open && (
                 <div ref={dropdownMenuRef} className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-white/10 bg-[#1a1a1a] py-1 shadow-xl">
-                  <Link
-                    href="/review"
-                    onClick={() => setOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-amber-400 transition-colors hover:bg-amber-400/10 hover:text-amber-300 min-h-[44px]"
-                  >
-                    <GameIcon name="fire" size={14} />
-                    每日复习
-                  </Link>
+                  <TodayReviewLink variant="menu" onNavigate={() => setOpen(false)} />
                   <div className="mx-3 border-t border-white/6" />
                   <Link
                     href="/history"
