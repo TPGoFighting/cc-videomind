@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { GlbDecoration } from "@/components/glb-decoration";
 import { GLB_MODELS } from "@/lib/glb-models";
 import { EASE } from "@/lib/gsap/constants";
+import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 
 /** 被动观看 — 电视/屏幕图标 */
 function IconPassive() {
@@ -129,16 +130,7 @@ const SCENES: SceneConfig[] = [
 export function WhySection() {
   const sectionRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  });
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  const isMobile = useIsMobile();
 
   // 桌面端：卡片滚动淡入
   useGSAP(() => {
@@ -208,8 +200,7 @@ export function WhySection() {
       </div>
 
       {/* ═══════════ 桌面端：沉浸式场景流 ═══════════ */}
-      {!isMobile && (
-        <div ref={trackRef} className="hidden md:block">
+      <div ref={trackRef} className="hidden md:block">
           {POINTS.flatMap((point, i) => {
             const scene = SCENES[i];
             const isModelLeft = scene.side === "left";
@@ -313,12 +304,10 @@ export function WhySection() {
               <div key={`gap-${i}`} className="h-[12vh] pointer-events-none" />,
             ];
           })}
-        </div>
-      )}
+      </div>
 
       {/* ═══════════ 移动端：纵向排列 ═══════════ */}
-      {isMobile && (
-        <div className="md:hidden space-y-6">
+      <div className="md:hidden space-y-6">
           {POINTS.map((point, i) => {
             return (
               <div
@@ -342,8 +331,7 @@ export function WhySection() {
               </div>
             );
           })}
-        </div>
-      )}
+      </div>
     </section>
   );
 }

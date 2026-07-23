@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ChevronDown } from "lucide-react";
@@ -8,6 +8,7 @@ import { VideoUrlInput } from "@/components/video-url-input";
 import { GlbDecoration } from "@/components/glb-decoration";
 import { GLB_MODELS } from "@/lib/glb-models";
 import { EASE } from "@/lib/gsap/constants";
+import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 
 /** 将文本拆分为独立的字符 span */
 function splitText(text: string, className: string) {
@@ -26,10 +27,7 @@ export function HeroSection() {
   const scope = useRef<HTMLDivElement>(null);
   const glowRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [isMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  });
+  const isMobile = useIsMobile();
 
   // Hero 入场 Timeline
   useGSAP(() => {

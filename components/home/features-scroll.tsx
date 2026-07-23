@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ACCENT_POINTS } from "@/lib/design/tokens";
+import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 
 interface FeatureCard {
   icon: LucideIcon;
@@ -139,16 +140,7 @@ export function FeaturesScroll() {
   const sectionRef = useRef<HTMLElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  });
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  const isMobile = useIsMobile();
 
   // 横向滚动（桌面端）
   useGSAP(() => {
@@ -230,8 +222,7 @@ export function FeaturesScroll() {
       </div>
 
       {/* 桌面端：横向滚动 */}
-      {!isMobile && (
-        <div className="hidden md:block">
+      <div className="hidden md:block">
           <div className="px-4 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%] mx-auto overflow-hidden">
             <div
               ref={trackRef}
@@ -275,12 +266,10 @@ export function FeaturesScroll() {
               style={{ width: "0%" }}
             />
           </div>
-        </div>
-      )}
+      </div>
 
       {/* 移动端：纵向网格 */}
-      {isMobile && (
-        <div className="md:hidden px-4 pb-20 grid gap-4 sm:grid-cols-2">
+      <div className="md:hidden px-4 pb-20 grid gap-4 sm:grid-cols-2">
           {FEATURES.map((feature, i) => {
             const Icon = feature.icon;
             const accent = ACCENT_POINTS[i % ACCENT_POINTS.length];
@@ -305,8 +294,7 @@ export function FeaturesScroll() {
               </div>
             );
           })}
-        </div>
-      )}
+      </div>
     </section>
   );
 }

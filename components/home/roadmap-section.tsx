@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef } from "react";
 import { gsap } from "gsap";
 import { DrawSVGPlugin } from "gsap/DrawSVGPlugin";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { CheckCircle2, CircleDot, Circle } from "lucide-react";
+import { useIsMobile } from "@/lib/hooks/use-is-mobile";
 
 gsap.registerPlugin(DrawSVGPlugin, ScrollTrigger);
 
@@ -73,16 +74,7 @@ const CURVE_PATH = "M200,0 C280,80 120,160 200,240 C280,320 120,400 200,480 C280
 export function RoadmapSection() {
   const sectionRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  });
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  const isMobile = useIsMobile();
 
   // DrawSVG 曲线绘制
   useGSAP(() => {
@@ -167,8 +159,7 @@ export function RoadmapSection() {
       </div>
 
       {/* 桌面端：曲线时间线 */}
-      {!isMobile && (
-        <div className="hidden md:block relative">
+      <div className="hidden md:block relative">
           {/* SVG 曲线 — 位于中央 */}
           <svg
             ref={svgRef}
@@ -258,12 +249,10 @@ export function RoadmapSection() {
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
 
       {/* 移动端：单列时间线 */}
-      {isMobile && (
-        <div className="md:hidden relative pl-8">
+      <div className="md:hidden relative pl-8">
           <div className="absolute left-[11px] top-2 bottom-2 w-[2px] bg-gradient-to-b from-[#0099ff]/40 via-[#0099ff]/20 to-transparent rounded-full" />
 
           <div className="space-y-10">
@@ -283,8 +272,7 @@ export function RoadmapSection() {
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
     </section>
   );
 }

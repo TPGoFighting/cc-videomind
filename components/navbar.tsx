@@ -73,7 +73,7 @@ export function Navbar() {
     const update = () => {
       const scrollY = window.scrollY;
       const p = Math.min(1, scrollY / 120);
-      nav.style.backgroundColor = `rgba(0,0,0,${0.2 + p * 0.65})`;
+      nav.style.backgroundColor = `rgba(8,11,15,${0.35 + p * 0.57})`;
       nav.style.backdropFilter = `blur(${4 + p * 14}px)`;
       ticking = false;
     };
@@ -86,17 +86,29 @@ export function Navbar() {
   }, []);
 
   return (
-    <nav ref={navRef} className="fixed inset-x-0 top-0 z-50 border-b border-white/8">
-      <div className="mx-auto flex h-14 w-full max-w-full items-center justify-between px-3 sm:max-w-[90%] sm:px-5 md:max-w-[85%] lg:max-w-[80%]">
+    <nav ref={navRef} className="fixed inset-x-0 top-0 z-50 border-b border-[#a6bed6]/15">
+      <div className="mx-auto flex h-14 w-full max-w-[90rem] items-center justify-between px-4 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-white/80 transition-colors hover:text-white"
+          className="flex min-h-11 items-center gap-2 text-[15px] font-semibold tracking-[-0.02em] text-white/90 transition-colors hover:text-white"
         >
           <Image src="/logo.png" alt="Teach Player" width={28} height={28} className="rounded" />
-          <span className="hidden md:inline">Teach Player</span>
+          <span>Teach Player</span>
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 lg:flex">
+          <Link href="/#product" className="inline-flex min-h-11 items-center text-[13px] font-medium text-white/65 transition-colors hover:text-white">
+            产品
+          </Link>
+          <Link href="/explore" className="inline-flex min-h-11 items-center text-[13px] font-medium text-white/65 transition-colors hover:text-white">
+            探索
+          </Link>
+          <Link href="/review" className="inline-flex min-h-11 items-center text-[13px] font-medium text-white/65 transition-colors hover:text-white">
+            今日复习
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-1 sm:gap-2">
           {youtubeStatus !== "available" && youtubeStatus !== "checking" && (
             <YouTubeStatusBanner status={youtubeStatus} variant="inline" />
           )}
@@ -104,19 +116,19 @@ export function Navbar() {
             href="https://github.com/TPGoFighting/cc-videomind/releases/download/1.8.0/app-release.apk"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full px-3 sm:px-4 py-1.5 text-[13px] font-medium text-[#0099ff] whitespace-nowrap transition-colors hover:bg-[#0099ff]/10 hover:text-[#33adff]"
+            className="hidden min-h-11 items-center gap-1.5 px-3 text-[13px] font-medium text-[#8fc6ff] transition-colors hover:text-white sm:inline-flex"
           >
             <GameIcon name="download" size={14} />
             APP
           </a>
           {loading ? (
-            <div ref={skeletonRef} className="h-8 w-20 rounded-full bg-white/8" />
+            <div ref={skeletonRef} className="h-8 w-20 rounded-md bg-white/8" />
           ) : user ? (
             <div ref={dropdownRef} className="relative">
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-white/60 transition-colors hover:bg-white/8 hover:text-white"
+                className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-[13px] font-medium text-white/70 transition-colors hover:bg-white/8 hover:text-white"
               >
                 <Menu className="h-4 w-4 shrink-0 md:hidden" />
                 <GameIcon name="user" size={14} className="hidden md:inline-block opacity-60" />
@@ -188,13 +200,13 @@ export function Navbar() {
             <div className="flex items-center gap-2">
               <Link
                 href="/register"
-                className="inline-flex items-center gap-1.5 rounded-full px-3 sm:px-4 py-1.5 text-[13px] font-medium text-white/60 whitespace-nowrap transition-colors hover:bg-white/8 hover:text-white"
+                className="hidden min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-white/65 transition-colors hover:bg-white/8 hover:text-white sm:inline-flex"
               >
                 注册
               </Link>
               <Link
                 href="/login"
-                className="inline-flex items-center gap-1.5 rounded-full px-3 sm:px-4 py-1.5 text-[13px] font-medium text-white/60 whitespace-nowrap transition-colors hover:bg-white/8 hover:text-white"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-3 text-[13px] font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white sm:px-4"
               >
                 <LogIn className="h-3.5 w-3.5" />
                 登录
