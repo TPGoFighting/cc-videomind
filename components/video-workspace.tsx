@@ -13,6 +13,9 @@ import { MobileVideoTabs } from "@/components/mobile-video-tabs";
 import { SidebarTabs } from "@/components/sidebar-tabs";
 import { SummaryPanel } from "@/components/summary-panel";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
+import { BilibiliSubtitleImport } from "@/components/bilibili-subtitle-import";
+import { BilibiliAuthorizedMediaUpload } from "@/components/bilibili-authorized-media-upload";
+import { buildBilibiliWatchUrl, isBilibiliVideoId } from "@/lib/bilibili/id";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
 import {
@@ -156,11 +159,13 @@ export function VideoWorkspace({
   fixtureState,
   fixtureSaveMode = "preview",
   initialStartTime,
+  platform = "youtube",
 }: {
   videoId: string;
   fixtureState?: WorkspaceFixtureState;
   fixtureSaveMode?: WorkspaceFixtureSaveMode;
   initialStartTime?: number;
+  platform?: "youtube" | "bilibili";
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -677,6 +682,7 @@ export function VideoWorkspace({
   const transcriptActions = transcriptGuidance
     ? [transcriptGuidance.primaryAction, transcriptGuidance.secondaryAction]
     : [];
+  const directBilibiliVideo = platform === "bilibili" && isBilibiliVideoId(videoId);
 
   return (
     <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
@@ -714,6 +720,7 @@ export function VideoWorkspace({
               fallbackTitle={transcriptError ? "视频信息加载失败" : undefined}
               previewOnly={Boolean(fixtureState)}
               initialStartTime={initialStartTime}
+              platform={platform}
             />
 
             {loading ? (
@@ -752,6 +759,11 @@ export function VideoWorkspace({
                       在 YouTube 检查
                     </a>
                   ) : null}
+                  {directBilibiliVideo ? (
+                    <a href={buildBilibiliWatchUrl(videoId)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
+                      在 B 站查看
+                    </a>
+                  ) : null}
                   {transcriptActions.includes("login") ? (
                     <Link href={`/login?next=${encodeURIComponent(`/video/${videoId}`)}`} className="inline-flex min-h-11 items-center rounded-lg border border-[var(--tp-border-strong)] px-4 text-sm font-semibold text-[var(--tp-text)] transition-colors hover:bg-white/8">
                       登录后继续
@@ -760,6 +772,9 @@ export function VideoWorkspace({
                 </div>
               </div>
             ) : null}
+
+            {directBilibiliVideo && transcriptError ? <BilibiliSubtitleImport sourceVideoId={videoId} /> : null}
+            {directBilibiliVideo && transcriptError ? <BilibiliAuthorizedMediaUpload sourceVideoId={videoId} /> : null}
 
             {analysisNotice ? (
               <div role="status" className="flex items-start gap-3 rounded-[0.875rem] border border-[var(--tp-border-strong)] bg-[var(--tp-surface)] p-4 text-sm leading-6 text-[var(--tp-text-secondary)]">

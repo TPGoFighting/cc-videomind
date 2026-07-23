@@ -5,6 +5,23 @@ export const BilibiliVideoIdSchema = z
   .regex(/^(BV[a-zA-Z0-9]{10}|av\d+)$/i, "Invalid Bilibili video ID.");
 
 /**
+ * A private workspace created from user-supplied subtitles or authorized
+ * media. These IDs intentionally cannot collide with a public Bilibili video
+ * ID or its shared cache entry.
+ */
+export const BilibiliImportedVideoIdSchema = z
+  .string()
+  .regex(/^bili_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, "Invalid imported Bilibili workspace ID.");
+
+export function isBilibiliVideoId(value: string): boolean {
+  return BilibiliVideoIdSchema.safeParse(value).success;
+}
+
+export function isBilibiliImportedVideoId(value: string): boolean {
+  return BilibiliImportedVideoIdSchema.safeParse(value).success;
+}
+
+/**
  * 提取 B站 视频 ID (支持 BV 号和 av 号)
  */
 export function extractBilibiliVideoId(input: string): string | null {
@@ -37,7 +54,8 @@ export function extractBilibiliVideoId(input: string): string | null {
       }
     }
 
-    // 处理 b23.tv 短域名 (形如 b23.tv/BV17p4y1X7qC 直连)
+    // b23.tv 只有在路径本身就是 BV/av 号时才可离线识别。普通短码必须
+    // 由用户在 B 站中打开后复制完整视频链接，服务端不跟踪其重定向。
     if (hostname === "b23.tv") {
       const path = url.pathname.slice(1);
       if (/^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(path)) {
@@ -57,56 +75,35 @@ export function extractBilibiliVideoId(input: string): string | null {
 }
 
 /**
- * 解析 B站 短链接重定向 (b23.tv/xxxxxx) 并返回最终真实的视频 URL
+ * 兼容旧调用方：不再从服务端跟踪 B站短链接重定向。
+ *
+ * 自动追踪不透明短链接会把产品带回抓取链路；调用方应提示用户粘贴
+ * BV/av 号或完整公开链接。
  */
 export async function resolveBilibiliUrl(input: string): Promise<string> {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("http")) {
-    return trimmed;
-  }
-
-  try {
-    const url = new URL(trimmed);
-    const hostname = url.hostname.replace(/^www\./, "");
-
-    // 如果是 b23.tv 且路径不是直接 BV/av 号，说明是需要追踪重定向的短链接
-    if (hostname === "b23.tv" && !/^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(url.pathname.slice(1))) {
-      console.log(`[Bilibili:ID] 检测到 B站短链接，开始追踪重定向: ${trimmed}`);
-      
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
-      let response: Response;
-      try {
-        response = await fetch(trimmed, {
-          method: "GET",
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          },
-          redirect: "manual",
-          signal: controller.signal
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
-
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        const location = response.headers.get("location");
-        if (location) {
-          console.log(`[Bilibili:ID] 重定向成功 -> ${location}`);
-          return location;
-        }
-      }
-    }
-  } catch (error) {
-    console.error(`[Bilibili:ID] 短链接还原失败:`, error);
-  }
-
-  return trimmed;
+  return input.trim();
 }
 
 /**
  * 构造 B站 视频的规范 Web 访问地址
  */
-export function buildBilibiliWatchUrl(videoId: string) {
-  return `https://www.bilibili.com/video/${encodeURIComponent(videoId)}`;
+export function buildBilibiliWatchUrl(videoId: string, startTime?: number) {
+  const url = new URL(`https://www.bilibili.com/video/${encodeURIComponent(videoId)}`);
+  if (typeof startTime === "number" && Number.isFinite(startTime) && startTime > 0) {
+    url.searchParams.set("t", String(Math.floor(startTime)));
+  }
+  return url.toString();
+}
+
+export function buildBilibiliEmbedUrl(videoId: string, startTime?: number) {
+  const parsed = BilibiliVideoIdSchema.parse(videoId);
+  const params = new URLSearchParams({
+    bvid: parsed,
+    high_quality: "1",
+    danmaku: "0",
+  });
+  if (typeof startTime === "number" && Number.isFinite(startTime) && startTime > 0) {
+    params.set("t", String(Math.floor(startTime)));
+  }
+  return `https://player.bilibili.com/player.html?${params.toString()}`;
 }

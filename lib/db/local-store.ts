@@ -118,9 +118,9 @@ export async function saveAnalysis(
      VALUES (?, ?, ?, ?, ?)`,
     [
       videoId,
-      JSON.stringify(metadata ?? {}),
-      JSON.stringify(transcript ?? []),
-      JSON.stringify(analysis ?? {}),
+      JSON.stringify(metadata ?? null),
+      JSON.stringify(transcript ?? null),
+      JSON.stringify(analysis ?? null),
       ts,
     ],
   );
@@ -1075,6 +1075,32 @@ export function getPendingTasks(taskType?: TaskType): Promise<AsyncTask[]> {
     const rows = await queryRows<RawTask>(sql, taskType ? [taskType] : []);
     return rows.map(toAsyncTask);
   }, []);
+}
+
+export async function claimNextPendingTask(taskType: TaskType): Promise<AsyncTask | null> {
+  const rows = await queryRows<RawTask>(
+    `SELECT * FROM async_tasks
+     WHERE status = 'pending' AND task_type = ?
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [taskType],
+  );
+  const task = rows[0] ? toAsyncTask(rows[0]) : null;
+  if (!task) return null;
+  return claimPendingTask(task.id);
+}
+
+export async function claimPendingTask(taskId: string): Promise<AsyncTask | null> {
+  const now = nowIso();
+  await mutate(
+    "claimPendingTask",
+    `UPDATE async_tasks
+     SET status = 'running', started_at = ?
+     WHERE id = ? AND status = 'pending'`,
+    [now, taskId],
+  );
+  const task = await getTask(taskId);
+  return task?.status === "running" && task.started_at === now ? task : null;
 }
 
 interface RawTask {

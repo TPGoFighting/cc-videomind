@@ -15,7 +15,7 @@ Teach Player 把知识型 YouTube 视频转换成可核验、可收藏、可复�
 | 双语学习 | 字幕翻译、单词释义、句子收藏和个人笔记 |
 | 后续复习 | SM-2 单词复习、每日打卡和跨会话学习记录 |
 | 账户同步 | 邮箱密码登录，服务端保存历史与个人学习数据 |
-| 次级输入 | Bilibili 解析；登录用户可上传单机自托管的本地媒体 |
+| Bilibili 学习 | 直接嵌入原视频；优先导入带时间码字幕，或由登录用户上传本人/已获授权媒体进行异步转写 |
 
 ## 唯一生产架构
 
@@ -40,7 +40,7 @@ PostgreSQL 保存账户、session、全站共享视频/AI/翻译缓存、用户�
 - 腾讯云 PostgreSQL，通过单一 `pg` Pool 访问
 - 自托管邮箱密码认证，scrypt 密码哈希与 HttpOnly Cookie Session
 - OpenAI-compatible / Gemini AI Provider 适配
-- YouTube 多级字幕回退，可选 Supadata；Bilibili/本地媒体可选 ASR
+- YouTube 多级字幕回退，可选 Supadata；Bilibili 使用用户导入字幕或本人/获授权媒体 ASR，不抓取站内音频
 
 历史目录名 `lib/supabase/` 暂时保留以控制迁移范围，但其中运行时代码已经访问腾讯 PostgreSQL，不代表仍使用 Supabase。新功能必须直接使用 `lib/tencent-db.ts`，不得恢复 Supabase SDK。
 
@@ -89,6 +89,7 @@ ASR_MODEL=FunAudioLLM/SenseVoiceSmall
 - `ASR_API_KEY` 缺失时上传/ASR 安全失败，不会使用源码回退值。轮换方法见 [`docs/operations/secret-rotation.md`](docs/operations/secret-rotation.md)。
 - 认证不需要静态 session secret：每次登录生成高熵随机 token，数据库只保存 SHA-256 哈希。
 - 两个内部 Worker Secret 必须彼此独立，仅供服务器到服务器调用；缺失时相关 Worker 安全失败。
+- Bilibili 的授权媒体 ASR 还必须配置受控调度器：它以独立 Worker Secret 每分钟向 `/api/worker` 提交 `{}`，一次只原子认领一个任务。配置与验收见 [`docs/operations/authorized-media-asr.md`](docs/operations/authorized-media-asr.md)。
 - 其他开发专用选项以 [`.env.example`](.env.example) 和对应模块为准。
 
 ## 质量门禁

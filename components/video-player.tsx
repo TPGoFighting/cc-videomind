@@ -3,6 +3,7 @@
 import { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 import { Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { buildBilibiliEmbedUrl, buildBilibiliWatchUrl, extractBilibiliVideoId } from "@/lib/bilibili/id";
 import type { VideoMetadata } from "@/lib/types";
 
 export type VideoPlayerHandle = {
@@ -16,16 +17,21 @@ type VideoPlayerProps = {
   fallbackTitle?: string;
   previewOnly?: boolean;
   initialStartTime?: number;
+  platform?: "youtube" | "bilibili";
 };
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  function VideoPlayer({ videoId, metadata, fallbackTitle, previewOnly = false, initialStartTime }, ref) {
+  function VideoPlayer({ videoId, metadata, fallbackTitle, previewOnly = false, initialStartTime, platform = "youtube" }, ref) {
     const playerRef = useRef<YT.Player | null>(null);
     const apiLoadedRef = useRef(false);
+    const bilibiliSourceId = platform === "bilibili"
+      ? extractBilibiliVideoId(metadata?.providerUrl ?? videoId)
+      : null;
+    const bilibiliEmbedSupported = Boolean(bilibiliSourceId?.toUpperCase().startsWith("BV"));
 
     // 加载 YouTube IFrame API
     useEffect(() => {
-      if (previewOnly) return;
+      if (previewOnly || platform === "bilibili") return;
       if (apiLoadedRef.current) return;
 
       const onReady = (event: YT.PlayerEvent) => {
@@ -62,19 +68,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           (window as unknown as Record<string, unknown>).onYouTubeIframeAPIReady = prev ?? null;
         };
       }
-    }, [initialStartTime, previewOnly, videoId]);
+    }, [initialStartTime, platform, previewOnly, videoId]);
 
     useImperativeHandle(
       ref,
       () => ({
         seekTo(seconds: number) {
+          if (platform === "bilibili" && bilibiliSourceId) {
+            window.open(buildBilibiliWatchUrl(bilibiliSourceId, seconds), "_blank", "noopener,noreferrer");
+            return;
+          }
           playerRef.current?.seekTo(seconds, true);
         },
         getCurrentTime() {
+          if (platform === "bilibili") return 0;
           return playerRef.current?.getCurrentTime() ?? 0;
         },
       }),
-      []
+      [bilibiliSourceId, platform]
     );
 
     return (
@@ -87,6 +98,24 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               </span>
               <p className="mt-5 text-sm font-semibold text-[var(--tp-text)]">学习工作台演示状态</p>
               <p className="mt-1 max-w-sm text-sm leading-6 text-[var(--tp-text-muted)]">固定数据用于视觉验收，不加载播放器、不请求字幕或 AI。</p>
+            </div>
+          ) : platform === "bilibili" && bilibiliEmbedSupported && bilibiliSourceId ? (
+            <iframe
+              className="h-full w-full"
+              src={buildBilibiliEmbedUrl(bilibiliSourceId, initialStartTime)}
+              title={metadata?.title ?? "B 站视频播放器"}
+              allow="autoplay; clipboard-write; fullscreen; picture-in-picture"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          ) : platform === "bilibili" ? (
+            <div className="flex h-full flex-col items-center justify-center bg-[#0A1119] px-6 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-full border border-[var(--tp-border-strong)] bg-[var(--tp-surface-raised)] text-[var(--tp-accent)]">
+                <Play className="ml-1 h-6 w-6" aria-hidden />
+              </span>
+              <p className="mt-5 text-sm font-semibold text-[var(--tp-text)]">在 B 站观看原视频</p>
+              <p className="mt-1 max-w-sm text-sm leading-6 text-[var(--tp-text-muted)]">此链接暂不支持站内嵌入播放；学习字幕仍可在本页使用。</p>
+              {bilibiliSourceId ? <a href={buildBilibiliWatchUrl(bilibiliSourceId, initialStartTime)} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-[var(--tp-accent)] px-4 text-sm font-semibold text-[var(--tp-bg)]">前往 B 站</a> : null}
             </div>
           ) : (
             <iframe
@@ -107,6 +136,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           {metadata?.authorName ? (
             <Badge className="self-start sm:self-auto shrink-0">{metadata.authorName}</Badge>
           ) : null}
+          {platform === "bilibili" ? <Badge className="self-start sm:self-auto shrink-0">Bilibili</Badge> : null}
         </div>
       </section>
     );

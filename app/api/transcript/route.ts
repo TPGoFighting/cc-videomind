@@ -3,16 +3,22 @@ import { withSecurity } from "@/lib/security/middleware";
 import { getCachedAnalysis, upsertTranscriptCache } from "@/lib/supabase/cache";
 import { getAuthenticatedUserId, hasUserAnalyzedVideo, checkAnalysisQuota, recordAnalysisUsage } from "@/lib/supabase/quota";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
-import { extractYouTubeVideoId, VideoIdSchema } from "@/lib/youtube/id";
+import { extractYouTubeVideoId } from "@/lib/youtube/id";
+import {
+  extractBilibiliVideoId,
+  isBilibiliImportedVideoId,
+  isBilibiliVideoId,
+} from "@/lib/bilibili/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider, TranscriptError } from "@/lib/youtube/transcript-provider";
 import { ExternalServiceError } from "@/lib/utils/http";
 import { recordProductEventSafely } from "@/lib/product/analytics-store";
+import { isLocalMode } from "@/lib/local-mode";
 
 const RequestSchema = z
   .object({
     url: z.string().min(1).max(500).optional(),
-    videoId: VideoIdSchema.optional()
+    videoId: z.string().min(6).max(64).optional()
   })
   .refine((value) => value.url || value.videoId, "url or videoId is required");
 
@@ -30,20 +36,20 @@ export async function POST(request: Request) {
 
     let videoId = parsed.data.videoId ?? null;
     const urlInput = parsed.data.url?.trim() ?? "";
-    let isBilibili = false;
+    let isDirectBilibili = false;
+    let isImportedBilibili = false;
 
     if (videoId) {
-      isBilibili = /^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(videoId);
+      isDirectBilibili = isBilibiliVideoId(videoId);
+      isImportedBilibili = isBilibiliImportedVideoId(videoId);
     } else if (urlInput) {
-      isBilibili =
+      isDirectBilibili =
         urlInput.includes("bilibili.com") ||
         urlInput.includes("b23.tv") ||
         /^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(urlInput);
 
-      if (isBilibili) {
-        const { resolveBilibiliUrl, extractBilibiliVideoId } = await import("@/lib/bilibili/id");
-        const resolvedUrl = await resolveBilibiliUrl(urlInput);
-        videoId = extractBilibiliVideoId(resolvedUrl);
+      if (isDirectBilibili) {
+        videoId = extractBilibiliVideoId(urlInput);
       } else {
         videoId = extractYouTubeVideoId(urlInput);
       }
@@ -53,8 +59,31 @@ export async function POST(request: Request) {
       return errorResponse("invalid_video_url", "Enter a valid public YouTube or Bilibili URL.", 400);
     }
 
+    if (isDirectBilibili) {
+      return errorResponse(
+        "bilibili_subtitle_import_required",
+        "B 站视频请导入 SRT、VTT 或 B 站 JSON 字幕后开始学习；我们不会自动提取公开视频音频。",
+        422,
+      );
+    }
+
     const userId = await getAuthenticatedUserId(request);
-    const analyticsUserId = isBilibili ? null : userId;
+    if (isImportedBilibili) {
+      if (!userId) {
+        return errorResponse("unauthorized", "登录后才能打开你导入的 B 站字幕。", 401);
+      }
+      const ownsWorkspace = isLocalMode() || await hasUserAnalyzedVideo(userId, videoId, request);
+      if (!ownsWorkspace) {
+        return errorResponse("workspace_not_found", "找不到这份导入字幕，或你没有访问权限。", 404);
+      }
+      const imported = await getCachedAnalysis(videoId);
+      if (!imported?.metadata || !imported.transcript) {
+        return errorResponse("workspace_not_found", "这份导入字幕已不可用，请重新导入。", 404);
+      }
+      return successResponse({ videoId, metadata: imported.metadata, transcript: imported.transcript, cached: true });
+    }
+
+    const analyticsUserId = userId;
     const analyticsStartedAt = Date.now();
     await recordProductEventSafely(analyticsUserId, {
       name: "video_parse_started",
@@ -119,26 +148,11 @@ export async function POST(request: Request) {
     try {
       const fetchMeta = async () => {
         if (cached?.metadata) return cached.metadata;
-        if (isBilibili) {
-          const { fetchBilibiliMetadata } = await import("@/lib/bilibili/metadata");
-          const bilibiliMeta = await fetchBilibiliMetadata(videoId!);
-          return {
-            videoId: bilibiliMeta.videoId,
-            title: bilibiliMeta.title,
-            authorName: bilibiliMeta.authorName,
-            thumbnailUrl: bilibiliMeta.thumbnailUrl,
-            providerUrl: bilibiliMeta.providerUrl
-          };
-        }
         return fetchYouTubeMetadata(videoId!);
       };
 
       const fetchTrans = async () => {
         if (cached?.transcript) return cached.transcript;
-        if (isBilibili) {
-          const { BilibiliTranscriptProvider } = await import("@/lib/bilibili/transcript-provider");
-          return new BilibiliTranscriptProvider().getTranscript(videoId!);
-        }
         return getTranscriptProvider().getTranscript(videoId!);
       };
 

@@ -18,7 +18,7 @@ interface VideoUrlInputProps {
 export function VideoUrlInput({
   variant = "default",
   submitLabel = "开始解析",
-  placeholder = "粘贴 YouTube 公开视频链接",
+  placeholder = "粘贴 YouTube 或 B 站公开视频链接",
   className,
 }: VideoUrlInputProps = {}) {
   const router = useRouter();
@@ -42,7 +42,7 @@ export function VideoUrlInput({
       if (!payload.ok) {
         setError(
           payload.error.code === "invalid_video_url"
-            ? "请输入有效的 YouTube 公开视频链接。"
+            ? "请输入有效的 YouTube 或 B 站公开视频链接。"
             : payload.error.message,
         );
         return;
@@ -50,7 +50,7 @@ export function VideoUrlInput({
 
       router.push(`/video/${payload.data.videoId}`);
     } catch {
-      setError("无法解析此 YouTube 链接，请检查后重试。");
+      setError("无法解析此视频链接，请检查后重试。");
     } finally {
       setLoading(false);
     }
@@ -67,7 +67,7 @@ export function VideoUrlInput({
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder={placeholder}
-          aria-label="YouTube 视频链接"
+          aria-label="YouTube 或 B 站视频链接"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
           required

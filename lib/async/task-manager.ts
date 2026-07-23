@@ -2,7 +2,7 @@ import { query } from "@/lib/db";
 import { isLocalMode } from "@/lib/local-mode";
 import * as localStore from "@/lib/db/local-store";
 
-export type TaskType = "bilibili_asr" | "translate" | "vectorize" | "comprehensive_analysis";
+export type TaskType = "bilibili_asr" | "authorized_media_asr" | "translate" | "vectorize" | "comprehensive_analysis";
 export type TaskStatus = "pending" | "running" | "completed" | "failed";
 
 export interface AsyncTask {
@@ -96,4 +96,42 @@ export async function getPendingTasks(taskType?: TaskType): Promise<AsyncTask[]>
     `SELECT * FROM async_tasks WHERE status = 'pending' ORDER BY created_at ASC`
   );
   return rows;
+}
+
+/**
+ * Atomically reserves the oldest pending task of a supported type for one
+ * worker. A second scheduler invocation therefore cannot transcribe the same
+ * private upload twice.
+ */
+export async function claimNextPendingTask(taskType: TaskType): Promise<AsyncTask | null> {
+  if (isLocalMode()) return localStore.claimNextPendingTask(taskType);
+  const { rows } = await query<AsyncTask>(
+    `WITH next_task AS (
+       SELECT id
+       FROM async_tasks
+       WHERE status = 'pending' AND task_type = $1
+       ORDER BY created_at ASC
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     UPDATE async_tasks AS task
+     SET status = 'running', started_at = NOW()
+     FROM next_task
+     WHERE task.id = next_task.id
+     RETURNING task.*`,
+    [taskType],
+  );
+  return rows[0] ?? null;
+}
+
+export async function claimPendingTask(taskId: string): Promise<AsyncTask | null> {
+  if (isLocalMode()) return localStore.claimPendingTask(taskId);
+  const { rows } = await query<AsyncTask>(
+    `UPDATE async_tasks
+     SET status = 'running', started_at = NOW()
+     WHERE id = $1 AND status = 'pending'
+     RETURNING *`,
+    [taskId],
+  );
+  return rows[0] ?? null;
 }

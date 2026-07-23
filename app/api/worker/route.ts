@@ -1,10 +1,17 @@
 import { z } from "zod";
 import { withSecurity } from "@/lib/security/middleware";
-import { getTask, updateTask, type AsyncTask } from "@/lib/async/task-manager";
+import { claimNextPendingTask, claimPendingTask, updateTask, type AsyncTask } from "@/lib/async/task-manager";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { hasWorkerAuthorization } from "@/lib/security/worker-authorization";
+import { getAsrConfiguration, requestAsrTranscript } from "@/lib/asr/client";
+import { deleteTransientMedia, readTransientMedia } from "@/lib/asr/media-storage";
+import { AuthorizedMediaAsrTaskInputSchema } from "@/lib/asr/media-task";
+import { transcriptFromAsrResponse } from "@/lib/asr/transcript";
+import { buildBilibiliWatchUrl } from "@/lib/bilibili/id";
+import { upsertTranscriptCache } from "@/lib/supabase/cache";
 
-const RequestSchema = z.object({ taskId: z.string().uuid() });
+const RequestSchema = z.object({ taskId: z.string().uuid().optional() }).default({});
+export const maxDuration = 300;
 
 type TaskHandler = (task: AsyncTask) => Promise<Record<string, unknown>>;
 
@@ -14,8 +21,31 @@ const handlers: Record<string, TaskHandler> = {
     return { status: "vectorize stub completed" };
   },
   bilibili_asr: async () => {
-    // Stub — will implement with Bilibili ASR
-    return { status: "bilibili_asr stub completed" };
+    throw new Error("Legacy Bilibili audio extraction is disabled. Use authorized_media_asr instead.");
+  },
+  authorized_media_asr: async (task) => {
+    const input = AuthorizedMediaAsrTaskInputSchema.parse(task.input);
+    try {
+      const media = await readTransientMedia(input.storageKey);
+      const response = await requestAsrTranscript(getAsrConfiguration(), {
+        file: new Blob([new Uint8Array(media)], { type: input.contentType }),
+        filename: `media.${input.storageKey.split(".").at(-1)}`,
+      });
+      const transcript = transcriptFromAsrResponse(response, input.duration);
+      await upsertTranscriptCache({
+        videoId: task.video_id,
+        metadata: {
+          videoId: task.video_id,
+          title: input.title,
+          authorName: "B站 · 本人或获授权媒体转写",
+          providerUrl: buildBilibiliWatchUrl(input.sourceVideoId),
+        },
+        transcript,
+      });
+      return { segmentCount: transcript.length, source: "authorized_media_asr" };
+    } finally {
+      await deleteTransientMedia(input.storageKey);
+    }
   },
   comprehensive_analysis: async () => {
     // Stub — will implement with summary module
@@ -36,12 +66,14 @@ export async function POST(request: Request) {
     const parsed = await readJson(request, RequestSchema);
     if (!parsed.ok) return parsed.response;
 
-    const { taskId } = parsed.data;
-
-    const task = await getTask(taskId);
-    if (!task) return errorResponse("task_not_found", "Task not found.", 404);
-    if (task.status !== "pending") {
-      return errorResponse("task_not_pending", `Task is already ${task.status}.`, 409);
+    const taskId = parsed.data?.taskId;
+    const task = taskId
+      ? await claimPendingTask(taskId)
+      : await claimNextPendingTask("authorized_media_asr");
+    if (!task) {
+      return taskId
+        ? errorResponse("task_not_pending", "Task is already running, completed, failed, or missing.", 409)
+        : successResponse({ status: "idle" });
     }
 
     const handler = handlers[task.task_type];
@@ -50,13 +82,12 @@ export async function POST(request: Request) {
     }
 
     try {
-      await updateTask(taskId, "running");
       const output = await handler(task);
-      await updateTask(taskId, "completed", output);
-      return successResponse({ taskId, status: "completed", output });
+      await updateTask(task.id, "completed", output);
+      return successResponse({ taskId: task.id, status: "completed", output });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await updateTask(taskId, "failed", undefined, message);
+      await updateTask(task.id, "failed", undefined, message);
       return errorResponse("task_failed", message, 500);
     }
   });

@@ -18,6 +18,13 @@ const CachedAnalysisSchema = z.object({
   analysis: VideoAnalysisSchema.nullable()
 });
 
+/** Older local rows encoded an absent analysis as `{}` rather than `null`. */
+export function normalizeLegacyEmptyAnalysis(value: unknown): unknown | null {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0
+    ? null
+    : value;
+}
+
 export async function getCachedAnalysis(videoId: string) {
   if (isLocalMode()) {
     const record = await getAnalysis(videoId);
@@ -26,7 +33,7 @@ export async function getCachedAnalysis(videoId: string) {
       video_id: record.videoId,
       metadata: record.metadata,
       transcript: record.transcript,
-      analysis: record.analysis,
+      analysis: normalizeLegacyEmptyAnalysis(record.analysis),
     });
     return parsed.success ? parsed.data : null;
   }

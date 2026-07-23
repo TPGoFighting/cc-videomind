@@ -6,7 +6,9 @@ import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
 import { getCachedAnalysis, upsertAnalysisCache } from "@/lib/supabase/cache";
 import { getCachedComprehensive, upsertComprehensiveCache } from "@/lib/supabase/cache-v2";
-import { getAuthenticatedUserId, recordAnalysisUsage } from "@/lib/supabase/quota";
+import { getAuthenticatedUserId, hasUserAnalyzedVideo, recordAnalysisUsage } from "@/lib/supabase/quota";
+import { isBilibiliImportedVideoId } from "@/lib/bilibili/id";
+import { isLocalMode } from "@/lib/local-mode";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { runSingleFlight } from "@/lib/utils/single-flight";
 import { deriveComprehensiveFromAnalysis } from "@/lib/utils/comprehensive-cache";
@@ -47,6 +49,11 @@ export async function POST(request: Request) {
 
     const { videoId } = parsed.data;
     const userId = await getAuthenticatedUserId(request);
+    if (isBilibiliImportedVideoId(videoId)) {
+      if (!userId || (!isLocalMode() && !await hasUserAnalyzedVideo(userId, videoId, request))) {
+        return errorResponse("workspace_not_found", "找不到这份导入字幕，或你没有访问权限。", 404);
+      }
+    }
     const analyticsStartedAt = Date.now();
     const cached = await getCachedAnalysis(videoId);
 

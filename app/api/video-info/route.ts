@@ -4,6 +4,7 @@ import { withSecurity } from "@/lib/security/middleware";
 import { extractYouTubeVideoId } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { isLocalMode } from "@/lib/local-mode";
+import { buildBilibiliWatchUrl, extractBilibiliVideoId } from "@/lib/bilibili/id";
 
 const RequestSchema = z.object({
   url: z.string().min(1).max(500)
@@ -30,23 +31,21 @@ export async function POST(request: Request) {
     /^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(inputUrl);
 
   if (isBilibili) {
-    try {
-      const { resolveBilibiliUrl, extractBilibiliVideoId } = await import("@/lib/bilibili/id");
-      const { fetchBilibiliMetadata } = await import("@/lib/bilibili/metadata");
-
-      const resolvedUrl = await resolveBilibiliUrl(inputUrl);
-      const bvid = extractBilibiliVideoId(resolvedUrl);
-
-      if (!bvid) {
-        return errorResponse("invalid_video_url", "Enter a valid Bilibili video URL or BV ID.", 400);
-      }
-
-      const metadata = await fetchBilibiliMetadata(bvid);
-      return successResponse(metadata);
-    } catch (error) {
-      console.error("[video-info] B站元数据解析失败:", error);
-      return errorResponse("metadata_unavailable", "Could not load Bilibili metadata for this video.", 502);
+    const bvid = extractBilibiliVideoId(inputUrl);
+    if (!bvid) {
+      return errorResponse(
+        "invalid_bilibili_url",
+        "请粘贴 B 站完整视频链接或 BV/av 号；不支持直接解析不透明短链接。",
+        400,
+      );
     }
+    return successResponse({
+      videoId: bvid,
+      title: `B 站视频 ${bvid}`,
+      authorName: "Bilibili",
+      providerUrl: buildBilibiliWatchUrl(bvid),
+      subtitleImportRequired: true,
+    });
   }
 
   // 2. 否则走 YouTube 逻辑

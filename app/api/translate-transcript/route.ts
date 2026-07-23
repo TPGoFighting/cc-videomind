@@ -1,7 +1,8 @@
 import { TranslateTranscriptRequestSchema, TranscriptSegmentSchema, type TranscriptSegment } from "@/lib/types";
 import { getAiProvider } from "@/lib/ai/provider";
 import { withSecurity } from "@/lib/security/middleware";
-import { getAuthenticatedUserId } from "@/lib/supabase/quota";
+import { getAuthenticatedUserId, hasUserAnalyzedVideo } from "@/lib/supabase/quota";
+import { isBilibiliImportedVideoId } from "@/lib/bilibili/id";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { getLatestTranslation, upsertTranslation } from "@/lib/supabase/translations";
 import { isLocalMode } from "@/lib/local-mode";
@@ -43,6 +44,9 @@ export async function POST(request: Request) {
   if (!parsed.ok) return parsed.response;
 
   const { videoId } = parsed.data;
+  if (isBilibiliImportedVideoId(videoId) && (!userId || (!isLocalMode() && !await hasUserAnalyzedVideo(userId, videoId, request)))) {
+    return errorResponse("workspace_not_found", "找不到这份导入字幕，或你没有访问权限。", 404);
+  }
 
   const cached = await getCachedAnalysis(videoId);
   if (!cached?.transcript) {

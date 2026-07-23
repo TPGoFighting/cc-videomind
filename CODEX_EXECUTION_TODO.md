@@ -54,6 +54,24 @@
 
 ---
 
+## Bilibili 次级输入（2026-07-23）
+
+**状态**：`LOCAL CODE COMPLETE — 生产 ASR 凭证、受控调度器与真实授权媒体验收待外部配置；未部署`
+
+产品边界：Bilibili 不作为首页主入口，不抓取站内音频、字幕或不透明短链接。用户应优先导入拥有使用权的带时间码字幕；仅在用户本人拥有或已获明确授权的情况下，才允许上传媒体给独立 ASR 服务转写。
+
+- [x] P0：停用旧 B 站抓取/下载/风险规避链路；旧 SSE 端点固定返回 `410 bilibili_subtitle_import_required`。
+- [x] P1：支持 BV/av 号和完整公开链接，使用 B 站官方嵌入播放器；不跟踪不透明 b23 短链接。
+- [x] P2：已登录用户可导入 Bilibili JSON、SRT、VTT；无时间码纯文本被拒绝，不伪造时间点；结果写入私有 `bili_<uuid>` 工作台。
+- [x] P3：本人/获授权媒体仅接受 MP4、WebM、MP3、M4A、WAV，200 MB / 2 小时上限；创建异步任务、限定 MIME 和存储键、转写后写入私有工作台。
+- [x] P5：原始媒体在 Worker 成功或失败后均清理；Worker 原子认领任务以防重复转写；运行手册、失败处置和所有权边界已记录在 `docs/operations/authorized-media-asr.md`。
+- [ ] 生产关卡：配置 `ASR_API_KEY` 与独立 `ASYNC_TASK_WORKER_SECRET`，以受控调度器每分钟调用 `/api/worker`，再用一份已授权测试媒体完成端到端验收和跨账号隔离验证。
+- [ ] 后续：评估 B 站官方、书面授权的 API 合作路径；若没有稳定合规能力，不新增 OCR/弹幕/音频抓取回退。
+
+**本地工程证据（2026-07-23）**：`npm run lint`、`npm run typecheck`、`npm test`（230 项通过）和 `npm run build` 已通过；未配置 ASR 的实际本地 `POST /api/bilibili/media` 返回 `503 asr_not_configured`，不会创建任务或扣额度。真实 ASR、生产 Worker 调度和授权媒体转写尚未验证，不能表述为上线成功。
+
+---
+
 ## 执行顺序
 
 ### T00 — 创建安全的执行基线

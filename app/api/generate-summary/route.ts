@@ -1,7 +1,7 @@
 export const maxDuration = 120;
 
 import { withSecurity } from "@/lib/security/middleware";
-import { getAuthenticatedUserId } from "@/lib/supabase/quota";
+import { getAuthenticatedUserId, hasUserAnalyzedVideo } from "@/lib/supabase/quota";
 import { getCachedSummary, upsertSummaryCache, getCachedComprehensive } from "@/lib/supabase/cache-v2";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
@@ -11,7 +11,9 @@ import { withSummaryDegradation, buildDegradedResponse } from "@/lib/ai/degradat
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
+import { isBilibiliImportedVideoId, isBilibiliVideoId } from "@/lib/bilibili/id";
 import { createEmptyDebug, GenerateSummaryRequestSchema } from "@/lib/types";
+import { isLocalMode } from "@/lib/local-mode";
 
 export async function POST(request: Request) {
   return withSecurity({
@@ -31,6 +33,9 @@ export async function POST(request: Request) {
 
   const { videoId } = parsed.data;
   const lang = (parsed.data.targetLanguage ?? "zh") as "zh" | "en";
+  if (isBilibiliImportedVideoId(videoId) && (!userId || (!isLocalMode() && !await hasUserAnalyzedVideo(userId, videoId, request)))) {
+    return errorResponse("workspace_not_found", "找不到这份导入字幕，或你没有访问权限。", 404);
+  }
 
   console.log("[API:Summary] ====== 请求开始 ======");
   console.log("[API:Summary] 参数:", { videoId, lang });
@@ -64,24 +69,14 @@ export async function POST(request: Request) {
     let transcript = existing?.transcript;
 
     if (!title || !transcript) {
-      const isBilibili = /^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(videoId);
-      if (isBilibili) {
-        if (!title) {
-          const { fetchBilibiliMetadata } = await import("@/lib/bilibili/metadata");
-          const bilibiliMeta = await fetchBilibiliMetadata(videoId);
-          title = bilibiliMeta.title;
-        }
-        if (!transcript) {
-          const { BilibiliTranscriptProvider } = await import("@/lib/bilibili/transcript-provider");
-          transcript = await new BilibiliTranscriptProvider().getTranscript(videoId);
-        }
-      } else {
-        if (!title) {
-          title = (await fetchYouTubeMetadata(videoId)).title;
-        }
-        if (!transcript) {
-          transcript = await getTranscriptProvider().getTranscript(videoId);
-        }
+      if (isBilibiliVideoId(videoId)) {
+        return errorResponse("bilibili_subtitle_import_required", "请先导入 B 站字幕后再生成总结。", 422);
+      }
+      if (!title) {
+        title = (await fetchYouTubeMetadata(videoId)).title;
+      }
+      if (!transcript) {
+        transcript = await getTranscriptProvider().getTranscript(videoId);
       }
     }
 

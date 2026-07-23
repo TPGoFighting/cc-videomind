@@ -1,6 +1,9 @@
 import { errorResponse, successResponse } from "@/lib/utils/api";
 import { withSecurity } from "@/lib/security/middleware";
 import { getCachedAnalysis } from "@/lib/supabase/cache";
+import { getAuthenticatedUserId, hasUserAnalyzedVideo } from "@/lib/supabase/quota";
+import { isBilibiliImportedVideoId } from "@/lib/bilibili/id";
+import { isLocalMode } from "@/lib/local-mode";
 
 /**
  * 快速获取视频元数据（标题、作者、缩略图）
@@ -22,6 +25,12 @@ export async function POST(request: Request) {
 
   const isBilibili = /^(BV[a-zA-Z0-9]{10}|av\d+)$/i.test(input);
   const videoId = input;
+  if (isBilibiliImportedVideoId(videoId)) {
+    const userId = await getAuthenticatedUserId(request);
+    if (!userId || (!isLocalMode() && !await hasUserAnalyzedVideo(userId, videoId, request))) {
+      return errorResponse("workspace_not_found", "找不到这份导入字幕，或你没有访问权限。", 404);
+    }
+  }
   let metadata: Record<string, unknown> | null = null;
 
   // 1. 查询缓存

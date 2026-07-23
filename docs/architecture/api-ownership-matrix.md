@@ -29,7 +29,9 @@
 | `/api/auth/login` POST | 腾讯 Next.js | PG `app_users`, `app_sessions` | 匿名凭证入口 | 新建随机 session；当前需在 T06 增强登录级限流 |
 | `/api/auth/logout` POST | 腾讯 Next.js | PG `app_sessions` | 当前 session（无 session 也可幂等退出） | 删除 token hash 并清 Cookie |
 | `/api/auth/register` POST | 腾讯 Next.js | PG `app_users`, `app_sessions` | 匿名凭证入口 | 创建用户和 session；当前需在 T06 增强注册级限流 |
-| `/api/bilibili-parse-stream` GET | 腾讯 Next.js | PG `video_analyses`; 外部 Bilibili/ASR | 公开、接口限流 | 成功字幕写共享视频缓存；SSE 不缓存响应 |
+| `/api/bilibili-parse-stream` GET | 腾讯 Next.js | 无 | 公开、接口限流 | 已关闭旧抓取链路，固定 `410 bilibili_subtitle_import_required` |
+| `/api/bilibili/media` POST | 腾讯 Next.js | 临时 `uploads/asr/*`、PG `async_tasks`、`user_videos`；外部 ASR | 必须登录；仅限声明为本人/获授权的 MP4/WebM/MP3/M4A/WAV，200 MB、2 小时 | 先确认 ASR 已配置再写文件；Worker 原子认领后转写，最终无论成功失败均删除原文件 |
+| `/api/bilibili/subtitles` POST | 腾讯 Next.js | PG `video_analyses`、`user_videos` | 必须登录；仅接受用户提供的 Bilibili JSON、SRT 或 VTT | 创建私有 `bili_<uuid>` 学习工作台；不获取 B 站字幕或音频 |
 | `/api/chat` POST | 腾讯 Next.js | PG `video_analyses`, `video_chunks`; 外部 AI/字幕 | 可选账户 | 读取共享字幕/RAG；缺字幕时回填 `video_analyses` |
 | `/api/checkin` GET, POST | 腾讯 Next.js | PG `user_checkins` | 必须登录 | 按 `(user_id, checkin_date)` upsert |
 | `/api/generate-moments` POST | 腾讯 Next.js | PG `video_analyses`, `ai_results_cache`; 外部 AI | 可选账户 | 综合缓存 → moments 缓存 → 生成后写共享缓存 |
@@ -56,7 +58,7 @@
 | `/api/video-stream` GET | 腾讯 Next.js | 持久 `uploads/` | 必须登录 + 不可猜 local ID；尚无 owner 字段 | 支持合法 byte range；非法 range 返回 416 |
 | `/api/webhooks/stripe` POST | 腾讯 Next.js | 无 | 兼容入口 | 固定 `410 payment_method_disabled`，不接收支付事件 |
 | `/api/word-definitions` POST | 腾讯 Next.js | PG `word_definitions`; 外部 AI | 可选账户 | 批量命中共享词义缓存，缺失项生成后 upsert |
-| `/api/worker` POST | 腾讯 Next.js | PG `async_tasks` | 独立 Bearer Worker Secret；handler 仍是 stub | 更新任务状态；无配置或 secret 不匹配时 fail closed |
+| `/api/worker` POST | 腾讯 Next.js | PG `async_tasks`、临时授权媒体、外部 ASR | 独立 Bearer Worker Secret；空 JSON 时仅原子认领一个 `authorized_media_asr` 任务 | 任务完成写入私有学习工作台；成功或失败均删除临时原文件；无任务返回 `idle` |
 | `/auth/callback` GET | 腾讯 Next.js | 无 | 历史书签兼容 | 不处理 OAuth/code/next 参数；只同源重定向到登录错误页 |
 
 ## 已关闭的双路径

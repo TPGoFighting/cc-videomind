@@ -93,14 +93,14 @@ export type MomentsMode = z.infer<typeof MomentsModeSchema>;
 // ─── 请求 schema ──────────────────────────────────────────────────────────────
 
 export const GenerateMomentsRequestSchema = z.object({
-  videoId: z.string().min(6).max(20),
+  videoId: z.string().min(6).max(64),
   mode: MomentsModeSchema.default("smart"),
   theme: z.string().max(200).optional(),
   targetLanguage: z.enum(["zh", "en"]).default("zh")
 });
 
 export const GenerateSummaryRequestSchema = z.object({
-  videoId: z.string().min(6).max(20),
+  videoId: z.string().min(6).max(64),
   targetLanguage: z.enum(["zh", "en"]).default("zh")
 });
 
@@ -170,7 +170,7 @@ export const WordDefinitionsRequestSchema = z.object({
 });
 
 export const TranslateTranscriptRequestSchema = z.object({
-  videoId: z.string().min(6).max(20)
+  videoId: z.string().min(6).max(64)
 });
 
 export const SaveQuoteRequestSchema = z.object({

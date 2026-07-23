@@ -4,17 +4,18 @@ import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withChatDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
 import { withSecurity } from "@/lib/security/middleware";
-import { getAuthenticatedUserId } from "@/lib/supabase/quota";
+import { getAuthenticatedUserId, hasUserAnalyzedVideo } from "@/lib/supabase/quota";
 import { getCachedAnalysis, upsertTranscriptCache } from "@/lib/supabase/cache";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
-import { VideoIdSchema } from "@/lib/youtube/id";
+import { isBilibiliImportedVideoId } from "@/lib/bilibili/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { selectChatEvidence, validateChatCitations } from "@/lib/product/chat-evidence";
 import { recordProductEventSafely } from "@/lib/product/analytics-store";
+import { isLocalMode } from "@/lib/local-mode";
 
 const RequestSchema = z.object({
-  videoId: VideoIdSchema,
+  videoId: z.string().min(6).max(64),
   question: z.string().min(3).max(800)
 });
 
@@ -30,6 +31,9 @@ export async function POST(request: Request) {
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
+  }
+  if (isBilibiliImportedVideoId(parsed.data.videoId) && (!userId || (!isLocalMode() && !await hasUserAnalyzedVideo(userId, parsed.data.videoId, request)))) {
+    return errorResponse("workspace_not_found", "找不到这份导入字幕，或你没有访问权限。", 404);
   }
 
   const analyticsStartedAt = Date.now();
