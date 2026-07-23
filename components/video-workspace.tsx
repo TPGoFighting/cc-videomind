@@ -690,18 +690,15 @@ export function VideoWorkspace({
               返回学习选题
             </Link>
             <p className="mt-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tp-accent)]">学习工作台</p>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--tp-text-muted)]">先读字幕与出处，再看提炼结果；每个要点都保留回到原视频的时间位置。</p>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs text-[var(--tp-text-muted)]" aria-label="工作台原则">
-            <span className="inline-flex min-h-8 items-center rounded-full border border-[var(--tp-border)] px-3">字幕优先</span>
-            <span className="inline-flex min-h-8 items-center rounded-full border border-[var(--tp-border)] px-3">出处可回看</span>
-            {fixtureState ? <span className="inline-flex min-h-8 items-center rounded-full border border-[rgba(91,168,255,0.4)] bg-[rgba(91,168,255,0.1)] px-3 text-[var(--tp-accent)]">本地状态：{fixtureState}</span> : null}
-          </div>
+          {fixtureState ? <span className="inline-flex min-h-8 items-center rounded-full border border-[rgba(91,168,255,0.4)] bg-[rgba(91,168,255,0.1)] px-3 text-xs text-[var(--tp-accent)]">本地状态：{fixtureState}</span> : null}
         </header>
 
-        <div className="mb-5">
-          <WorkspaceProgress stage={stage} />
-        </div>
+        {stage !== "ready" ? (
+          <div className="mb-5">
+            <WorkspaceProgress stage={stage} />
+          </div>
+        ) : null}
 
         <div className={showLearningPanels
           ? "grid gap-5 md:grid-cols-[minmax(0,1fr)_18rem] lg:gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]"

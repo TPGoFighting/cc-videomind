@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Bookmark, BookmarkCheck, Check, Copy, ListVideo, Navigation, Pin, PinOff, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Bookmark, BookmarkCheck, Check, Copy, ListVideo, Navigation, Pin, PinOff, RotateCcw, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DisplayMode, TranscriptSegment, WordDefinition } from "@/lib/types";
 import { formatTimestamp } from "@/lib/utils/time";
@@ -10,6 +10,7 @@ import { lemmatizeWord } from "@/lib/utils/tokenize";
 import { DisplayModeToggle } from "./display-mode-toggle";
 import { WordCard } from "./word-card";
 import { hasCompleteTranslation, hasDisplayableTranslation } from "@/lib/utils/translation";
+import { dismissLearningGuidance, shouldShowLearningGuidance } from "@/lib/product/learning-guidance";
 
 /** 将文本按单词边界拆分，返回片段列表 */
 function tokenizeText(text: string): string[] {
@@ -18,6 +19,22 @@ function tokenizeText(text: string): string[] {
 
 function isAlpha(token: string): boolean {
   return /^[a-zA-Z]+$/.test(token);
+}
+
+function subscribeToLearningGuidance() {
+  return () => {};
+}
+
+function getLearningGuidanceSnapshot(): boolean {
+  try {
+    return shouldShowLearningGuidance(window.localStorage);
+  } catch {
+    return false;
+  }
+}
+
+function getLearningGuidanceServerSnapshot(): boolean {
+  return false;
 }
 
 export function TranscriptViewer({
@@ -62,12 +79,28 @@ export function TranscriptViewer({
   const [savedQuotes, setSavedQuotes] = useState<Set<string>>(new Set());
   const [copiedQuote, setCopiedQuote] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [guideDismissedInView, setGuideDismissedInView] = useState(false);
+  const storedLearningGuidanceVisible = useSyncExternalStore(
+    subscribeToLearningGuidance,
+    getLearningGuidanceSnapshot,
+    getLearningGuidanceServerSnapshot,
+  );
+  const showLearningGuidance = storedLearningGuidanceVisible && !guideDismissedInView;
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticScrolling = useRef(false);
   const scrollCleanupRef = useRef<(() => void) | null>(null);
+
+  const closeLearningGuidance = useCallback(() => {
+    try {
+      dismissLearningGuidance(window.localStorage);
+    } catch {
+      // Storage can be blocked in private contexts; hiding the current guide is still useful.
+    }
+    setGuideDismissedInView(true);
+  }, []);
 
   /** 执行平滑滚动，通过 scrollend 事件 + 超时兜底精确管理 programmaticScrolling 标志 */
   function performSmoothScroll(container: HTMLDivElement, scrollTarget: number) {
@@ -395,16 +428,28 @@ export function TranscriptViewer({
         </div>
       )}
       <CardContent className="relative md:flex md:min-h-0 md:flex-1 md:flex-col">
-        {!loading && transcript.length > 0 ? (
-          <div className="mb-3 rounded-lg border border-[rgba(91,168,255,0.28)] bg-[rgba(91,168,255,0.08)] p-3" aria-live="polite">
-            <p className="text-[13px] font-semibold text-[var(--tp-text)]">先收藏一句，保留它的出处</p>
-            <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">
-              收藏句子会保存原句、视频与时间点；收藏单词会安排到次日复习。未登录时点击收藏才会进入登录，当前字幕不会丢失。
-            </p>
-            {saveNotice || actionStatus ? (
-              <p className="mt-2 text-xs font-semibold leading-5 text-[var(--tp-accent)]">{actionStatus ?? saveNotice}</p>
-            ) : null}
-          </div>
+        {!loading && transcript.length > 0 && showLearningGuidance ? (
+          <aside className="mb-3 rounded-lg border border-[rgba(91,168,255,0.28)] bg-[rgba(91,168,255,0.08)] p-3" aria-label="首次收藏提示">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[13px] font-semibold text-[var(--tp-text)]">收藏一句，随时回到出处</p>
+                <p className="mt-1 text-xs leading-5 text-[var(--tp-text-muted)]">
+                  句子会保留原文、视频与时间点；单词会加入次日复习。以后可在收藏与复习页继续学习。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeLearningGuidance}
+                className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-[var(--tp-text-muted)] transition-colors hover:bg-white/8 hover:text-[var(--tp-text)]"
+                aria-label="关闭首次收藏提示"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          </aside>
+        ) : null}
+        {!loading && transcript.length > 0 && (saveNotice || actionStatus) ? (
+          <p role="status" aria-live="polite" className="mb-3 text-xs font-semibold leading-5 text-[var(--tp-accent)]">{actionStatus ?? saveNotice}</p>
         ) : null}
         {loading ? (
           <div className="space-y-3">

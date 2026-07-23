@@ -37,13 +37,6 @@ export default function ExplorePage() {
 
         <ExploreCatalog />
 
-        <section className="mt-16 rounded-[1.25rem] border border-[var(--tp-border)] bg-[var(--tp-surface)] px-5 py-8 sm:px-8 sm:py-10">
-          <p className="text-sm font-semibold text-[var(--tp-accent)]">目录标准</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.035em]">公开推荐必须回答“为什么值得学”</h2>
-          <p className="mt-3 max-w-3xl text-base leading-7 text-[var(--tp-text-muted)]">
-            每条内容都需要明确的知识主题、可用字幕和学习结果。预告片、音乐、随机热点与无法说明收益的视频不会出现在首发推荐中。
-          </p>
-        </section>
       </main>
     </div>
   );
