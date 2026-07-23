@@ -4,6 +4,7 @@ import type { TranscriptSegment } from "@/lib/types";
 import {
   hasCompleteTranslation,
   hasDisplayableTranslation,
+  mergeCachedTranslation,
 } from "@/lib/utils/translation";
 
 const englishTranscript: TranscriptSegment[] = [
@@ -39,4 +40,28 @@ test("requires every segment before considering a translation complete", () => {
 
   assert.equal(hasDisplayableTranslation(partial), true);
   assert.equal(hasCompleteTranslation(partial), false);
+});
+
+test("reuses partial cached translations without treating source-text fallbacks as translated", () => {
+  const cached = [
+    { ...englishTranscript[0], text_zh: "你好，世界" },
+    { ...englishTranscript[1], text_zh: englishTranscript[1].text },
+  ];
+
+  const merged = mergeCachedTranslation(englishTranscript, cached);
+
+  assert.deepEqual(merged, [
+    { ...englishTranscript[0], text_zh: "你好，世界" },
+    englishTranscript[1],
+  ]);
+  assert.equal(hasDisplayableTranslation(merged), true);
+  assert.equal(hasCompleteTranslation(merged), false);
+});
+
+test("does not attach a cached translation to a different timestamp", () => {
+  const merged = mergeCachedTranslation(englishTranscript, [
+    { startTime: 9, endTime: 11, text: "Other sentence", text_zh: "另一句话" },
+  ]);
+
+  assert.deepEqual(merged, englishTranscript);
 });

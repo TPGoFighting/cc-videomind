@@ -8,7 +8,12 @@ import { isLocalMode } from "@/lib/local-mode";
 import { getLatestTranslation as getLocalLatestTranslation, saveTranslationVersion } from "@/lib/db/local-store";
 import { upsertTranscriptCache } from "@/lib/supabase/cache";
 import { errorResponse, readJson } from "@/lib/utils/api";
-import { hasCompleteTranslation } from "@/lib/utils/translation";
+import {
+  hasCompleteTranslation,
+  hasDisplayableTranslation,
+  hasUsableTranslation,
+  mergeCachedTranslation,
+} from "@/lib/utils/translation";
 
 export const maxDuration = 300;
 
@@ -57,26 +62,25 @@ export async function POST(request: Request) {
     ? await getLocalLatestTranslation(videoId, lang)
     : await getLatestTranslation(videoId, lang);
   if (existingTranslation) {
-    // 合并翻译结果到原始 segments
-    const translatedMap = new Map(
-      existingTranslation.segments.map((s) => [s.startTime, s])
-    );
-    const merged: TranscriptSegment[] = segments.map((s) => {
-      const t = translatedMap.get(s.startTime);
-      return t ? { ...s, text_zh: t.text_zh } : s;
-    });
-    if (hasCompleteTranslation(merged)) {
-      return Response.json({ ok: true, data: { transcript: merged } });
+    const merged = mergeCachedTranslation(segments, existingTranslation.segments);
+    if (hasDisplayableTranslation(merged)) {
+      return Response.json({
+        ok: true,
+        data: { transcript: merged, cached: true, complete: hasCompleteTranslation(merged) },
+      });
     }
   }
 
-  // 回退检查：原始 segments 自身是否已全部翻译
-  if (hasCompleteTranslation(segments)) {
-    return Response.json({ ok: true, data: { transcript: segments } });
+  // 旧缓存也可能只存了一部分真实译文；优先展示，避免重复调用供应商。
+  if (hasDisplayableTranslation(segments)) {
+    return Response.json({
+      ok: true,
+      data: { transcript: segments, cached: true, complete: hasCompleteTranslation(segments) },
+    });
   }
 
-  // 过滤未翻译的句子
-  const untranslated = segments.filter((s) => !s.text_zh);
+  // 与原文相同的历史回退值不算翻译，仍可在完全没有缓存时重新处理。
+  const untranslated = segments.filter((segment) => !hasUsableTranslation(segment));
 
   const BATCH_SIZE = 25;
   const CONCURRENCY = 5;

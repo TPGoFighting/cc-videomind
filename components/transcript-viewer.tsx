@@ -402,9 +402,9 @@ export function TranscriptViewer({
                 <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span>{translationError} 点击重试</span>
               </button>
-            ) : needsTranslation && !translating && (
-              <span className="text-[11px] text-white/20">切换模式以翻译</span>
-            )}
+              ) : needsTranslation && !translating && !hasTranslation && (
+                <span className="text-[11px] text-white/20">切换模式以翻译</span>
+              )}
           </div>
           {!loading && transcript.length > 0 && (
             <button
