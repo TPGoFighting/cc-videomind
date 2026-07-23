@@ -11,6 +11,8 @@ export const PRODUCT_EVENT_NAMES = [
   "video_parse_failed",
   "analysis_completed",
   "analysis_failed",
+  "chat_completed",
+  "chat_failed",
   "learning_item_saved",
   "review_opened",
   "review_completed",
@@ -53,6 +55,23 @@ export const ProductEventSchema = z.discriminatedUnion("name", [
     payload: z.object({
       durationMs: DurationSchema,
       modelAlias: ModelAliasSchema,
+      errorCode: ErrorCodeSchema,
+    }).strict(),
+  }).strict(),
+  z.object({
+    name: z.literal("chat_completed"),
+    payload: z.object({
+      durationMs: DurationSchema,
+      transcriptCacheHit: z.boolean(),
+      modelMode: z.enum(["not_called", "primary", "cached", "fallback"]),
+      outcome: z.enum(["grounded", "no_evidence", "citation_unverified"]),
+    }).strict(),
+  }).strict(),
+  z.object({
+    name: z.literal("chat_failed"),
+    payload: z.object({
+      durationMs: DurationSchema,
+      transcriptCacheHit: z.boolean(),
       errorCode: ErrorCodeSchema,
     }).strict(),
   }).strict(),

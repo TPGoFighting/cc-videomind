@@ -17,6 +17,25 @@ describe("privacy-safe product event contract", () => {
       name: "learning_item_saved",
       payload: { itemKind: "quote", source: "youtube", isFirst: true },
     }).success, true);
+
+    assert.equal(ProductEventSchema.safeParse({
+      name: "chat_completed",
+      payload: {
+        durationMs: 840,
+        transcriptCacheHit: true,
+        modelMode: "primary",
+        outcome: "grounded",
+      },
+    }).success, true);
+
+    assert.equal(ProductEventSchema.safeParse({
+      name: "chat_failed",
+      payload: {
+        durationMs: 840,
+        transcriptCacheHit: false,
+        errorCode: "ai_rate_limited",
+      },
+    }).success, true);
   });
 
   it("rejects URL, transcript, prompt, answer, and note content", () => {
@@ -27,6 +46,17 @@ describe("privacy-safe product event contract", () => {
       });
       assert.equal(result.success, false, `${forbiddenField} must be rejected`);
     }
+
+    assert.equal(ProductEventSchema.safeParse({
+      name: "chat_completed",
+      payload: {
+        durationMs: 840,
+        transcriptCacheHit: false,
+        modelMode: "primary",
+        outcome: "grounded",
+        answer: "private answer",
+      },
+    }).success, false);
   });
 
   it("uses bounded retention and coarse review accuracy", () => {

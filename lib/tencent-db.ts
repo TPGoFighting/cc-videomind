@@ -56,7 +56,7 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     user_id TEXT REFERENCES app_users(id) ON DELETE SET NULL,
     event_name TEXT NOT NULL CHECK (event_name IN (
       'video_parse_started', 'video_parse_completed', 'video_parse_failed',
-      'analysis_completed', 'analysis_failed', 'learning_item_saved',
+      'analysis_completed', 'analysis_failed', 'chat_completed', 'chat_failed', 'learning_item_saved',
       'review_opened', 'review_completed', 'upgrade_opened', 'upgrade_paid'
     )),
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,

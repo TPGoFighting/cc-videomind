@@ -11,6 +11,7 @@ import { VideoIdSchema } from "@/lib/youtube/id";
 import { fetchYouTubeMetadata } from "@/lib/youtube/metadata";
 import { getTranscriptProvider } from "@/lib/youtube/transcript-provider";
 import { selectChatEvidence, validateChatCitations } from "@/lib/product/chat-evidence";
+import { recordProductEventSafely } from "@/lib/product/analytics-store";
 
 const RequestSchema = z.object({
   videoId: VideoIdSchema,
@@ -24,15 +25,19 @@ export async function POST(request: Request) {
     scope: "chat",
     rateLimit: { maxRequests: 20, windowMs: 60_000 },
   }).wrap(request, async () => {
-      const userId = await getAuthenticatedUserId(request);
+    const userId = await getAuthenticatedUserId(request);
 
   const parsed = await readJson(request, RequestSchema);
   if (!parsed.ok) {
     return parsed.response;
   }
 
+  const analyticsStartedAt = Date.now();
+  let transcriptCacheHit = false;
+
   try {
     const cached = await getCachedAnalysis(parsed.data.videoId);
+    transcriptCacheHit = Boolean(cached?.transcript);
     const transcript = cached?.transcript ?? (await getTranscriptProvider().getTranscript(parsed.data.videoId));
     if (!cached?.transcript) {
       const metadata = await fetchYouTubeMetadata(parsed.data.videoId);
@@ -41,6 +46,15 @@ export async function POST(request: Request) {
 
     const evidence = selectChatEvidence(parsed.data.question, transcript);
     if (!evidence.found) {
+      await recordProductEventSafely(userId, {
+        name: "chat_completed",
+        payload: {
+          durationMs: Date.now() - analyticsStartedAt,
+          transcriptCacheHit,
+          modelMode: "not_called",
+          outcome: "no_evidence",
+        },
+      });
       return successResponse({
         answer: "无法从这段视频字幕中证实这个问题。请换一种问法，或回到视频中的具体术语、人物或时间点。",
         citations: [],
@@ -72,10 +86,28 @@ export async function POST(request: Request) {
       userId: userId ?? undefined, videoId: parsed.data.videoId,
     });
 
+    await recordProductEventSafely(userId, {
+      name: "chat_completed",
+      payload: {
+        durationMs: Date.now() - analyticsStartedAt,
+        transcriptCacheHit,
+        modelMode: degradedResult.level === "cached" ? "cached" : degradedResult.level === "fallback" ? "fallback" : "primary",
+        outcome: citations.length > 0 ? "grounded" : "citation_unverified",
+      },
+    });
+
     return successResponse(verifiedAnswer);
   } catch (error) {
     console.error("Chat answer failed", error);
     const providerFailure = getAiProviderFailure(error);
+    await recordProductEventSafely(userId, {
+      name: "chat_failed",
+      payload: {
+        durationMs: Date.now() - analyticsStartedAt,
+        transcriptCacheHit,
+        errorCode: providerFailure?.code ?? "chat_failed",
+      },
+    });
     if (providerFailure) {
       return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
     }
