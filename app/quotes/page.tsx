@@ -163,6 +163,7 @@ export default function QuotesPage() {
                         href={`/video/${item.videoId}`}
                         className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 text-white/20 transition-colors hover:bg-white/8 hover:text-white/60"
                         title="查看视频"
+                        aria-label={`查看句子“${item.textEn.slice(0, 40)}”的来源视频`}
                       >
                         <ExternalLink className="h-4 w-4" />
                       </Link>
@@ -173,6 +174,7 @@ export default function QuotesPage() {
                       onClick={() => handleDelete(item.id)}
                       className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
                       title="删除"
+                      aria-label={`删除句子“${item.textEn.slice(0, 40)}”`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
