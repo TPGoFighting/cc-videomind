@@ -40,6 +40,7 @@ export default async function VideoPage({
     ? parseWorkspaceFixtureSaveMode(query.fixtureSave) ?? "preview"
     : undefined;
   const initialStartTime = parseVideoStartTime(query.t);
+  const asrEnabled = Boolean(process.env.ASR_API_KEY?.trim());
 
   return (
     <VideoWorkspace
@@ -49,6 +50,7 @@ export default async function VideoPage({
       fixtureState={fixtureState}
       fixtureSaveMode={fixtureSaveMode}
       initialStartTime={initialStartTime}
+      asrEnabled={asrEnabled}
     />
   );
 }

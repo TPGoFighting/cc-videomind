@@ -16,6 +16,7 @@ import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { BilibiliSubtitleImport } from "@/components/bilibili-subtitle-import";
 import { BilibiliAuthorizedMediaUpload } from "@/components/bilibili-authorized-media-upload";
 import { buildBilibiliWatchUrl, isBilibiliVideoId } from "@/lib/bilibili/id";
+import { shouldShowBilibiliImport } from "@/lib/bilibili/workspace-state";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
 import {
@@ -160,12 +161,14 @@ export function VideoWorkspace({
   fixtureSaveMode = "preview",
   initialStartTime,
   platform = "youtube",
+  asrEnabled = false,
 }: {
   videoId: string;
   fixtureState?: WorkspaceFixtureState;
   fixtureSaveMode?: WorkspaceFixtureSaveMode;
   initialStartTime?: number;
   platform?: "youtube" | "bilibili";
+  asrEnabled?: boolean;
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -683,6 +686,7 @@ export function VideoWorkspace({
     ? [transcriptGuidance.primaryAction, transcriptGuidance.secondaryAction]
     : [];
   const directBilibiliVideo = platform === "bilibili" && isBilibiliVideoId(videoId);
+  const showBilibiliImport = shouldShowBilibiliImport(errorCode, directBilibiliVideo);
 
   return (
     <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
@@ -733,7 +737,7 @@ export function VideoWorkspace({
               </div>
             ) : null}
 
-            {transcriptError ? (
+            {transcriptError && !showBilibiliImport ? (
               <div role="alert" className="rounded-[0.875rem] border border-red-400/25 bg-red-400/[0.07] p-4 sm:p-5">
                 <div className="flex items-start gap-3 text-sm font-medium leading-6 text-red-300">
                   <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden />
@@ -773,8 +777,8 @@ export function VideoWorkspace({
               </div>
             ) : null}
 
-            {directBilibiliVideo && transcriptError ? <BilibiliSubtitleImport sourceVideoId={videoId} /> : null}
-            {directBilibiliVideo && transcriptError ? <BilibiliAuthorizedMediaUpload sourceVideoId={videoId} /> : null}
+            {showBilibiliImport ? <BilibiliSubtitleImport sourceVideoId={videoId} /> : null}
+            {showBilibiliImport && asrEnabled ? <BilibiliAuthorizedMediaUpload sourceVideoId={videoId} /> : null}
 
             {analysisNotice ? (
               <div role="status" className="flex items-start gap-3 rounded-[0.875rem] border border-[var(--tp-border-strong)] bg-[var(--tp-surface)] p-4 text-sm leading-6 text-[var(--tp-text-secondary)]">
