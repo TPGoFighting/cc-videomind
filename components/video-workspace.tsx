@@ -15,6 +15,7 @@ import { SummaryPanel } from "@/components/summary-panel";
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { BilibiliSubtitleImport } from "@/components/bilibili-subtitle-import";
 import { BilibiliAuthorizedMediaUpload } from "@/components/bilibili-authorized-media-upload";
+import { BilibiliBrowserCapture } from "@/components/bilibili-browser-capture";
 import { buildBilibiliWatchUrl, isBilibiliVideoId } from "@/lib/bilibili/id";
 import { getVideoPlayerFallbackTitle, shouldShowBilibiliImport } from "@/lib/bilibili/workspace-state";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
@@ -782,6 +783,7 @@ export function VideoWorkspace({
             ) : null}
 
             {showBilibiliImport ? <BilibiliSubtitleImport sourceVideoId={videoId} /> : null}
+            {showBilibiliImport && asrEnabled ? <BilibiliBrowserCapture sourceVideoId={videoId} /> : null}
             {showBilibiliImport && asrEnabled ? <BilibiliAuthorizedMediaUpload sourceVideoId={videoId} /> : null}
 
             {analysisNotice ? (

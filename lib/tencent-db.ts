@@ -279,6 +279,15 @@ export const TENCENT_SCHEMA_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS async_tasks_status_idx ON async_tasks(status, created_at)`,
   `CREATE INDEX IF NOT EXISTS async_tasks_video_idx ON async_tasks(video_id, created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS extension_capture_tickets (
+    token_digest TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    source_video_id TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS extension_capture_tickets_expiry_idx ON extension_capture_tickets(expires_at)`,
 ];
 
 export async function ensureTencentSchema(): Promise<void> {
