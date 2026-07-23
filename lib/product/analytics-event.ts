@@ -65,6 +65,8 @@ export const ProductEventSchema = z.discriminatedUnion("name", [
       transcriptCacheHit: z.boolean(),
       modelMode: z.enum(["not_called", "primary", "cached", "fallback"]),
       outcome: z.enum(["grounded", "no_evidence", "citation_unverified"]),
+      jsonParseMode: z.enum(["not_called", "direct", "extracted", "repaired", "thinking", "thinking_repaired"]),
+      citationNormalized: z.boolean(),
     }).strict(),
   }).strict(),
   z.object({

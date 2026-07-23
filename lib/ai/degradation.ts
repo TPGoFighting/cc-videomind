@@ -199,10 +199,10 @@ export async function withAnalysisDegradation(
 /**
  * 对话问答降级包装器
  */
-export async function withChatDegradation(
-  operation: () => Promise<ChatAnswer>,
+export async function withChatDegradation<T extends ChatAnswer>(
+  operation: () => Promise<T>,
   options: DegradationConfig = {}
-): Promise<DegradedResult<ChatAnswer | { answer: string; citations: [] }>> {
+): Promise<DegradedResult<T>> {
   return withDegradation(operation, {
     ...options,
     operationName: "chat",

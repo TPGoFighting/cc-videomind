@@ -25,6 +25,8 @@ describe("privacy-safe product event contract", () => {
         transcriptCacheHit: true,
         modelMode: "primary",
         outcome: "grounded",
+        jsonParseMode: "direct",
+        citationNormalized: false,
       },
     }).success, true);
 
@@ -54,6 +56,8 @@ describe("privacy-safe product event contract", () => {
         transcriptCacheHit: false,
         modelMode: "primary",
         outcome: "grounded",
+        jsonParseMode: "direct",
+        citationNormalized: false,
         answer: "private answer",
       },
     }).success, false);

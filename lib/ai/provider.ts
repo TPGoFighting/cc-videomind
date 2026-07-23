@@ -52,9 +52,18 @@ function debugLog(...args: unknown[]): void {
   }
 }
 
+export type JsonParseMode = "direct" | "extracted" | "repaired" | "thinking" | "thinking_repaired";
+
+export type ChatAnswerWithDiagnostics = ChatAnswer & {
+  diagnostics: {
+    jsonParseMode: JsonParseMode;
+    citationNormalized: boolean;
+  };
+};
+
 export interface AiProvider {
   generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }): Promise<VideoAnalysis>;
-  answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }): Promise<ChatAnswer>;
+  answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }): Promise<ChatAnswerWithDiagnostics>;
   generateKeyMoments(input: {
     title: string;
     transcript: TranscriptSegment[];
@@ -1032,10 +1041,10 @@ function fillDebug(debug: GenerationDebug, data: Partial<GenerationDebug>) {
   debug.finalCount = data.finalCount ?? 0;
 }
 
-function parseJsonContent(content: string) {
+export function parseJsonContentWithDiagnostics(content: string): { value: unknown; mode: JsonParseMode } {
   // 先尝试直接解析
   try {
-    return JSON.parse(content) as unknown;
+    return { value: JSON.parse(content) as unknown, mode: "direct" };
   } catch {
     // 继续
   }
@@ -1044,7 +1053,7 @@ function parseJsonContent(content: string) {
   const extracted = extractBalancedJson(content);
   if (extracted) {
     try {
-      return JSON.parse(extracted) as unknown;
+      return { value: JSON.parse(extracted) as unknown, mode: "extracted" };
     } catch {
       // 继续尝试修复
     }
@@ -1053,7 +1062,7 @@ function parseJsonContent(content: string) {
     const repaired = repairBrokenJson(extracted);
     if (repaired) {
       try {
-        return JSON.parse(repaired) as unknown;
+        return { value: JSON.parse(repaired) as unknown, mode: "repaired" };
       } catch {
         // 最终失败
       }
@@ -1065,14 +1074,14 @@ function parseJsonContent(content: string) {
   if (thinkingJson) {
     debugLog("[JSON] extractJsonFromThinking 提取成功, 长度: %d", thinkingJson.length);
     try {
-      return JSON.parse(thinkingJson) as unknown;
+      return { value: JSON.parse(thinkingJson) as unknown, mode: "thinking" };
     } catch {
       // 继续尝试修复
     }
     const repairedThinking = repairBrokenJson(thinkingJson);
     if (repairedThinking) {
       try {
-        return JSON.parse(repairedThinking) as unknown;
+        return { value: JSON.parse(repairedThinking) as unknown, mode: "thinking_repaired" };
       } catch {
         // 最终失败
       }
@@ -1082,6 +1091,10 @@ function parseJsonContent(content: string) {
   }
 
   throw new Error("AI provider did not return valid JSON.");
+}
+
+function parseJsonContent(content: string) {
+  return parseJsonContentWithDiagnostics(content).value;
 }
 
 function repairAnalysis(
@@ -1187,11 +1200,15 @@ function generateDefaultHighlights(transcript: TranscriptSegment[]): Array<Recor
   return highlights;
 }
 
-function parseChatAnswer(content: string, transcript: TranscriptSegment[]) {
-  const value = parseJsonContent(content);
+function parseChatAnswer(content: string, transcript: TranscriptSegment[]): ChatAnswerWithDiagnostics {
+  const parsed = parseJsonContentWithDiagnostics(content);
+  const value = parsed.value;
   const direct = ChatAnswerSchema.safeParse(value);
   if (direct.success) {
-    return direct.data;
+    return {
+      ...direct.data,
+      diagnostics: { jsonParseMode: parsed.mode, citationNormalized: false },
+    };
   }
 
   if (!isRecord(value)) {
@@ -1212,7 +1229,10 @@ function parseChatAnswer(content: string, transcript: TranscriptSegment[]) {
     });
   }
 
-  return ChatAnswerSchema.parse({ answer, citations: citations.slice(0, 5) });
+  return {
+    ...ChatAnswerSchema.parse({ answer, citations: citations.slice(0, 5) }),
+    diagnostics: { jsonParseMode: parsed.mode, citationNormalized: true },
+  };
 }
 
 function normalizeCitation(value: unknown, transcript: TranscriptSegment[]) {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getAiProvider } from "@/lib/ai/provider";
+import { getAiProvider, type ChatAnswerWithDiagnostics } from "@/lib/ai/provider";
 import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { withChatDegradation, buildDegradedResponse } from "@/lib/ai/degradation";
 import { recordAiCall } from "@/lib/ai/cost-tracker";
@@ -53,6 +53,8 @@ export async function POST(request: Request) {
           transcriptCacheHit,
           modelMode: "not_called",
           outcome: "no_evidence",
+          jsonParseMode: "not_called",
+          citationNormalized: false,
         },
       });
       return successResponse({
@@ -72,8 +74,13 @@ export async function POST(request: Request) {
       throw degradedResult.originalError ?? new Error("AI chat is unavailable.");
     }
 
-    const fallbackAnswer = { answer: "暂时无法回答，请稍后再试。", citations: [] };
-    const { data: answer = fallbackAnswer } = buildDegradedResponse(degradedResult, fallbackAnswer);
+    const fallbackAnswer: ChatAnswerWithDiagnostics = {
+      answer: "暂时无法回答，请稍后再试。",
+      citations: [],
+      diagnostics: { jsonParseMode: "direct", citationNormalized: false },
+    };
+    const { data: answerWithDiagnostics = fallbackAnswer } = buildDegradedResponse(degradedResult, fallbackAnswer);
+    const { diagnostics, ...answer } = answerWithDiagnostics;
     const citations = validateChatCitations(answer.citations, evidence.segments);
     const verifiedAnswer = citations.length > 0
       ? { ...answer, citations }
@@ -93,6 +100,8 @@ export async function POST(request: Request) {
         transcriptCacheHit,
         modelMode: degradedResult.level === "cached" ? "cached" : degradedResult.level === "fallback" ? "fallback" : "primary",
         outcome: citations.length > 0 ? "grounded" : "citation_unverified",
+        jsonParseMode: diagnostics.jsonParseMode,
+        citationNormalized: diagnostics.citationNormalized,
       },
     });
 
