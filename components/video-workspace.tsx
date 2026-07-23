@@ -16,7 +16,7 @@ import { VideoPlayer, type VideoPlayerHandle } from "@/components/video-player";
 import { BilibiliSubtitleImport } from "@/components/bilibili-subtitle-import";
 import { BilibiliAuthorizedMediaUpload } from "@/components/bilibili-authorized-media-upload";
 import { buildBilibiliWatchUrl, isBilibiliVideoId } from "@/lib/bilibili/id";
-import { shouldShowBilibiliImport, shouldShowTranscriptFallbackTitle } from "@/lib/bilibili/workspace-state";
+import { getVideoPlayerFallbackTitle, shouldShowBilibiliImport } from "@/lib/bilibili/workspace-state";
 import { useDisplayMode } from "@/lib/hooks/useDisplayMode";
 import { useWordDefinitions } from "@/lib/hooks/useWordDefinitions";
 import {
@@ -687,7 +687,10 @@ export function VideoWorkspace({
     : [];
   const directBilibiliVideo = platform === "bilibili" && isBilibiliVideoId(videoId);
   const showBilibiliImport = shouldShowBilibiliImport(errorCode, directBilibiliVideo);
-  const showTranscriptFallbackTitle = shouldShowTranscriptFallbackTitle(Boolean(transcriptError), showBilibiliImport);
+  const videoFallbackTitle = getVideoPlayerFallbackTitle(
+    Boolean(transcriptError),
+    showBilibiliImport ? videoId : undefined,
+  );
 
   return (
     <div className="min-h-screen bg-[var(--tp-bg)] text-[var(--tp-text)]">
@@ -722,7 +725,7 @@ export function VideoWorkspace({
               ref={playerRef}
               videoId={videoId}
               metadata={metadata}
-              fallbackTitle={showTranscriptFallbackTitle ? "视频信息加载失败" : undefined}
+              fallbackTitle={videoFallbackTitle}
               previewOnly={Boolean(fixtureState)}
               initialStartTime={initialStartTime}
               platform={platform}

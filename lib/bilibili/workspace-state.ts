@@ -14,3 +14,9 @@ export function shouldShowBilibiliImport(errorCode: string | null, isDirectBilib
 export function shouldShowTranscriptFallbackTitle(hasTranscriptError: boolean, isBilibiliImportState: boolean): boolean {
   return hasTranscriptError && !isBilibiliImportState;
 }
+
+export function getVideoPlayerFallbackTitle(hasTranscriptError: boolean, bilibiliImportVideoId?: string): string | undefined {
+  if (!hasTranscriptError) return undefined;
+  if (bilibiliImportVideoId) return `B站视频 ${bilibiliImportVideoId}`;
+  return "视频信息加载失败";
+}
