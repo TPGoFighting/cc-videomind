@@ -22,6 +22,7 @@ function formatDate(iso: string): string {
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuth();
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data: items, loading, mutate } = useCachedFetch<UserNote>(
     "notes",
@@ -34,6 +35,7 @@ export default function NotesPage() {
   );
 
   const handleDelete = async (id: string) => {
+    setDeleteError(null);
     setDeleting((prev) => new Set(prev).add(id));
     try {
       const res = await fetch("/api/notes", {
@@ -44,9 +46,11 @@ export default function NotesPage() {
       const payload = await res.json();
       if (payload.ok) {
         mutate((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        setDeleteError("删除失败，请稍后重试。");
       }
     } catch {
-      // 静默失败
+      setDeleteError("删除失败，请稍后重试。");
     } finally {
       setDeleting((prev) => {
         const next = new Set(prev);
@@ -79,6 +83,11 @@ export default function NotesPage() {
         <p className="mt-1 text-[14px] text-white/40">
           你在视频学习过程中记录的笔记
         </p>
+        {deleteError && (
+          <p role="alert" className="mt-3 text-[14px] text-red-300">
+            {deleteError}
+          </p>
+        )}
 
         {loading ? (
           <div className="mt-8 space-y-3">

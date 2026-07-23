@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FileText, Flame, MessageSquare, NotebookPen } from "lucide-react";
 import { TranscriptViewer } from "./transcript-viewer";
 import { ChatPanel } from "./chat-panel";
 import { NotesPanel } from "./notes-panel";
 import Link from "next/link";
 import { cn } from "@/lib/utils/cn";
+import { getNextTabIndex, isTabNavigationKey } from "@/lib/accessibility/tabs";
 import type { DisplayMode, TranscriptSegment, VideoAnalysis, WordDefinition } from "@/lib/types";
 
 interface MobileVideoTabsProps {
@@ -56,12 +57,22 @@ export function MobileVideoTabs({
   chatEnabled,
 }: MobileVideoTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("transcript");
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    if (!isTabNavigationKey(event.key)) return;
+
+    event.preventDefault();
+    const nextIndex = getNextTabIndex(currentIndex, event.key, TABS.length);
+    setActiveTab(TABS[nextIndex].id);
+    tabListRef.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
+  };
 
   return (
     <div className="overflow-hidden rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)]">
       {/* 标签页头部 */}
-      <div className="flex border-b border-[var(--tp-border)] bg-[var(--tp-surface)]" role="tablist" aria-label="视频学习功能">
-        {TABS.map((tab) => {
+      <div ref={tabListRef} className="flex border-b border-[var(--tp-border)] bg-[var(--tp-surface)]" role="tablist" aria-label="视频学习功能">
+        {TABS.map((tab, index) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
@@ -74,6 +85,8 @@ export function MobileVideoTabs({
               aria-selected={isActive}
               aria-controls={`mobile-video-panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              tabIndex={isActive ? 0 : -1}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 px-3 py-3",
                 "min-h-11 text-[13px] font-medium transition-colors duration-200",
