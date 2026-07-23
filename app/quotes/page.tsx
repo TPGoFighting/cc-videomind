@@ -161,7 +161,7 @@ export default function QuotesPage() {
                     {!item.videoTitle && (
                       <Link
                         href={`/video/${item.videoId}`}
-                        className="rounded-md p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center text-white/20 transition-colors hover:bg-white/8 hover:text-white/60"
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 text-white/20 transition-colors hover:bg-white/8 hover:text-white/60"
                         title="查看视频"
                       >
                         <ExternalLink className="h-4 w-4" />
@@ -171,7 +171,7 @@ export default function QuotesPage() {
                       type="button"
                       disabled={deleting.has(item.id)}
                       onClick={() => handleDelete(item.id)}
-                      className="rounded-md p-2 min-h-[40px] min-w-[40px] inline-flex items-center justify-center text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 text-white/20 transition-colors hover:bg-red-500/10 hover:text-red-400"
                       title="删除"
                     >
                       <Trash2 className="h-4 w-4" />
