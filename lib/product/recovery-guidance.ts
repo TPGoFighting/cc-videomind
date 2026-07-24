@@ -32,6 +32,13 @@ const TRANSCRIPT_UNAVAILABLE_CODES = new Set([
   "no_transcript",
 ]);
 
+const TRANSCRIPT_NETWORK_CODES = new Set([
+  "PAGE_FETCH_FAILED",
+  "CAPTION_DOWNLOAD_FAILED",
+  "ALL_TRACKS_FAILED",
+  "transcript_failed",
+]);
+
 /**
  * Keep recovery copy deterministic and independent from upstream provider text.
  * The UI can safely expose these messages without leaking provider internals.
@@ -72,6 +79,14 @@ export function getRecoveryGuidance(
         message: "请选择已开启英文字幕的公开视频；也可以先在 YouTube 检查字幕开关。",
         primaryAction: "choose_video",
         secondaryAction: "open_youtube",
+      };
+    }
+    if (TRANSCRIPT_NETWORK_CODES.has(normalizedCode)) {
+      return {
+        title: "字幕获取失败",
+        message: "可能是网络波动或 YouTube 临时限制。请稍后重试，或换一条视频。",
+        primaryAction: "retry",
+        secondaryAction: "choose_video",
       };
     }
     return {

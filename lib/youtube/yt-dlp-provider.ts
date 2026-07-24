@@ -187,6 +187,19 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     return null;
   }
 
+  /**
+   * 构建 yt-dlp 子进程环境：清除 PYTHONHOME / PYTHONPATH，
+   * 防止宿主环境（如 TRAE IDE 注入的 Python 3.13 路径）与
+   * yt-dlp 自带的 Python（Homebrew 3.14）版本不匹配导致
+   * "No module named 'encodings'" 启动崩溃。
+   */
+  private buildCleanEnv(): NodeJS.ProcessEnv {
+    const env = { ...process.env };
+    delete env.PYTHONHOME;
+    delete env.PYTHONPATH;
+    return env;
+  }
+
   private run(
     cmd: string[],
     args: string[]
@@ -196,7 +209,7 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
       execFile(
         cmd[0],
         [...cmd.slice(1), ...args],
-        { maxBuffer: 64 * 1024 * 1024, timeout },
+        { maxBuffer: 64 * 1024 * 1024, timeout, env: this.buildCleanEnv() },
         (err, stdout, stderr) => {
           if (err) {
             // 缺失二进制（ENOENT）保留原始错误，供 resolveBinary 识别并切换到下一候选

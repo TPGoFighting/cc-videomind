@@ -935,13 +935,24 @@ export class FallbackTranscriptProvider implements TranscriptProvider {
 
   async getTranscript(videoId: string, preferredLang?: string): Promise<TranscriptSegment[]> {
     const errors: string[] = [];
+    let lastTranscriptError: TranscriptError | null = null;
     for (const provider of this.chain) {
       try {
         return await provider.getTranscript(videoId, preferredLang);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         errors.push(msg);
+        if (error instanceof TranscriptError) {
+          lastTranscriptError = error;
+        }
       }
+    }
+    // 保留最后一个 TranscriptError 的 code，使 API 层能匹配到精确的错误恢复指引
+    if (lastTranscriptError) {
+      throw new TranscriptError(
+        lastTranscriptError.code,
+        `所有转录提取方式均失败（${errors.length}层）：${errors.join(" | ")}`,
+      );
     }
     throw new Error(
       `所有转录提取方式均失败（${errors.length}层）：${errors.join(" | ")}`
@@ -953,11 +964,13 @@ export function getTranscriptProvider(): TranscriptProvider {
   const provider = (process.env.TRANSCRIPT_PROVIDER ?? "youtube").trim();
 
   // 本地优先模式：用户本机直连 YouTube，用 yt-dlp（带浏览器 cookie）取字幕，
-  // 失败时回退 HTML 抓取。适用于本地桌面工具（Tauri / next dev）。
+  // 失败时依次回退到 InnerTube API 和 HTML 抓取。
+  // 适用于本地桌面工具（Tauri / next dev）。
   if (provider === "local") {
     return new FallbackTranscriptProvider(
-      new YtDlpTranscriptProvider(),
-      new YouTubeTranscriptProvider()
+      new YtDlpTranscriptProvider(),         // 首选：本地 yt-dlp（带 cookie，绕过反爬）
+      new InnertubeTranscriptProvider(),      // 次选：InnerTube API（纯 API 调用，无需 cookie）
+      new YouTubeTranscriptProvider()         // 底线：HTML 页面抓取
     );
   }
 
