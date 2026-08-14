@@ -1,0 +1,342 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens: lib/design/tokens.ts (canonical source of truth). */
+
+:root {
+  --background: 216 30% 5%;
+  --foreground: 210 38% 97%;
+  --card: 213 40% 8%;
+  --card-foreground: 210 38% 97%;
+  --primary: 212 100% 68%;
+  --primary-foreground: 210 53% 7%;
+  --muted: 213 27% 13%;
+  --muted-foreground: 211 18% 66%;
+  --accent: 212 100% 68%;
+  --accent-foreground: 210 53% 7%;
+  --destructive: 356 100% 72%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 211 23% 24%;
+  --input: 211 31% 15%;
+  --ring: 212 100% 68%;
+  --radius: 0.625rem;
+
+  /* Teach Player 冷调学习工作台 */
+  --tp-bg: #080b0f;
+  --tp-bg-secondary: #0a1017;
+  --tp-surface: #0c131c;
+  --tp-surface-raised: #111a25;
+  --tp-border: rgba(166, 190, 214, 0.18);
+  --tp-border-strong: rgba(166, 190, 214, 0.32);
+  --tp-text: #f4f7fa;
+  --tp-text-secondary: #b8c3ce;
+  --tp-text-muted: #9aa8b7;
+  --tp-text-faint: #718090;
+  --tp-accent: #5ba8ff;
+  --tp-accent-hover: #82beff;
+  --tp-success: #58d68d;
+  --tp-warning: #f2b94b;
+  --tp-error: #ff707a;
+
+  /* 兼容旧组件；新代码使用 --tp-* */
+  --framer-blue: var(--tp-accent);
+  --framer-blue-ring: rgba(91, 168, 255, 0.18);
+  --framer-frosted: rgba(255, 255, 255, 0.08);
+  --framer-frosted-hover: rgba(255, 255, 255, 0.14);
+  --framer-surface: var(--tp-surface);
+  --framer-silver: var(--tp-text-muted);
+  --framer-white-edge: rgba(255, 255, 255, 0.08);
+
+  /* 中文字体栈 */
+  --font-sans: "Satoshi", "Avenir Next", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --font-display: "Satoshi", "Avenir Next", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", "Fira Code", monospace;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--tp-bg);
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+/* 中文标题的压缩感 — 用负 letter-spacing 仅在大标题上 */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+/* 按钮与输入框全局样式 */
+button, input, textarea, select {
+  font-family: var(--font-sans);
+}
+
+/* 选中颜色 */
+::selection {
+  background: rgba(91, 168, 255, 0.3);
+  color: var(--tp-text);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 聚焦环 — 统一使用 Framer Blue */
+:focus-visible {
+  outline: 2px solid var(--tp-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 毛玻璃动画工具类 */
+@layer utilities {
+  .frosted {
+    background: var(--framer-frosted);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .frosted-hover {
+    transition: background 0.2s ease;
+  }
+  .frosted-hover:hover {
+    background: var(--framer-frosted-hover);
+  }
+
+  .ring-blue {
+    box-shadow: var(--framer-blue-ring) 0px 0px 0px 1px;
+  }
+
+  .elevate-card {
+    box-shadow:
+      var(--framer-white-edge) 0px 0.5px 0px 0.5px,
+      rgba(0, 0, 0, 0.25) 0px 10px 30px;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* 隐藏滚动条但保留滚动能力 */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 中文大标题压缩 */
+  .heading-compressed {
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+}
+
+/* ── 渐变文字 ── */
+.text-gradient {
+  background: linear-gradient(135deg, #5ba8ff 0%, #82beff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-warm {
+  background: linear-gradient(135deg, #5ba8ff 0%, #82beff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── 毛玻璃卡片 ── */
+.glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-hover:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(91, 168, 255, 0.24);
+}
+
+/* ── 3D 透视容器 ── */
+.perspective-card {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+/* 脉冲呼吸动画 — 用于加载态 */
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.animate-breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+/* 渐变背景平移 —— 标题文字 */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-gradient-shift {
+  animation: gradient-shift 4s ease-in-out infinite;
+}
+
+/* 触屏友好操作按钮：移动端始终可见，桌面端 hover 显示 */
+.touch-reveal {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .touch-reveal {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .group:hover .touch-reveal,
+  .touch-reveal:hover {
+    opacity: 1;
+  }
+}
+
+/* ══════════════════════════════════════════
+   增强 UI 动效
+   ══════════════════════════════════════════ */
+
+/* ── 交错入场 → 已迁移至 GSAP useScrollReveal / useGSAP + stagger ── */
+
+/* ── 卡片悬浮提升 + 光晕 ── */
+.card-lift {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.3s ease,
+              border-color 0.3s ease;
+}
+
+.card-lift:hover {
+  transform: translateY(-2px);
+}
+
+.card-lift:active {
+  transform: scale(0.985);
+  transition: transform 0.1s ease;
+}
+
+/* ── 按钮按压反馈 ── */
+.btn-press {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.15s ease;
+}
+
+.btn-press:active {
+  transform: scale(0.95);
+}
+
+/* ── 输入框聚焦光晕 ── */
+.input-glow {
+  transition: border-color 0.2s ease,
+              box-shadow 0.3s ease,
+              background-color 0.2s ease;
+}
+
+.input-glow:focus {
+  box-shadow: 0 0 0 3px rgba(91, 168, 255, 0.22),
+              0 0 20px rgba(91, 168, 255, 0.08);
+}
+
+/* ── 骨架屏波浪 ── */
+@keyframes skeleton-wave {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton-wave {
+  background: linear-gradient(
+    110deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 37%,
+    rgba(255, 255, 255, 0.04) 63%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-wave 2s ease-in-out infinite;
+}
+
+/* ── 减少动画偏好 ── */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════
+   磁吸光标（Magnetic Cursor）
+   仅在启用自定义光标时由 JS 给 <html> 加 .cursor-none
+   ══════════════════════════════════════════ */
+
+.cursor-none,
+.cursor-none * {
+  cursor: none !important;
+}
+
+/* 外环悬停可交互元素时放大、反色 */
+.cursor-ring {
+  transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              height 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              border-color 0.25s ease,
+              background-color 0.25s ease;
+}
+
+.cursor-ring--hover {
+  width: 64px;
+  height: 64px;
+  background-color: #ffffff;
+  border-color: #ffffff;
+}
+
+/* 触屏 / 减少动画时彻底隐藏自定义光标，回退系统光标 */
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .cursor-dot,
+  .cursor-ring {
+    display: none !important;
+  }
+}

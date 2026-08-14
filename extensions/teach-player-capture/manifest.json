@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Teach Player 一键转写",
+  "version": "0.1.0",
+  "description": "在你已打开的 B 站标签页中，经确认后采集音频并生成 Teach Player 学习字幕。",
+  "minimum_chrome_version": "116",
+  "permissions": ["activeTab", "offscreen", "storage", "tabCapture", "tabs"],
+  "host_permissions": [
+    "https://www.bilibili.com/*",
+    "https://video.tpgofighting.top/*",
+    "https://teachplayer.tpgofighting.top/*"
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Teach Player：开始/停止转写" },
+  "content_scripts": [
+    {
+      "matches": ["https://video.tpgofighting.top/*", "https://teachplayer.tpgofighting.top/*"],
+      "js": ["teach-player-bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

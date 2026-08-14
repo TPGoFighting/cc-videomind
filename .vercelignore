@@ -1,0 +1,13 @@
+.next
+node_modules
+.git
+*.apk
+test-layout-current.png
+test-layout-new.png
+.next-dev.err.log
+.next-dev.out.log
+.next-dev.mobile.err.log
+.next-dev.mobile.out.log
+stripe-listen.err.log
+stripe-listen.out.log
+tsconfig.tsbuildinfo

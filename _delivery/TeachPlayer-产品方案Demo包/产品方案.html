@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Teach Player (VideoMind) — AI 产品方案 + Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root{ --bg:#000000; --fg:#ffffff; --muted:#a6a6a6; --accent:#0099ff; --ring:rgba(0,153,255,0.15); --surface:#090909; }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--fg); font-family:Inter,-apple-system,system-ui,"Segoe UI",sans-serif; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  .wrap{max-width:980px; margin:0 auto; padding:64px 24px 120px;}
+  header{border-bottom:1px solid var(--ring); padding-bottom:32px; margin-bottom:48px;}
+  h1{font-size:42px; font-weight:800; letter-spacing:-1.5px; margin:0 0 8px;}
+  .sub{color:var(--muted); font-size:16px;}
+  h2{ font-size:26px; font-weight:700; letter-spacing:-0.8px; margin:56px 0 16px; padding-left:12px; border-left:3px solid var(--accent); }
+  h3{font-size:18px; font-weight:700; margin:28px 0 10px; color:#fff;}
+  p,li{color:#e6e6e6; font-size:15px;}
+  a{color:var(--accent); text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  table{width:100%; border-collapse:collapse; margin:16px 0; font-size:14px;}
+  th,td{border:1px solid var(--ring); padding:10px 12px; text-align:left; vertical-align:top;}
+  th{background:var(--surface); color:#fff; font-weight:600;}
+  tr:nth-child(even) td{background:rgba(255,255,255,0.03);}
+  .card{ background:var(--surface); border:1px solid var(--ring); border-radius:12px; padding:20px 24px; margin:16px 0; }
+  .pill{ display:inline-block; background:rgba(255,255,255,0.1); color:#fff; border-radius:100px; padding:4px 12px; font-size:12px; margin:2px 4px 2px 0; }
+  .hero-line{ font-size:18px; color:#fff; font-weight:600; letter-spacing:-0.5px; margin:12px 0 4px; }
+  .mermaid{background:var(--surface); border:1px solid var(--ring); border-radius:12px; padding:24px; margin:16px 0; text-align:center;}
+  .demo-img{width:100%; border-radius:10px; border:1px solid var(--ring); margin:12px 0; display:block;}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:6px; font-size:13px;}
+  .tag{color:var(--accent); font-weight:600;}
+  footer{margin-top:80px; padding-top:24px; border-top:1px solid var(--ring); color:var(--muted); font-size:13px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="pill">AI 产品方案 + Demo</div>
+    <h1>Teach Player · VideoMind</h1>
+    <div class="sub">YouTube AI 学习工作区 — 粘贴链接，AI 帮你学懂并记住每一条视频</div>
+    <div style="margin-top:14px">
+      <a class="pill" href="https://teachplayer.tpgofighting.top" target="_blank">🌐 在线体验</a>
+      <a class="pill" href="https://www.bilibili.com/video/BV1nJV36KEnV" target="_blank">📺 演示视频</a>
+      <span class="pill">📱 安卓 APP Beta</span>
+    </div>
+  </header>
+
+  <h2>1. 产品基本信息</h2>
+  <div class="card">
+    <div class="hero-line">一句话介绍</div>
+    <p>粘贴一个 YouTube 链接，AI 自动帮你提取字幕、生成摘要与关键点、基于视频内容对话答疑，并把生词和句子沉淀成可间隔复习的个人学习库。</p>
+    <table>
+      <tr><th style="width:120px">项目</th><th>内容</th></tr>
+      <tr><td>产品名称</td><td>Teach Player（又名 VideoMind）</td></tr>
+      <tr><td>目标用户</td><td>用 YouTube 学英语（听力/口语/词汇）的学习者；用 YouTube 做知识输入（技术教程、演讲、纪录片、公开课）的自学者；需要把「看过」变成「记住」的内容消费者。</td></tr>
+      <tr><td>核心场景</td><td>看英文技术教程或 TED 演讲时，AI 把视频「嚼碎」成结构化知识，并帮助长期记忆，免去反复拖进度条、切窗口查词、散落记笔记。</td></tr>
+      <tr><td>形态</td><td>Web 应用（Next.js）+ 安卓 APP（Beta）；桌面 / 移动响应式。</td></tr>
+    </table>
+  </div>
+
+  <h2>2. 需求来源</h2>
+  <div class="card">
+    <h3>痛点</h3>
+    <ul>
+      <li>YouTube 是优质学习内容的最大入口，但「观看 ≠ 吸收」：字幕分散、重点难定位、生词需跳转词典、笔记散落。</li>
+      <li>现有字幕/翻译工具只解决「看得见」，不解决「学得会」——缺少上下文理解、缺乏记忆闭环。</li>
+      <li>通用 AI 对话无法感知「你正在看的那条具体视频」，回答易脱离上下文、无法引用时间戳。</li>
+    </ul>
+    <h3>需求来源</h3>
+    <ul>
+      <li><b>个人学习刚需</b>：作者用 YouTube 学英语与技术的真实低效循环。</li>
+      <li><b>用户验证</b>：首页 / 历史 / 单词本 / 复习上线后，真实解析与打卡数据验证了「字幕→生词→复习」链路的留存价值。</li>
+    </ul>
+    <h3>解决的问题</h3>
+    <p>把「看视频」升级为「学视频」——AI 完成信息提取与答疑，间隔复习完成长期记忆，统一工作区完成知识沉淀。</p>
+  </div>
+
+  <h2>3. 产品方案设计</h2>
+  <h3>3.1 产品定位</h3>
+  <p>一个「以视频为单位的 AI 学习工作区」，不是播放器也不是词典，而是连接「内容输入 → AI 加工 → 个人知识库 → 长期记忆」的闭环工具。</p>
+  <h3>3.2 核心功能</h3>
+  <table>
+    <tr><th>模块</th><th>功能</th><th>说明</th></tr>
+    <tr><td>视频解析</td><td>一键解析</td><td>粘贴链接自动拉取元数据 + 字幕（4 层回退链保障覆盖率）</td></tr>
+    <tr><td>AI 加工</td><td>智能摘要</td><td>大模型生成结构化摘要 + 分段要点</td></tr>
+    <tr><td>AI 加工</td><td>关键时刻</td><td>AI 提取最有价值片段，双语展示，点击跳转播放</td></tr>
+    <tr><td>AI 加工</td><td>AI 对话</td><td>基于字幕上下文答疑，回答带时间戳引用</td></tr>
+    <tr><td>学习</td><td>单词/句子收藏</td><td>点击字幕中单词/句子，一键收藏到生词本 / 语料库</td></tr>
+    <tr><td>学习</td><td>个人笔记</td><td>每条视频独立 Markdown 笔记</td></tr>
+    <tr><td>记忆</td><td>间隔复习</td><td>SM-2 算法 + 答题式闪卡 + 每日打卡 + 日历热力图</td></tr>
+    <tr><td>系统</td><td>深色/响应式</td><td>全站深色主题，桌面与移动端自适应</td></tr>
+  </table>
+  <h3>3.3 核心交互流程</h3>
+  <ol>
+    <li>首页粘贴 YouTube 链接 → 解析 videoId → 进入视频工作区。</li>
+    <li>工作区左侧播放视频，右侧 Tab 切换：转录文本 / Chat / 笔记 / 复习。</li>
+    <li>转录文本支持原文/译文/双语切换，自动跟随播放滚动，单词可 hover 查词并收藏。</li>
+    <li>AI 按需生成摘要 / 关键时刻 / 对话；结果缓存 7 天。</li>
+    <li>收藏的单词、句子、笔记进入个人库；每日进入复习页用 SM-2 巩固记忆。</li>
+  </ol>
+
+  <h2>4. AI 工作流程</h2>
+  <p><span class="tag">输入</span> 用户粘贴的 YouTube 链接；工作区内的追问问题（Chat）；需翻译的字幕段落。</p>
+  <div class="mermaid">
+flowchart TD
+    A[用户粘贴 YouTube 链接] --> B[解析层: 提取 videoId]
+    B --> C[拉取元数据 + 字幕<br/>Innertube → HTML → npm 包 → Supadata<br/>4 层回退]
+    C --> D[AI 摘要层: 字幕切片<br/>大模型生成结构化摘要 + 要点]
+    C --> E[AI 关键点层: 挑出高价值片段<br/>输出带时间戳双语要点]
+    C --> F[AI 对话层: 用户提问 + 字幕上下文<br/>生成带时间戳引用的回答]
+    D --> G[输出校验 Zod + 失败修复]
+    E --> G
+    F --> G
+    G --> H[缓存层: video_analyses 7 天缓存]
+    H --> I[前端展示: 摘要 / 关键时刻 / Chat]
+    I -. 用户确认 .-> J[切换翻译模式 / 收藏单词句子 / 保存笔记 / 复习评分]
+  </div>
+  <p><span class="tag">AI Provider 设计</span> 统一 <code class="kbd">AiProvider</code> 接口（OpenAi / Gemini 双实现），内置模型回退链（deepseek-v4-flash → qwen → glm → kimi）。配置优先级：用户个人设置 &gt; 全局设置 &gt; 环境变量。所有 AI 输出经 Zod 校验，失败触发修复逻辑。</p>
+  <p><span class="tag">最终输出</span> 结构化摘要、带时间戳的关键时刻、基于上下文的对话回答、单词/句子的翻译与释义。</p>
+  <p><span class="tag">需用户确认的环节</span> 翻译语言模式切换；收藏单词/句子、保存笔记需主动点击；复习评分由用户选择影响 SM-2 间隔；AI 内容默认仅供参考，可重新生成或追问。</p>
+
+  <h2>5. Demo 展示</h2>
+  <div class="card">
+    <table>
+      <tr><th>形式</th><th>内容</th><th>获取方式</th></tr>
+      <tr><td>在线体验</td><td>完整 Web 应用</td><td><a href="https://teachplayer.tpgofighting.top" target="_blank">teachplayer.tpgofighting.top</a></td></tr>
+      <tr><td>录屏演示</td><td>Bilibili 功能演示</td><td><a href="https://www.bilibili.com/video/BV1nJV36KEnV" target="_blank">BV1nJV36KEnV</a></td></tr>
+      <tr><td>页面截图</td><td>首页 + 视频工作区真实界面</td><td>见下方截图（同包 demo/ 目录）</td></tr>
+      <tr><td>流程图</td><td>AI 工作流程图（本页第 4 节）</td><td>内嵌 Mermaid，离线可看源码</td></tr>
+      <tr><td>本地运行</td><td>npm install &amp;&amp; npm run dev</td><td>见仓库 README</td></tr>
+    </table>
+  </div>
+  <h3>界面截图</h3>
+  <img class="demo-img" src="demo/首页与视频工作区.png" alt="首页与视频工作区" />
+  <p class="sub" style="color:var(--muted);font-size:13px">▲ 首页（粘贴链接）与视频工作区（播放器 + 转录/Chat/笔记/复习）实际界面。</p>
+  <img class="demo-img" src="demo/工作区布局对比.png" alt="工作区布局对比" />
+  <p class="sub" style="color:var(--muted);font-size:13px">▲ 工作区布局设计迭代对比。</p>
+
+  <h2>6. 预期收益</h2>
+  <div class="card">
+    <h3>用户价值</h3>
+    <ul>
+      <li><b>学习效率</b>：把「找重点 + 查词 + 记笔记」三步合并到同一工作区，单次学习的信息提炼时间预计缩短 50%+。</li>
+      <li><b>记忆留存</b>：SM-2 间隔复习把「看过即忘」转为「可量化掌握」，长期留存率显著提升。</li>
+      <li><b>体验改善</b>：深色护眼、自动跟随滚动、hover 即时查词，降低学习摩擦。</li>
+    </ul>
+    <h3>效率提升（产品侧）</h3>
+    <ul>
+      <li>字幕 4 层回退链保障解析成功率；AI 结果 7 天缓存减少重复推理成本。</li>
+      <li>统一 AiProvider 接口 + 模型回退链，提升 AI 可用性与成本韧性。</li>
+    </ul>
+    <h3>商业价值</h3>
+    <ul>
+      <li>免费增值（Free + 订阅）模型：Stripe 结账 + Webhook 已接入，可按解析额度 / 高级模型 / 复习容量分层变现。</li>
+      <li>安卓 APP 已出 Beta，具备移动端获客与留存基础，可延伸内容社区 / 学习数据报告。</li>
+    </ul>
+  </div>
+
+  <h2>7. 项目复盘</h2>
+  <h3>收获</h3>
+  <ul>
+    <li>完整跑通「字幕提取 → AI 加工 → 个人知识库 → 间隔复习」端到端闭环，验证产品假设。</li>
+    <li>沉淀可替换的 Provider 架构（AI / 字幕均可热切换）与统一 API 安全包装（withSecurity：CSRF + 限速 + 体积限制）。</li>
+    <li>深度实践 RLS 行级安全、Zod 输入/输出校验、AI 输出修复等关键工程实践。</li>
+  </ul>
+  <h3>遇到的问题</h3>
+  <ul>
+    <li>YouTube 字幕获取不稳定（地域 / 反爬），需用 4 层回退链 + 外部 API 兜底。</li>
+    <li>AI 输出偶发格式错误，需 Zod 校验 + 修复逻辑兜底，保证前端不崩。</li>
+    <li>移动端交互（hover 查词、Tab 切换）需单独适配，开发量高于预期。</li>
+  </ul>
+  <h3>当前不足</h3>
+  <ul>
+    <li>摘要 / 关键时刻为一次性生成，缺少多轮迭代 + 用户微调能力。</li>
+    <li>复习题型较单一（选择释义 / 选择单词），缺拼写、听写等主动回忆题型。</li>
+    <li>缺少学习成效量化报告（掌握曲线、预测遗忘点）增强留存动机。</li>
+  </ul>
+  <h3>下一步迭代计划</h3>
+  <ol>
+    <li>增加「关键时间点」可视化时间轴 + 用户手动标记重点。</li>
+    <li>复习题型扩展：拼写、听写、句子补全；引入「预测遗忘」提醒。</li>
+    <li>学习数据报告：掌握曲线、周报、连续学习激励。</li>
+    <li>安卓 APP 正式版 + 桌面端（已含 Tauri 工程），打通多端同步。</li>
+    <li>探索内容社区 / 共享笔记，提升网络效应与付费转化。</li>
+  </ol>
+
+  <footer>
+    Teach Player (VideoMind) · AI 产品方案 + Demo v1.0 · 在线体验：teachplayer.tpgofighting.top<br/>
+    同包文件：产品方案.md（纯文本版）｜ demo/（截图与说明）
+  </footer>
+</div>
+<script>mermaid.initialize({startOnLoad:true, theme:"dark", flowchart:{curve:"basis"}});</script>
+</body>
+</html>

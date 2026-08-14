@@ -1,0 +1,54 @@
+{
+  "name": "videomind",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "next build --webpack",
+    "dev": "next dev --webpack",
+    "start": "next start -p 3100",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "eval:chat-evidence": "tsx scripts/evaluate-chat-evidence.ts",
+    "test": "node --import tsx --test lib/accessibility/tabs.test.ts lib/ai/provider-config.test.ts lib/ai/provider-failure.test.ts lib/ai/provider-json.test.ts lib/asr/client.test.ts lib/asr/media-storage.test.ts lib/asr/media-task.test.ts lib/asr/transcript.test.ts lib/bilibili/id.test.ts lib/bilibili/subtitle-import.test.ts lib/bilibili/workspace-state.test.ts lib/extension/capture-ticket.test.ts lib/explore/catalog.test.ts lib/navigation.test.ts lib/product/account-deletion.test.ts lib/product/admin-audit.test.ts lib/product/analytics-event.test.ts lib/product/analysis-quota.test.ts lib/product/chat-answer-evaluation.test.ts lib/product/chat-evidence.test.ts lib/product/live-chat-evaluation.test.ts lib/product/manual-payment.test.ts lib/product/payment-state.test.ts lib/product/pending-learning-item.test.ts lib/product/recovery-guidance.test.ts lib/product/refund-policy.test.ts lib/product/learning-guidance.test.ts lib/product/retention-local-store.test.ts lib/product/retention.test.ts lib/product/review-schedule.test.ts lib/security/worker-authorization.test.ts lib/seo.test.ts lib/supabase/cache.test.ts lib/supabase/cache-v2.test.ts lib/tencent-auth.test.ts lib/tencent-db.test.ts lib/utils/comprehensive-cache.test.ts lib/utils/moments-validator.test.ts lib/utils/single-flight.test.ts lib/utils/translation.test.ts lib/utils/video-analysis-cache.test.ts lib/video/workspace-fixture.test.ts lib/youtube/id.test.ts lib/youtube/transcript-provider.test.ts lib/supabase/quota.test.ts"
+  },
+  "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "gsap": "^3.15.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.2.6",
+    "pg": "^8.22.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sql.js": "^1.10.3",
+    "swr": "^2.4.1",
+    "tailwind-merge": "^2.6.0",
+    "three": "^0.184.0",
+    "undici": "^7.24.8",
+    "youtube-transcript": "^1.3.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@types/sql.js": "^1.4.11",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.6",
+    "postcss": "^8.5.10",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
+  }
+}

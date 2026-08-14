@@ -1,0 +1,3 @@
+{
+  "ignoreCommand": "bash -c '[[ $VERCEL_GIT_COMMIT_REF == \"android-app\" ]] && exit 0 || exit 1'"
+}
