@@ -67,8 +67,10 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
     const lang = (preferredLang || "en").split("-")[0];
 
-    const args = [
-      watchUrl,
+    const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "http://127.0.0.1:7890";
+    const args: string[] = [
+      "--js-runtimes", "node",
+      "--proxy", proxy,
       "--skip-download",
       "--write-auto-subs",
       "--write-subs",
@@ -81,14 +83,15 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     ];
 
     const cookiesFromBrowser =
-      this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "chrome";
+      this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "";
     const cookiesFile = this.opts.cookiesFile ?? process.env.YTDLP_COOKIES_FILE ?? "";
 
     if (cookiesFile) {
-      args.unshift("--cookies", cookiesFile);
+      args.push("--cookies", cookiesFile);
     } else if (cookiesFromBrowser) {
-      args.unshift("--cookies-from-browser", cookiesFromBrowser);
+      args.push("--cookies-from-browser", cookiesFromBrowser);
     }
+    args.push(watchUrl);
 
     try {
       await this.run(binary, args);
@@ -121,8 +124,10 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     }
 
     const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
-    const args = [
-      watchUrl,
+    const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "http://127.0.0.1:7890";
+    const args: string[] = [
+      "--js-runtimes", "node",
+      "--proxy", proxy,
       "--skip-download",
       "--dump-single-json",
       "--no-warnings",
@@ -131,14 +136,15 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     ];
 
     const cookiesFromBrowser =
-      this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "chrome";
+      this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "";
     const cookiesFile = this.opts.cookiesFile ?? process.env.YTDLP_COOKIES_FILE ?? "";
 
     if (cookiesFile) {
-      args.unshift("--cookies", cookiesFile);
+      args.push("--cookies", cookiesFile);
     } else if (cookiesFromBrowser) {
-      args.unshift("--cookies-from-browser", cookiesFromBrowser);
+      args.push("--cookies-from-browser", cookiesFromBrowser);
     }
+    args.push(watchUrl);
 
     const { stdout } = await this.run(binary, args);
     try {

@@ -1,4 +1,4 @@
-import { ProxyAgent } from "undici";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
 
 export class ExternalServiceError extends Error {
   constructor(
@@ -12,31 +12,33 @@ export class ExternalServiceError extends Error {
 }
 
 let _proxyAgent: ProxyAgent | null = null;
+let _dispatcherSet = false;
 
 function getProxyAgent(): ProxyAgent | null {
   const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
   if (!proxyUrl) return null;
-  // 生产机遗留的本地开发代理若未运行，会让一次 AI 请求白等到超时。
-  // 这类 loopback 代理不可达时，直连比延迟回退更可靠。
-  try {
-    const hostname = new URL(proxyUrl).hostname;
-    if (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1") {
-      return null;
-    }
-  } catch {
-    return null;
-  }
   if (!_proxyAgent) {
     _proxyAgent = new ProxyAgent(proxyUrl);
+    if (!_dispatcherSet) {
+      try {
+        setGlobalDispatcher(_proxyAgent);
+        _dispatcherSet = true;
+      } catch (e) {
+        // ignore if already set
+      }
+    }
   }
   return _proxyAgent;
 }
+
+// Automatically init global dispatcher on module load if proxy env is present
+getProxyAgent();
 
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit & { timeoutMs?: number; service?: string } = {}
 ) {
-  const { timeoutMs = 10000, service = "external service", ...requestInit } = init;
+  const { timeoutMs = 15000, service = "external service", ...requestInit } = init;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -75,8 +77,6 @@ export async function fetchWithTimeout(
     try {
       return await fetchOnce(proxyAgent ?? undefined);
     } catch (proxyError) {
-      // 代理进程可能临时不可用（例如本地代理已退出）。这种情况下直连
-      // 仍可能可用；HTTP 状态错误则代表代理已成功转发，不应重复请求。
       const proxyUnavailable =
         proxyAgent &&
         !(proxyError instanceof ExternalServiceError) &&

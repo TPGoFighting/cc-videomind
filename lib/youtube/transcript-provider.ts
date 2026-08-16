@@ -966,17 +966,10 @@ export function getTranscriptProvider(): TranscriptProvider {
   // 本地优先模式：用户本机直连 YouTube，用 yt-dlp（带浏览器 cookie）取字幕，
   // 失败时依次回退到 InnerTube API 和 HTML 抓取。
   // 适用于本地桌面工具（Tauri / next dev）。
-  if (provider === "local") {
+  if (provider === "youtube" || provider === "local") {
     return new FallbackTranscriptProvider(
-      new YtDlpTranscriptProvider(),         // 首选：本地 yt-dlp（带 cookie，绕过反爬）
-      new InnertubeTranscriptProvider(),      // 次选：InnerTube API（纯 API 调用，无需 cookie）
-      new YouTubeTranscriptProvider()         // 底线：HTML 页面抓取
-    );
-  }
-
-  if (provider === "youtube") {
-    return new FallbackTranscriptProvider(
-      new InnertubeTranscriptProvider(),      // 主层：InnerTube API（内置 3 客户端回退）
+      new YtDlpTranscriptProvider(),         // 首选：本地 yt-dlp（带 cookie + proxy 绕过反爬）
+      new InnertubeTranscriptProvider(),      // 次选：InnerTube API（内置 3 客户端回退）
       new YouTubeTranscriptProvider(),        // 中层：HTML 页面抓取（无需 API key）
       new YoutubeTranscriptPackageProvider(), // 中层：youtube-transcript npm 包
       new ExternalApiTranscriptProvider()     // 底层：Supadata API（需 API key）

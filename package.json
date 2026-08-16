@@ -8,7 +8,7 @@
   "scripts": {
     "build": "next build --webpack",
     "dev": "next dev --webpack",
-    "start": "next start -p 3100",
+    "start": "NODE_OPTIONS=\"--import /var/www/videomind/scripts/proxy-bootstrap.cjs\" next start -p 3100",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "eval:chat-evidence": "tsx scripts/evaluate-chat-evidence.ts",
