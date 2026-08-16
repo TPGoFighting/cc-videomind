@@ -167,7 +167,6 @@ export default function BillingPage() {
           <div className="max-w-5xl">
             <p className="text-sm font-medium text-[#8fc6ff]">内测套餐</p>
             <h1 className="mt-4 max-w-5xl text-4xl font-semibold tracking-[-0.055em] text-white sm:text-6xl">把学习配额留给真正会回看的视频。</h1>
-            <p className="mt-5 max-w-3xl text-base leading-8 text-white/55">没有自动续费。付款后提交支付宝交易单号，由人工审核开通；付款截图无需上传，也不应发送到公开渠道。</p>
           </div>
           {data && data.currentSubscription.tier !== "free" && (
             <div className="rounded-2xl border border-[#8fc6ff]/20 bg-[#0099ff]/10 px-5 py-4 text-sm text-[#cfeaff]">
@@ -220,11 +219,6 @@ export default function BillingPage() {
             ) : selectedPlan && (
               <section data-billing-reveal className="mt-16 rounded-3xl border border-white/10 bg-white/[0.035] p-7 sm:p-9">
                 <div className="flex flex-col items-center gap-6">
-                  <div className="text-center">
-                    <p className="text-sm text-white/45">扫码支付</p>
-                    <h2 className="mt-2 text-3xl font-semibold tracking-[-0.045em]">¥{selectedPlan.amountCny} · {selectedPlan.accessDays} 天</h2>
-                    <p className="mt-3 text-sm leading-7 text-white/55">点击价格卡片即可生成支付二维码，付款成功后权益自动到账。</p>
-                  </div>
                   {data.dypayAvailable && (
                     <DyPayCheckout
                       key={selectedPlan.tier}
