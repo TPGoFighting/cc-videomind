@@ -7,7 +7,7 @@ import { Loader2, RefreshCw, X } from "lucide-react";
 
 type Tier = "pro" | "max";
 
-type PayPhase = "idle" | "creating" | "pending" | "paid" | "expired" | "error";
+type PayPhase = "creating" | "pending" | "paid" | "expired" | "error";
 
 type OrderInfo = {
   orderId: string;
@@ -26,18 +26,18 @@ const POLL_INTERVAL_MS = 3000;
 
 export function DyPayCheckout({
   tier,
-  amountCny,
   onPaid,
 }: {
   tier: Tier;
   amountCny: number;
   onPaid?: () => void;
 }) {
-  const [phase, setPhase] = useState<PayPhase>("idle");
+  const [phase, setPhase] = useState<PayPhase>("creating");
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initializedRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -46,9 +46,37 @@ export function DyPayCheckout({
     }
   }, []);
 
+  const createOrder = useCallback(async () => {
+    setPhase("creating");
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/dypay/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier }),
+      });
+      const json = (await res.json()) as { ok: boolean; data?: OrderInfo; error?: { message?: string } };
+      if (!json.ok || !json.data) {
+        setErrorMsg(json.error?.message ?? "下单失败，请稍后重试。");
+        setPhase("error");
+        return;
+      }
+      setOrder(json.data);
+      setPhase("pending");
+    } catch {
+      setErrorMsg("网络错误，请稍后重试。");
+      setPhase("error");
+    }
+  }, [tier]);
+
   useEffect(() => stopPolling, [stopPolling]);
 
-  // 二维码渲染（code_url 变化时自动重绘）
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    void createOrder();
+  }, [createOrder]);
+
   useEffect(() => {
     if (!order?.codeUrl) return;
     QRCode.toDataURL(order.codeUrl, { margin: 1, width: 224 })
@@ -56,7 +84,6 @@ export function DyPayCheckout({
       .catch(() => setQrDataUrl(null));
   }, [order?.codeUrl]);
 
-  // 轮询订单状态；code_url 过期时后端会返回新链接，这里自动换码
   useEffect(() => {
     if (phase !== "pending" || !order) return;
     const poll = async () => {
@@ -83,56 +110,37 @@ export function DyPayCheckout({
     return stopPolling;
   }, [phase, order, onPaid, stopPolling]);
 
-  async function createOrder() {
-    setPhase("creating");
-    setErrorMsg("");
-    try {
-      const res = await fetch("/api/dypay/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier }),
-      });
-      const json = (await res.json()) as { ok: boolean; data?: OrderInfo; error?: { message?: string } };
-      if (!json.ok || !json.data) {
-        setErrorMsg(json.error?.message ?? "下单失败，请稍后重试。");
-        setPhase("error");
-        return;
-      }
-      setOrder(json.data);
-      setPhase("pending");
-    } catch {
-      setErrorMsg("网络错误，请稍后重试。");
-      setPhase("error");
-    }
-  }
-
-  function reset() {
+  const reset = useCallback(() => {
     stopPolling();
     setOrder(null);
     setQrDataUrl(null);
     setErrorMsg("");
-    setPhase("idle");
-  }
+    void createOrder();
+  }, [createOrder, stopPolling]);
 
-  if (phase === "idle" || phase === "creating" || phase === "error") {
+  if (phase === "creating") {
     return (
       <div className="rounded-2xl border border-[#8fc6ff]/20 bg-[#0099ff]/[0.07] p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold text-[#8fc6ff]">抖音扫码支付 · 推荐</p>
-            <p className="mt-1.5 text-sm text-white/55">扫码付款后自动开通，无需等待审核。</p>
-          </div>
-          <button
-            type="button"
-            disabled={phase === "creating"}
-            onClick={() => void createOrder()}
-            className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-semibold text-[#080b0f] transition-transform hover:-translate-y-0.5 disabled:opacity-45"
-          >
-            {phase === "creating" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            生成 ¥{amountCny} 支付码
-          </button>
+        <div className="flex flex-col items-center gap-4 py-4">
+          <Loader2 className="h-6 w-6 animate-spin text-[#8fc6ff]" />
+          <p className="text-sm text-white/55">正在生成支付码…</p>
         </div>
-        {phase === "error" && <p className="mt-3 text-sm text-red-300">{errorMsg}</p>}
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div className="rounded-2xl border border-red-400/20 bg-red-400/[0.07] p-6">
+        <p className="text-sm font-semibold text-red-200">生成支付码失败</p>
+        <p className="mt-2 text-sm text-red-200/70">{errorMsg}</p>
+        <button
+          type="button"
+          onClick={() => void createOrder()}
+          className="mt-4 inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-white/15 px-3.5 text-xs font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />重试
+        </button>
       </div>
     );
   }
@@ -159,7 +167,7 @@ export function DyPayCheckout({
             </p>
             <button
               type="button"
-              onClick={reset}
+              onClick={() => { stopPolling(); setPhase("expired"); }}
               className="mt-4 inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-white/15 px-3.5 text-xs font-medium text-white/65 transition-colors hover:bg-white/10 hover:text-white"
             >
               <X className="h-3.5 w-3.5" />取消订单
