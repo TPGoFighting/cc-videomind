@@ -23,7 +23,7 @@ function getProxyAgent(): ProxyAgent | null {
       try {
         setGlobalDispatcher(_proxyAgent);
         _dispatcherSet = true;
-      } catch (e) {
+      } catch {
         // ignore if already set
       }
     }
