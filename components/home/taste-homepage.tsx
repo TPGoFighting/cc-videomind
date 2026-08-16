@@ -252,7 +252,7 @@ export function TasteHomepage() {
               variant="editorial"
               submitLabel="开始学习"
               placeholder="粘贴 YouTube 视频链接"
-              className={styles.heroForm}
+              className={`${styles.heroForm} tp-video-url-form`}
             />
             <Link href={`/video/${DEMO_VIDEO_ID}`} className={styles.exampleLink}>
               用 TED 演讲试用
@@ -412,7 +412,7 @@ export function TasteHomepage() {
             variant="editorial"
             submitLabel="开始学习"
             placeholder="粘贴 YouTube 视频链接"
-            className={styles.finalForm}
+            className={`${styles.finalForm} tp-video-url-form`}
           />
         </div>
       </section>
@@ -473,7 +473,7 @@ function WorkspacePreview() {
   const [playing, setPlaying] = useState(false);
 
   return (
-    <div className={styles.workspace} data-workspace-preview>
+    <div className={`${styles.workspace} tp-demo-workspace`} data-workspace-preview>
       <div className={styles.workspaceHeader}>
         <div>
           <span className={styles.statusDot} aria-hidden />
@@ -482,9 +482,9 @@ function WorkspacePreview() {
         <span>16:24</span>
       </div>
 
-      <div className={styles.workspaceBody}>
-        <div className={styles.videoColumn}>
-          <div className={styles.videoFrame} role="img" aria-label="知识视频播放预览">
+      <div className={`${styles.workspaceBody} tp-demo-body`}>
+        <div className={`${styles.videoColumn} tp-demo-video-column`}>
+          <div className={`${styles.videoFrame} tp-demo-video`} role="img" aria-label="知识视频播放预览">
             <div className={styles.videoShade} aria-hidden />
             <button
               type="button"
@@ -505,18 +505,19 @@ function WorkspacePreview() {
             <span className={styles.videoTime}>04:37 / 16:24</span>
           </div>
 
-          <div className={styles.summaryPanel}>
+          <div className={`${styles.summaryPanel} tp-demo-summary`}>
             <span>AI 要点</span>
             <p>把目标转化为每天可重复的系统，让下一步行动足够清晰。</p>
           </div>
         </div>
 
-        <div className={styles.studyColumn}>
-          <div className={styles.previewTabs} role="tablist" aria-label="学习内容预览">
+        <div className={`${styles.studyColumn} tp-demo-study-column`}>
+          <div className={`${styles.previewTabs} tp-preview-tabs`} role="tablist" aria-label="学习内容预览">
             <button
               type="button"
               role="tab"
               aria-selected={tab === "transcript"}
+              className="tp-preview-tab"
               onClick={() => setTab("transcript")}
             >
               字幕
@@ -525,6 +526,7 @@ function WorkspacePreview() {
               type="button"
               role="tab"
               aria-selected={tab === "summary"}
+              className="tp-preview-tab"
               onClick={() => setTab("summary")}
             >
               摘要
@@ -533,6 +535,7 @@ function WorkspacePreview() {
               type="button"
               role="tab"
               aria-selected={tab === "review"}
+              className="tp-preview-tab"
               onClick={() => setTab("review")}
             >
               复习
@@ -541,17 +544,19 @@ function WorkspacePreview() {
           </div>
 
           {tab === "transcript" ? (
-            <div className={styles.transcriptList} role="tabpanel">
+            <div className={`${styles.transcriptList} tp-transcript-list`} role="tabpanel">
               {TRANSCRIPT.map((line) => (
                 <button
                   type="button"
                   key={line.time}
-                  className={line.active ? styles.transcriptActive : styles.transcriptLine}
+                  data-current={line.active ? "true" : "false"}
+                  aria-label={`${line.time}，${line.en}，${line.zh}`}
+                  className={`${line.active ? styles.transcriptActive : styles.transcriptLine} tp-transcript-row`}
                 >
-                  <span>{line.time}</span>
-                  <span>
-                    <strong>{line.en}</strong>
-                    <small>{line.zh}</small>
+                  <span className="tp-transcript-time">{line.time}</span>
+                  <span className="tp-transcript-copy">
+                    <strong className="tp-transcript-source">{line.en}</strong>
+                    <small className="tp-transcript-translation">{line.zh}</small>
                   </span>
                   {line.active ? <Bookmark aria-hidden size={15} /> : null}
                 </button>

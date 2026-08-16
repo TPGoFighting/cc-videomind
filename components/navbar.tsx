@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
@@ -23,6 +23,7 @@ const TIER_STYLES: Record<string, string> = {
 export function Navbar() {
   const { user, loading, signOut, subscriptionTier } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const youtubeStatus = useYouTubeStatus();
   const navRef = useRef<HTMLElement>(null);
@@ -90,20 +91,35 @@ export function Navbar() {
       <div className="mx-auto flex h-14 w-full max-w-[90rem] items-center justify-between px-4 sm:px-6">
         <Link
           href="/"
-          className="flex min-h-11 items-center gap-2 text-[15px] font-semibold tracking-[-0.02em] text-white/90 transition-colors hover:text-white"
+          className="tp-nav-action flex min-h-11 items-center gap-2 text-[15px] font-semibold tracking-[-0.02em] text-white/90 transition-colors hover:text-white"
         >
           <Image src="/logo.png" alt="Teach Player" width={28} height={28} className="rounded" />
           <span>Teach Player</span>
         </Link>
 
         <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 lg:flex">
-          <Link href="/#product" className="inline-flex min-h-11 items-center text-[13px] font-medium text-white/65 transition-colors hover:text-white">
+          <Link
+            href="/#product"
+            aria-current={pathname === "/" ? "page" : undefined}
+            data-active={pathname === "/" ? "true" : "false"}
+            className="tp-nav-link inline-flex min-h-11 items-center text-[13px] font-medium"
+          >
             产品
           </Link>
-          <Link href="/explore" className="inline-flex min-h-11 items-center text-[13px] font-medium text-white/65 transition-colors hover:text-white">
+          <Link
+            href="/explore"
+            aria-current={pathname === "/explore" ? "page" : undefined}
+            data-active={pathname === "/explore" ? "true" : "false"}
+            className="tp-nav-link inline-flex min-h-11 items-center text-[13px] font-medium"
+          >
             探索
           </Link>
-          <Link href="/review" className="inline-flex min-h-11 items-center text-[13px] font-medium text-white/65 transition-colors hover:text-white">
+          <Link
+            href="/review"
+            aria-current={pathname === "/review" ? "page" : undefined}
+            data-active={pathname === "/review" ? "true" : "false"}
+            className="tp-nav-link inline-flex min-h-11 items-center text-[13px] font-medium"
+          >
             今日复习
           </Link>
         </div>
@@ -116,7 +132,7 @@ export function Navbar() {
             href="https://github.com/TPGoFighting/cc-videomind/releases/download/1.8.0/app-release.apk"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden min-h-11 items-center gap-1.5 px-3 text-[13px] font-medium text-[#8fc6ff] transition-colors hover:text-white sm:inline-flex"
+            className="tp-nav-action hidden min-h-11 items-center gap-1.5 px-3 text-[13px] font-medium text-[#8fc6ff] transition-colors hover:text-white sm:inline-flex"
           >
             <GameIcon name="download" size={14} />
             APP
@@ -128,7 +144,7 @@ export function Navbar() {
               <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-[13px] font-medium text-white/70 transition-colors hover:bg-white/8 hover:text-white"
+                className="tp-nav-action inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-[13px] font-medium text-white/70 transition-colors hover:bg-white/8 hover:text-white"
               >
                 <Menu className="h-4 w-4 shrink-0 md:hidden" />
                 <GameIcon name="user" size={14} className="hidden md:inline-block opacity-60" />
@@ -200,13 +216,13 @@ export function Navbar() {
             <div className="flex items-center gap-2">
               <Link
                 href="/register"
-                className="hidden min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-white/65 transition-colors hover:bg-white/8 hover:text-white sm:inline-flex"
+                className="tp-nav-action hidden min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-white/65 transition-colors hover:bg-white/8 hover:text-white sm:inline-flex"
               >
                 注册
               </Link>
               <Link
                 href="/login"
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-3 text-[13px] font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white sm:px-4"
+                className="tp-nav-action inline-flex min-h-11 items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-3 text-[13px] font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white sm:px-4"
               >
                 <LogIn className="h-3.5 w-3.5" />
                 登录
