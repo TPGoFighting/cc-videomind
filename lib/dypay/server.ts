@@ -50,8 +50,12 @@ export function isDyPayConfigured(): boolean {
 /* ------------------------------- PEM / Base64 ------------------------------ */
 
 function pemToBytes(pem: string): Uint8Array {
+  // .env 里 PEM 常以字面 \n（反斜杠+n 两字符）存储，先转成真换行再统一去空白，
+  // 兼容 dotenv 是否解析转义两种情况。否则 base64 混入非法字符导致
+  // ERR_OSSL_ASN1_NOT_ENOUGH_DATA / Invalid keyData。
   const b64 = pem
     .replace(/-----(BEGIN|END)[^-]+-----/g, "")
+    .replace(/\\n/g, "\n")
     .replace(/\s+/g, "");
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
