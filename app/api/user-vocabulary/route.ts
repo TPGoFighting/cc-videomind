@@ -23,11 +23,27 @@ export async function GET(request: Request) {
   }
   const userId = await getAuthenticatedUserId(request);
   if (!userId) return errorResponse("unauthorized", "请先登录。", 401);
+  // LEFT JOIN word_definitions to surface canonical phonetic/definition/example
+  // that may have been populated by /api/analyze or earlier AI calls. user_vocabulary
+  // is sparse (only lemma saved on POST) — word_definitions is the source of truth.
   const result = await queryTencent<{
-    id: string; lemma: string; phonetic: string | null; part_of_speech: string | null; definition_zh: string | null; definition_en: string | null; example_en: string | null; example_zh: string | null; video_id: string; source_time: number | null; created_at: Date;
+    id: string; lemma: string; phonetic: string | null; part_of_speech: string | null;
+    definition_zh: string; definition_en: string | null; example_en: string | null; example_zh: string | null;
+    video_id: string; source_time: number | null; created_at: Date;
   }>(
-    `SELECT id, lemma, phonetic, part_of_speech, definition_zh, definition_en, example_en, example_zh, video_id, source_time, created_at
-     FROM user_vocabulary WHERE user_id = $1 ${videoId ? "AND video_id = $2" : ""} ORDER BY created_at DESC LIMIT 200`,
+    `SELECT
+       u.id, u.lemma,
+       COALESCE(w.phonetic, u.phonetic) AS phonetic,
+       COALESCE(w.part_of_speech, u.part_of_speech) AS part_of_speech,
+       COALESCE(w.definition_zh, u.definition_zh, u.lemma) AS definition_zh,
+       COALESCE(w.definition_en, u.definition_en) AS definition_en,
+       COALESCE(w.example_en, u.example_en) AS example_en,
+       COALESCE(w.example_zh, u.example_zh) AS example_zh,
+       u.video_id, u.source_time, u.created_at
+     FROM user_vocabulary u
+     LEFT JOIN word_definitions w ON w.lemma = u.lemma
+     WHERE u.user_id = $1 ${videoId ? "AND u.video_id = $2" : ""}
+     ORDER BY u.created_at DESC LIMIT 200`,
     videoId ? [userId, videoId] : [userId],
   );
   return successResponse({ vocabulary: result.rows.map((row) => ({
