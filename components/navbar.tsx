@@ -21,7 +21,7 @@ const TIER_STYLES: Record<string, string> = {
 };
 
 export function Navbar() {
-  const { user, loading, signOut, subscriptionTier } = useAuth();
+  const { user, loading, isAdmin, signOut, subscriptionTier } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -197,6 +197,16 @@ export function Navbar() {
                     <GameIcon name="settings" size={14} />
                     设置
                   </Link>
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-2 px-4 py-3 text-[13px] text-[#9dceff] transition-colors hover:bg-white/8 hover:text-white min-h-[44px]"
+                    >
+                      <GameIcon name="settings" size={14} />
+                      AI 控制台
+                    </Link>
+                  )}
                   <button
                     type="button"
                     onClick={async () => {

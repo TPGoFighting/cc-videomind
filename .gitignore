@@ -43,3 +43,4 @@ AI-Provider-JSON-修复报告.html
 *.bak*
 youtube_cookies.txt
 .env.local*
+_delivery/
