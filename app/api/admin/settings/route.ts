@@ -54,6 +54,18 @@ const PROVIDERS: ProviderInfo[] = [
     defaultBaseUrl: "",
     defaultModel: "gemini-2.5-flash",
   },
+  {
+    id: "glm",
+    displayName: "智谱 GLM",
+    defaultBaseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    defaultModel: "glm-5.3-flash",
+  },
+  {
+    id: "qwen",
+    displayName: "阿里云百炼 Qwen",
+    defaultBaseUrl: "https://ws-9zgy1043e1kpictf.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    defaultModel: "qwen3.7-plus",
+  },
 ];
 
 /**

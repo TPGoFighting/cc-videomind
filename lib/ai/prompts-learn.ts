@@ -53,10 +53,33 @@ export function buildWordDefinitionsPrompt(lemmas: string[]): string {
   ].join("\n");
 }
 
+/** 生成单句语法解析 prompt，返回可校验的结构化 JSON。 */
+export function buildGrammarAnalysisPrompt(sentence: string): string {
+  return [
+    "你是一位面向中文学习者的专业英语教师。请只分析给定句子，不要补充句子外的信息。",
+    "",
+    "输出字段：",
+    "- sentence: 原句，保持原文",
+    "- translation: 自然、准确的简体中文翻译",
+    "- posTags: 按原句顺序列出每个英文词或短语，字段为 word 和 pos（使用 noun/verb/adjective/adverb/preposition/conjunction/pronoun/determiner/phrase 等简短英文标签）",
+    "- structure: 用简短中文说明句子结构，例如 SVO、主句+从句",
+    "- explanation: 用中文解释时态、从句、固定搭配和容易误解的地方，控制在 3-5 句",
+    "",
+    "规则：",
+    "- 只使用原句中的词，不编造上下文",
+    "- word 必须保留英文拼写，标点可以省略",
+    "- posTags 至少包含句子中的主要词语",
+    "- 输出纯 JSON，不要 markdown，不要额外解释",
+    "",
+    "句子：",
+    "<sentence><![CDATA[" + sentence.replace(/]]>/g, "] ] >") + "]]></sentence>",
+  ].join("\n");
+}
+
 /**
- * 翻译转录文本为中文的 prompt（索引格式，解析更可靠）。
- * 参考 Longcut：使用 [INPUT_N]/[OUTPUT_N] 显式标记，
- * 避免 JSON 解析失败导致整批丢失。
+ * 翻译转录文本的 prompt。
+ * 使用简短的编号行 + JSON 数组，兼容更多 OpenAI-compatible 网关；
+ * 解析器仍保留旧的 [OUTPUT_N] 标签格式作为回退。
  */
 export function buildTranscriptTranslationPrompt(
   segments: TranscriptSegment[],
@@ -64,51 +87,36 @@ export function buildTranscriptTranslationPrompt(
   videoTitle?: string
 ): string {
   const textsList = segments
-    .map((_s, i) => `[INPUT_${i}]\n${_s.text}\n[/INPUT_${i}]`)
-    .join("\n\n");
+    .map((_s, i) => `${i + 1}. ${_s.text.replace(/\s+/g, " ").trim()}`)
+    .join("\n");
 
-  const baseInstructions = `你是一位专业的字幕翻译专家。请将以下视频字幕翻译为${targetLanguage === "zh-CN" ? "简体中文" : targetLanguage}。
+  const target = targetLanguage === "zh-CN" ? "Simplified Chinese" : targetLanguage;
+  const baseInstructions = `Translate the following subtitle lines into ${target}.
 
-核心原则：
-- 翻译意思和意图，而非逐字直译
-- 使用自然、流畅、地道的目标语言
-- 删除填充词（um, uh, like, you know 等）和口误
-- 对明显的语音识别错误，根据上下文修正
-- 保留代码片段、URL、专有名词
-- 保持口语化的自然节奏`;
+Rules:
+- Preserve the meaning and intent; use natural, fluent language.
+- Remove filler words and obvious speech-recognition mistakes when context is clear.
+- Keep code, URLs, and proper nouns intact.
+- Return one translation for every input line, in the same order.`;
 
   const contextLine = videoTitle
-    ? `\n视频标题：${videoTitle}\n根据标题理解视频主题，确保翻译术语准确。`
+    ? `\nVideo title: ${videoTitle}\nUse the title only to disambiguate terminology.`
     : "";
 
   return `${baseInstructions}${contextLine}
 
-翻译下面 ${segments.length} 条字幕。
+There are ${segments.length} subtitle lines:
 
 ${textsList}
 
-输出格式要求：
-1. 每条翻译用 [OUTPUT_N]...[/OUTPUT_N] 包裹
-2. N 必须对应输入索引（0 到 ${segments.length - 1}）
-3. 按数字顺序输出所有 ${segments.length} 条翻译
-4. 不要加任何解释、标签或额外内容
-5. 空输入对应空输出
-
-示例输出格式：
-[OUTPUT_0]
-第一条翻译文本
-[/OUTPUT_0]
-[OUTPUT_1]
-第二条翻译文本
-[/OUTPUT_1]
-
-现在输出全部 ${segments.length} 条翻译：`;
+Output only a valid JSON array of ${segments.length} strings. Do not use markdown fences or add explanations.
+Example: ["translated line 1", "translated line 2"]
+Now output all ${segments.length} translations:`;
 }
 
 /**
- * 解析索引格式的翻译响应。
- * 格式：[OUTPUT_N]...[/OUTPUT_N]
- * 返回 Map<索引, 翻译文本>，解析失败返回空 Map。
+ * 解析翻译响应。
+ * 首选 JSON 数组，同时兼容历史 [OUTPUT_N]...[/OUTPUT_N] 格式。
  */
 export function parseIndexedTranslation(response: string, expectedCount: number): Map<number, string> {
   const map = new Map<number, string>();
@@ -120,6 +128,65 @@ export function parseIndexedTranslation(response: string, expectedCount: number)
     const content = match[2].trim();
     if (index >= 0 && index < expectedCount && content.length > 0) {
       map.set(index, content);
+    }
+  }
+
+  if (map.size > 0) return map;
+
+  const candidates = [response.trim()];
+  const codeBlocks = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/gi) ?? [];
+  candidates.push(...codeBlocks.map((block) =>
+    block.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
+  ));
+
+  const arrayStart = response.indexOf("[");
+  if (arrayStart >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = arrayStart; i < response.length; i++) {
+      const char = response[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\" && inString) {
+        escaped = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (char === "[") depth++;
+      if (char === "]") {
+        depth--;
+        if (depth === 0) {
+          candidates.push(response.slice(arrayStart, i + 1));
+          break;
+        }
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const value = JSON.parse(candidate) as unknown;
+      const translations = Array.isArray(value)
+        ? value
+        : value && typeof value === "object" && Array.isArray((value as { translations?: unknown }).translations)
+          ? (value as { translations: unknown[] }).translations
+          : null;
+      if (!translations) continue;
+      translations.slice(0, expectedCount).forEach((translation, index) => {
+        if (typeof translation === "string" && translation.trim()) {
+          map.set(index, translation.trim());
+        }
+      });
+      if (map.size > 0) break;
+    } catch {
+      // 继续尝试下一个候选响应。
     }
   }
 

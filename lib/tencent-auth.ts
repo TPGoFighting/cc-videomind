@@ -77,10 +77,16 @@ export async function registerTencentUser(emailInput: string, password: string):
 }
 
 export async function authenticateTencentUser(emailInput: string, password: string): Promise<TencentUser | null> {
-  const email = emailInput.trim().toLowerCase();
+  const identifier = emailInput.trim().toLowerCase();
   const result = await queryTencent<{
     id: string; email: string; password_hash: string; password_salt: string; role: string;
-  } & SubscriptionRow>(`SELECT id, email, password_hash, password_salt, role, subscription_tier, subscription_expires_at, subscription_usage_started_at FROM app_users WHERE email = $1`, [email]);
+  } & SubscriptionRow>(
+    `SELECT id, email, password_hash, password_salt, role, subscription_tier, subscription_expires_at, subscription_usage_started_at
+     FROM app_users
+     WHERE email = $1 OR (username = $1 AND role = 'admin')
+     LIMIT 1`,
+    [identifier],
+  );
   const row = result.rows[0];
   if (!row) return null;
   const actual = Buffer.from(await hashPassword(password, row.password_salt), "hex");

@@ -25,6 +25,8 @@ interface MobileVideoTabsProps {
   translating?: boolean;
   translationError?: string | null;
   onRetryTranslation?: () => void;
+  translationProgress?: { translated: number; total: number; hasMore: boolean };
+  onContinueTranslation?: () => void;
   saveNotice?: string | null;
   chatEnabled: boolean;
 }
@@ -53,6 +55,8 @@ export function MobileVideoTabs({
   translating,
   translationError,
   onRetryTranslation,
+  translationProgress,
+  onContinueTranslation,
   saveNotice,
   chatEnabled,
 }: MobileVideoTabsProps) {
@@ -71,7 +75,7 @@ export function MobileVideoTabs({
   return (
     <div className="overflow-hidden rounded-[0.875rem] border border-[var(--tp-border)] bg-[var(--tp-surface)]">
       {/* 标签页头部 */}
-      <div ref={tabListRef} className="flex border-b border-[var(--tp-border)] bg-[var(--tp-surface)]" role="tablist" aria-label="视频学习功能">
+      <div ref={tabListRef} className="grid grid-cols-4 border-b border-[var(--tp-border)] bg-[var(--tp-surface)]" role="tablist" aria-label="视频学习功能">
         {TABS.map((tab, index) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -87,8 +91,9 @@ export function MobileVideoTabs({
               onClick={() => setActiveTab(tab.id)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
               tabIndex={isActive ? 0 : -1}
+              title={tab.label}
               className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 px-3 py-3",
+                "flex min-w-0 items-center justify-center gap-1.5 px-1.5 py-3 sm:px-3",
                 "min-h-11 text-[13px] font-medium transition-colors duration-200",
                 "border-b-2",
                 isActive
@@ -97,7 +102,7 @@ export function MobileVideoTabs({
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="hidden xs:inline">{tab.label}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
             </button>
           );
         })}
@@ -119,6 +124,8 @@ export function MobileVideoTabs({
             translating={translating}
             translationError={translationError}
             onRetryTranslation={onRetryTranslation}
+            translationProgress={translationProgress}
+            onContinueTranslation={onContinueTranslation}
             saveNotice={saveNotice}
           />
         </div>

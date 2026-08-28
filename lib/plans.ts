@@ -54,10 +54,10 @@ export const PLAN_CONFIGS: PlanConfig[] = [
     nameZh: "旗舰版",
     price: 59,
     accessDays: 30,
-    analysisLimit: 100,
+    analysisLimit: 200,
     highlighted: false,
     features: [
-      "30 天内总计 100 次视频分析",
+      "30 天内总计 200 次视频分析",
       "AI 要点时刻提取",
       "AI 结构化摘要",
       "对话式问答",

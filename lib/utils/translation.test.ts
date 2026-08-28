@@ -32,6 +32,21 @@ test("does not treat untranslated fallback text as Chinese translation", () => {
   assert.equal(hasCompleteTranslation(fallback), false);
 });
 
+test("allows identity translations for proper nouns and caption cues", () => {
+  const translated = [
+    { startTime: 0, endTime: 1, text: "Palm", text_zh: "Palm" },
+    { startTime: 1, endTime: 2, text: "[music]", text_zh: "[music]" },
+  ];
+
+  assert.equal(hasCompleteTranslation(translated), true);
+});
+
+test("keeps ordinary source-text fallbacks invalid", () => {
+  const fallback = { startTime: 0, endTime: 2, text: "Keep going", text_zh: "Keep going" };
+  assert.equal(hasDisplayableTranslation([fallback]), false);
+  assert.equal(hasCompleteTranslation([fallback]), false);
+});
+
 test("requires every segment before considering a translation complete", () => {
   const partial = [
     { ...englishTranscript[0], text_zh: "你好，世界" },

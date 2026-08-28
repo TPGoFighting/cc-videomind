@@ -24,6 +24,8 @@ interface SidebarTabsProps {
   translating?: boolean;
   translationError?: string | null;
   onRetryTranslation?: () => void;
+  translationProgress?: { translated: number; total: number; hasMore: boolean };
+  onContinueTranslation?: () => void;
   saveNotice?: string | null;
   chatEnabled: boolean;
 }
@@ -52,6 +54,8 @@ export function SidebarTabs({
   translating,
   translationError,
   onRetryTranslation,
+  translationProgress,
+  onContinueTranslation,
   saveNotice,
   chatEnabled,
 }: SidebarTabsProps) {
@@ -114,6 +118,8 @@ export function SidebarTabs({
               translating={translating}
               translationError={translationError}
               onRetryTranslation={onRetryTranslation}
+              translationProgress={translationProgress}
+              onContinueTranslation={onContinueTranslation}
               saveNotice={saveNotice}
             />
         </div>

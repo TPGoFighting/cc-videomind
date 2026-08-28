@@ -51,6 +51,8 @@ export function TranscriptViewer({
   translating = false,
   translationError,
   onRetryTranslation,
+  translationProgress,
+  onContinueTranslation,
   saveNotice,
 }: {
   transcript: TranscriptSegment[];
@@ -66,6 +68,8 @@ export function TranscriptViewer({
   translating?: boolean;
   translationError?: string | null;
   onRetryTranslation?: () => void;
+  translationProgress?: { translated: number; total: number; hasMore: boolean };
+  onContinueTranslation?: () => void;
   saveNotice?: string | null;
 }) {
   const [autoScroll, setAutoScroll] = useState(true);
@@ -357,6 +361,11 @@ export function TranscriptViewer({
                   <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden />
                   <span>{translationError} 点击重试</span>
                 </button>
+              ) : translationProgress?.hasMore && !translating && onContinueTranslation ? (
+                <button type="button" onClick={onContinueTranslation} className="inline-flex min-h-11 items-center gap-1.5 text-left text-[11px] text-[var(--tp-accent)]">
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                  <span>已翻译 {translationProgress.translated}/{translationProgress.total} 段，继续翻译</span>
+                </button>
               ) : needsTranslation && !translating && (
                 <span className="text-[11px] text-white/20">切换至中英/中文模式以触发翻译</span>
               )}
@@ -389,45 +398,62 @@ export function TranscriptViewer({
       )}
       {/* hideHeader 模式下的控制栏 */}
       {hideHeader && (
-        <div className="flex flex-wrap items-start justify-between gap-2 px-3 pb-1 pt-3">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 px-3 pb-1 pt-3">
+          <div className="flex min-w-0 items-center justify-between gap-2">
             {onDisplayModeChange && (
               <DisplayModeToggle value={displayMode} onChange={onDisplayModeChange} />
             )}
-            {needsTranslation && translating && (
-              <span className="text-[11px] text-white/30 animate-pulse">翻译中...</span>
-            )}
-            {translationError ? (
-              <button type="button" onClick={onRetryTranslation} className="inline-flex min-h-11 max-w-full items-center gap-1.5 text-left text-[11px] leading-4 text-red-300">
-                <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{translationError} 点击重试</span>
+            <span className="min-w-0 flex-1" aria-hidden="true" />
+            {!loading && transcript.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setAutoScroll((v) => !v)}
+                aria-label={autoScroll ? "关闭自动跟随" : "开启自动跟随"}
+                title={autoScroll ? "关闭自动跟随" : "开启自动跟随"}
+                className={cn(
+                  "inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors sm:min-h-11 sm:px-3",
+                  autoScroll
+                    ? "bg-[rgba(91,168,255,0.14)] text-[var(--tp-accent)] hover:bg-[rgba(91,168,255,0.2)]"
+                    : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
+                )}
+              >
+                {autoScroll ? (
+                  <Pin className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <PinOff className="h-3.5 w-3.5" aria-hidden />
+                )}
+                <span className="hidden sm:inline">{autoScroll ? "跟随中" : "自动跟随"}</span>
               </button>
-              ) : needsTranslation && !translating && !hasTranslation && (
-                <span className="text-[11px] text-white/20">切换模式以翻译</span>
-              )}
+            )}
           </div>
-          {!loading && transcript.length > 0 && (
+          {needsTranslation && translating ? (
+            <span className="text-[11px] text-white/30 animate-pulse" role="status" aria-live="polite">翻译中，译文会逐句出现…</span>
+          ) : null}
+          {translationError ? (
             <button
               type="button"
-              onClick={() => setAutoScroll((v) => !v)}
-              className={cn(
-                "inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors",
-                autoScroll
-                  ? "bg-[rgba(91,168,255,0.14)] text-[var(--tp-accent)] hover:bg-[rgba(91,168,255,0.2)]"
-                  : "bg-white/6 text-white/50 hover:bg-white/10 hover:text-white/70"
-              )}
+              onClick={onRetryTranslation}
+              className="inline-flex min-h-10 w-full min-w-0 items-start gap-1.5 rounded-md py-1 text-left text-[11px] leading-4 text-red-300 sm:min-h-11"
+              aria-live="polite"
             >
-              {autoScroll ? (
-                <Pin className="h-3.5 w-3.5" aria-hidden />
-              ) : (
-                <PinOff className="h-3.5 w-3.5" aria-hidden />
-              )}
-              {autoScroll ? "跟随中" : "自动跟随"}
+              <RotateCcw className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span className="min-w-0 break-words">{translationError} 点击重试</span>
             </button>
-          )}
+          ) : translationProgress?.hasMore && !translating && onContinueTranslation ? (
+            <button
+              type="button"
+              onClick={onContinueTranslation}
+              className="inline-flex min-h-10 w-full items-center gap-1.5 rounded-md py-1 text-left text-[11px] text-[var(--tp-accent)] sm:min-h-11"
+            >
+              <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>已翻译 {translationProgress.translated}/{translationProgress.total} 段，继续翻译</span>
+            </button>
+          ) : needsTranslation && !translating && !hasTranslation ? (
+            <span className="text-[11px] text-white/20">切换至中英或中文后开始翻译</span>
+          ) : null}
         </div>
       )}
-      <CardContent className="relative md:flex md:min-h-0 md:flex-1 md:flex-col">
+      <CardContent className={cn("relative px-3 pb-3 md:flex md:min-h-0 md:flex-1 md:flex-col", hideHeader && "sm:px-6 sm:pb-6")}>
         {!loading && transcript.length > 0 && showLearningGuidance ? (
           <aside className="mb-3 rounded-lg border border-[rgba(91,168,255,0.28)] bg-[rgba(91,168,255,0.08)] p-3" aria-label="首次收藏提示">
             <div className="flex items-start justify-between gap-3">
@@ -466,7 +492,7 @@ export function TranscriptViewer({
         ) : (
           <div
             ref={containerRef}
-            className="max-h-[50vh] space-y-3 overflow-auto pr-1 md:h-auto md:min-h-0 md:max-h-none md:flex-1"
+            className="min-h-[18rem] max-h-[65vh] space-y-2 overflow-auto pr-1 md:h-auto md:min-h-0 md:max-h-none md:flex-1 md:space-y-3"
           >
             {transcript.map((segment, i) => {
               const segKey = `${segment.startTime}-${segment.endTime}`;
@@ -479,7 +505,7 @@ export function TranscriptViewer({
                   key={segKey}
                   ref={i === activeIndex ? activeRef : undefined}
                   className={cn(
-                    "group grid grid-cols-[4.5rem_1fr] gap-3 rounded-lg px-2 py-1.5 text-[14px] transition-colors",
+                    "group grid grid-cols-1 gap-2 rounded-lg px-1 py-1 text-[14px] transition-colors md:grid-cols-[4.5rem_1fr] md:gap-3 md:px-2 md:py-1.5",
                     i === activeIndex
                       ? "bg-[rgba(91,168,255,0.1)] ring-1 ring-[rgba(91,168,255,0.22)]"
                       : "hover:bg-white/4"
@@ -490,7 +516,7 @@ export function TranscriptViewer({
                     onClick={() => onSeekTo?.(segment.startTime)}
                     aria-label={`跳转到 ${formatTimestamp(segment.startTime)} 开始播放`}
                     className={cn(
-                      "inline-flex min-h-11 items-start rounded-md pt-1 font-mono text-xs font-semibold transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)]",
+                      "hidden min-h-11 items-start rounded-md pt-1 font-mono text-xs font-semibold transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)] md:inline-flex",
                       i === activeIndex ? "text-[var(--tp-accent)]" : "text-[var(--tp-text-muted)]"
                     )}
                   >
@@ -501,7 +527,7 @@ export function TranscriptViewer({
                       type="button"
                       onClick={() => onSeekTo?.(segment.startTime)}
                       aria-label={`从 ${formatTimestamp(segment.startTime)} 播放：${segment.text}`}
-                      className="block min-h-11 w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)]"
+                      className="block min-h-9 w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)] sm:min-h-11"
                     >
                       {/* 英文原文 */}
                       {showEn && (
@@ -526,17 +552,19 @@ export function TranscriptViewer({
                       )}
                     </button>
 
-                    <div className="mt-1 flex flex-wrap gap-1">
+                    <div className="mt-0.5 flex flex-wrap gap-1 sm:mt-1">
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
                           void handleCopyQuote(segment);
                         }}
-                        className="inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] text-[var(--tp-text-faint)] transition-colors hover:text-[var(--tp-text)]"
+                        className="inline-flex min-h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-[11px] text-[var(--tp-text-faint)] transition-colors hover:text-[var(--tp-text)] sm:min-h-11 sm:min-w-0"
+                        aria-label={isCopied ? "已复制原文" : "复制原文"}
+                        title={isCopied ? "已复制原文" : "复制原文"}
                       >
                         {isCopied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
-                        {isCopied ? "已复制" : "复制原文"}
+                        <span className="hidden sm:inline">{isCopied ? "已复制" : "复制原文"}</span>
                       </button>
                       {onSaveQuote ? (
                         <button
@@ -547,7 +575,8 @@ export function TranscriptViewer({
                             void handleSaveQuote(segment);
                           }}
                           className={cn(
-                            "inline-flex min-h-11 items-center gap-1 rounded-md px-2 text-[11px] transition-colors",
+                            "inline-flex min-h-9 min-w-9 items-center justify-center gap-1 rounded-md px-2 text-[11px] transition-colors sm:min-h-11 sm:min-w-0",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tp-accent)]",
                             isSaving || isSaved
                               ? "text-[var(--tp-accent)]"
                               : "text-[var(--tp-text-faint)] hover:text-[var(--tp-accent)]"
@@ -558,7 +587,7 @@ export function TranscriptViewer({
                           ) : (
                             <Bookmark className="h-3.5 w-3.5" aria-hidden />
                           )}
-                          {isSaved ? "已收藏" : isSaving ? "保存中" : "收藏句子"}
+                          <span className="hidden sm:inline">{isSaved ? "已收藏" : isSaving ? "保存中" : "收藏句子"}</span>
                         </button>
                       ) : null}
                     </div>

@@ -1,14 +1,15 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { getAuthenticatedUserId } from "@/lib/supabase/quota";
-import { isAdmin } from "@/lib/supabase/admin";
+import { getAppSettings, isAdmin } from "@/lib/supabase/admin";
 import { OpenAiCompatibleProvider, GeminiProvider } from "@/lib/ai/provider";
+import { getAiProviderFailure } from "@/lib/ai/provider-failure";
 import { readJson } from "@/lib/utils/api";
 import { withSecurity } from "@/lib/security/middleware";
 
 const TestSchema = z.object({
   provider: z.string().min(1, "请选择 AI 提供商"),
-  apiKey: z.string().min(1, "API Key 不能为空"),
+  apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
   model: z.string().min(1, "模型名不能为空"),
 });
@@ -34,7 +35,14 @@ export async function POST(request: Request) {
       const parsed = await readJson(request, TestSchema);
       if (!parsed.ok) return parsed.response;
 
-      const { provider, apiKey, baseUrl, model } = parsed.data;
+      const stored = await getAppSettings();
+      const provider = parsed.data.provider || stored.ai_provider || "openai-compatible";
+      const apiKey = parsed.data.apiKey?.trim() || stored.ai_api_key || "";
+      const baseUrl = parsed.data.baseUrl?.trim() || stored.ai_api_base_url || "https://api.openai.com/v1";
+      const model = parsed.data.model || stored.ai_model || "deepseek-v4-flash";
+      if (!apiKey) {
+        return NextResponse.json({ ok: false, error: "API Key 不能为空" }, { status: 400 });
+      }
 
       try {
         if (provider === "gemini") {
@@ -55,8 +63,11 @@ export async function POST(request: Request) {
           message: "连接成功！AI 服务可正常访问。",
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "未知错误";
-        return NextResponse.json({ ok: false, error: `连接失败: ${msg}` });
+        const providerFailure = getAiProviderFailure(err);
+        return NextResponse.json({
+          ok: false,
+          error: providerFailure?.message ?? "连接失败：AI 服务暂时不可用，请检查配置。",
+        });
       }
   });
 }

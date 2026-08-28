@@ -10,12 +10,45 @@ import {
 import { isLocalMode } from "@/lib/local-mode";
 import { getAnalysis, saveAnalysis } from "@/lib/db/local-store";
 import { queryTencent } from "@/lib/tencent-db";
+import { normalizeAnalysisForCache } from "@/lib/utils/video-analysis-cache";
+
+/** Older cache rows stored missing optional URLs as empty strings. */
+export function normalizeLegacyMetadata(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+
+  const metadata = { ...(value as Record<string, unknown>) };
+  for (const field of ["thumbnailUrl", "providerUrl"]) {
+    if (metadata[field] === "") delete metadata[field];
+  }
+  return metadata;
+}
+
+/** Older model rows may contain zero-length highlight ranges. */
+export function normalizeLegacyVideoAnalysis(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const analysis = { ...(value as Record<string, unknown>) };
+  if (!Array.isArray(analysis.highlights)) return analysis;
+
+  analysis.highlights = analysis.highlights.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    const highlight = { ...(item as Record<string, unknown>) };
+    const startTime = typeof highlight.startTime === "number" && Number.isFinite(highlight.startTime)
+      ? Math.max(0, highlight.startTime)
+      : 0;
+    const endTime = typeof highlight.endTime === "number" && Number.isFinite(highlight.endTime)
+      && highlight.endTime > startTime
+      ? highlight.endTime
+      : startTime + 1;
+    return { ...highlight, startTime, endTime };
+  });
+  return analysis;
+}
 
 const CachedAnalysisSchema = z.object({
   video_id: z.string(),
-  metadata: VideoMetadataSchema.nullable(),
+  metadata: z.preprocess(normalizeLegacyMetadata, VideoMetadataSchema.nullable()),
   transcript: z.array(TranscriptSegmentSchema).nullable(),
-  analysis: VideoAnalysisSchema.nullable()
+  analysis: z.preprocess(normalizeLegacyVideoAnalysis, VideoAnalysisSchema.nullable())
 });
 
 /** Older local rows encoded an absent analysis as `{}` rather than `null`. */
@@ -80,8 +113,9 @@ export async function upsertAnalysisCache(input: {
   transcript: TranscriptSegment[];
   analysis: VideoAnalysis;
 }) {
+  const analysis = normalizeAnalysisForCache(input.analysis, input.transcript);
   if (isLocalMode()) {
-    await saveAnalysis(input.videoId, input.metadata, input.transcript, input.analysis);
+    await saveAnalysis(input.videoId, input.metadata, input.transcript, analysis);
     return;
   }
 
@@ -90,6 +124,6 @@ export async function upsertAnalysisCache(input: {
      VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, NOW())
      ON CONFLICT (video_id) DO UPDATE SET
        metadata = EXCLUDED.metadata, transcript = EXCLUDED.transcript, analysis = EXCLUDED.analysis, updated_at = NOW()`,
-    [input.videoId, JSON.stringify(input.metadata), JSON.stringify(input.transcript), JSON.stringify(input.analysis)],
+    [input.videoId, JSON.stringify(input.metadata), JSON.stringify(input.transcript), JSON.stringify(analysis)],
   );
 }

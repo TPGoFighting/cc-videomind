@@ -7,6 +7,7 @@ import {
 } from "@/lib/types";
 import type { ComprehensiveAnalysis } from "@/lib/ai/provider";
 import { queryTencent } from "@/lib/tencent-db";
+import { normalizeComprehensiveForCache } from "@/lib/utils/comprehensive-cache";
 
 const SUCCESS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -161,7 +162,7 @@ export async function getCachedComprehensive(videoId: string): Promise<Comprehen
     ) {
       return null;
     }
-    return result as unknown as ComprehensiveAnalysis;
+    return normalizeComprehensiveForCache(result as unknown as ComprehensiveAnalysis);
   } catch {
     return null;
   }
@@ -175,6 +176,6 @@ export async function upsertComprehensiveCache(input: {
     videoId: input.videoId,
     resultType: "comprehensive",
     language: "en",
-    result: input.result,
+    result: normalizeComprehensiveForCache(input.result),
   });
 }

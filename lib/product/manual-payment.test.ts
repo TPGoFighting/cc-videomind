@@ -38,7 +38,7 @@ describe("manual payment product contract", () => {
       tier: "max",
       amountCny: 59,
       accessDays: 30,
-      analysisLimit: 100,
+      analysisLimit: 200,
     });
   });
 

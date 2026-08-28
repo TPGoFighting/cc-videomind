@@ -40,7 +40,7 @@ export function HighlightsPanel({
           ))}
           </div>
         ) : moments.length === 0 ? (
-          <p className="text-sm leading-6 text-[var(--tp-text-muted)]">深入解析暂未生成；字幕仍可继续阅读和收藏。</p>
+          <p className="text-sm leading-6 text-[var(--tp-text-muted)]">AI 解析暂时没有结果；字幕仍可继续阅读和收藏。</p>
         ) : (
           <div className="stagger-children space-y-3">
           {moments.map((m) => {
@@ -55,7 +55,7 @@ export function HighlightsPanel({
                 <div className="mb-2 flex items-start justify-between gap-3">
                   <h3 className="text-[14px] font-semibold leading-snug">
                     <span>{m.title}</span>
-                    {m.title_zh && (
+                    {m.title_zh && m.title_zh !== m.title && (
                       <span className="ml-2 text-white/60">
                         {m.title_zh}
                       </span>
@@ -64,7 +64,7 @@ export function HighlightsPanel({
                   <button
                     type="button"
                     onClick={() => onSeekTo?.(startSeconds)}
-                    className="inline-flex min-h-11 shrink-0 items-center font-mono text-xs font-semibold text-[var(--tp-accent)] transition-colors hover:text-[var(--tp-accent-hover)] hover:underline"
+                    className="inline-flex min-h-10 shrink-0 items-center font-mono text-xs font-semibold text-[var(--tp-accent)] transition-colors hover:text-[var(--tp-accent-hover)] hover:underline"
                   >
                     {start}–{end}
                   </button>
@@ -74,7 +74,7 @@ export function HighlightsPanel({
                 <p className="text-[13px] leading-relaxed text-[var(--tp-text-secondary)]">
                   &ldquo;{m.quote}&rdquo;
                 </p>
-                {m.quote_zh && (
+                {m.quote_zh && m.quote_zh !== m.quote && (
                   <p className="text-[13px] leading-relaxed text-white/50">
                     &ldquo;{m.quote_zh}&rdquo;
                   </p>
@@ -84,7 +84,7 @@ export function HighlightsPanel({
                 <p className="mt-2 text-[12px] font-medium leading-relaxed text-white/60">
                   {m.reason}
                 </p>
-                {m.reason_zh && (
+                {m.reason_zh && m.reason_zh !== m.reason && (
                   <p className="mt-1 text-[12px] leading-relaxed text-white/40">
                     {m.reason_zh}
                   </p>

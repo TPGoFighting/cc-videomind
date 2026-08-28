@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       return errorResponse("file_too_large", "媒体文件不能超过 200MB。", 413);
     }
 
-    const formData = await request.formData();
+    const formData = await request.formData() as unknown as { get(name: string): string | File | null };
     const file = formData.get("file");
     const sourceVideoId = BilibiliVideoIdSchema.safeParse(String(formData.get("sourceVideoId") ?? "").trim());
     const title = String(formData.get("title") ?? "").trim();

@@ -1,13 +1,13 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
-import { Check, Clock3, Copy, Loader2, ShieldCheck, X } from "lucide-react";
+import { Clock3, Loader2, X } from "lucide-react";
 import { gsap } from "gsap";
 import { Navbar } from "@/components/navbar";
 import { useAuth } from "@/components/auth-context";
+import { DyPayCheckout } from "@/components/dypay-checkout";
 
 type Tier = "pro" | "max";
 
@@ -19,6 +19,7 @@ type Plan = {
 };
 
 type BillingData = {
+  dypayAvailable?: boolean;
   manualPayment: { available: boolean; qrImageUrl?: string; receiverHint?: string | null };
   plans: Plan[];
   currentSubscription: { tier: "free" | Tier; expiresAt: string | null };
@@ -54,8 +55,6 @@ export default function BillingPage() {
   const [data, setData] = useState<BillingData | null>(null);
   const [refund, setRefund] = useState<RefundData["refund"]>(null);
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
-  const [transactionId, setTransactionId] = useState("");
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -104,36 +103,6 @@ export default function BillingPage() {
     () => data?.plans.find((plan) => plan.tier === selectedTier) ?? null,
     [data?.plans, selectedTier],
   );
-
-  async function copyReceiverHint() {
-    if (!data?.manualPayment.receiverHint || !navigator.clipboard) return;
-    await navigator.clipboard.writeText(data.manualPayment.receiverHint);
-    setMessage({ type: "success", text: "收款信息已复制。" });
-  }
-
-  async function submitPayment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedPlan || busy) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const response = await fetch("/api/payment/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: selectedPlan.tier, transactionId, acceptedTerms }),
-      });
-      const payload = await response.json() as { error?: { message?: string } };
-      if (!response.ok) throw new Error(payload.error?.message ?? "提交失败，请稍后重试。");
-      setTransactionId("");
-      setAcceptedTerms(false);
-      await loadBilling();
-      setMessage({ type: "success", text: "付款申请已提交。我们会在 1 个工作日内审核，并以站内状态为准。" });
-    } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "提交失败，请稍后重试。" });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function cancelPending() {
     if (busy) return;
@@ -198,7 +167,6 @@ export default function BillingPage() {
           <div className="max-w-5xl">
             <p className="text-sm font-medium text-[#8fc6ff]">内测套餐</p>
             <h1 className="mt-4 max-w-5xl text-4xl font-semibold tracking-[-0.055em] text-white sm:text-6xl">把学习配额留给真正会回看的视频。</h1>
-            <p className="mt-5 max-w-3xl text-base leading-8 text-white/55">没有自动续费。付款后提交支付宝交易单号，由人工审核开通；付款截图无需上传，也不应发送到公开渠道。</p>
           </div>
           {data && data.currentSubscription.tier !== "free" && (
             <div className="rounded-2xl border border-[#8fc6ff]/20 bg-[#0099ff]/10 px-5 py-4 text-sm text-[#cfeaff]">
@@ -231,7 +199,7 @@ export default function BillingPage() {
                     </div>
                     <div className="mt-10 flex items-end gap-2"><strong className="text-5xl tracking-[-0.06em]">¥{plan.amountCny}</strong><span className="mb-1.5 text-sm text-white/45">/{plan.accessDays} 天</span></div>
                     <p className="mt-5 text-sm leading-7 text-white/60">{plan.accessDays} 天内总计 {plan.analysisLimit} 次不同视频分析，含完整学习与复习闭环。</p>
-                    <div className="mt-7 flex items-center gap-2 text-sm font-medium text-white/80"><Check className="h-4 w-4 text-[#8fc6ff]" />人工审核后开通</div>
+
                   </button>
                 );
               })}
@@ -249,29 +217,17 @@ export default function BillingPage() {
                 </div>
               </section>
             ) : selectedPlan && (
-              <section data-billing-reveal className="mt-16 grid gap-8 rounded-3xl border border-white/10 bg-white/[0.035] p-7 sm:p-9 lg:grid-cols-[0.85fr_1.15fr]">
-                <div className="flex flex-col justify-between">
-                  <div>
-                    <p className="text-sm text-white/45">第 1 步</p>
-                    <h2 className="mt-3 text-3xl font-semibold tracking-[-0.045em]">扫码支付 ¥{selectedPlan.amountCny}</h2>
-                    <p className="mt-4 text-sm leading-7 text-white/55">仅支持支付宝人工审核。付款完成后，在右侧填写支付宝交易单号；不要提交付款截图。</p>
-                  </div>
-                  <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-7 text-white/55"><ShieldCheck className="mb-3 h-5 w-5 text-[#8fc6ff]" />付款不会自动续费；审核通过后起算 {selectedPlan.accessDays} 天。未完成任何 AI 分析可在 7 天内申请全额退款。</div>
+              <section data-billing-reveal className="mt-16 rounded-3xl border border-white/10 bg-white/[0.035] p-7 sm:p-9">
+                <div className="flex flex-col items-center gap-6">
+                  {data.dypayAvailable && (
+                    <DyPayCheckout
+                      key={selectedPlan.tier}
+                      tier={selectedPlan.tier}
+                      amountCny={selectedPlan.amountCny}
+                      onPaid={() => { void refreshProfile(); void loadBilling(); }}
+                    />
+                  )}
                 </div>
-                {data.manualPayment.available && data.manualPayment.qrImageUrl ? (
-                  <div className="grid gap-6 sm:grid-cols-[11rem_1fr] sm:items-center">
-                    <div className="rounded-2xl bg-white p-3 shadow-2xl shadow-black/30"><img src={data.manualPayment.qrImageUrl} alt="支付宝收款码" className="aspect-square w-full object-contain" /></div>
-                    <form onSubmit={submitPayment} className="space-y-4">
-                      <div className="flex items-center justify-between gap-4"><p className="text-sm font-medium">第 2 步：提交交易单号</p>{data.manualPayment.receiverHint && <button type="button" onClick={copyReceiverHint} className="inline-flex items-center gap-1 text-xs text-[#8fc6ff] hover:text-white"><Copy className="h-3.5 w-3.5" />复制收款信息</button>}</div>
-                      {data.manualPayment.receiverHint && <p className="rounded-xl bg-white/[0.06] px-3 py-2 text-xs text-white/55">{data.manualPayment.receiverHint}</p>}
-                      <label className="block text-sm text-white/60">支付宝交易单号<input value={transactionId} onChange={(event) => setTransactionId(event.target.value)} placeholder="仅数字、字母、下划线或连字符" className="mt-2 min-h-12 w-full rounded-xl border border-white/15 bg-black/20 px-4 text-sm text-white outline-none transition-colors placeholder:text-white/25 focus:border-[#8fc6ff]" required minLength={6} maxLength={100} pattern="[A-Za-z0-9_-]+" /></label>
-                      <label className="flex cursor-pointer items-start gap-3 text-xs leading-6 text-white/55"><input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} className="mt-1 h-4 w-4 rounded border-white/25 bg-black/30 accent-[#0099ff]" required />我已阅读并同意 <Link href="/terms" className="text-[#8fc6ff] hover:text-white">服务条款</Link> 与 <Link href="/support" className="text-[#8fc6ff] hover:text-white">付款审核和退款说明</Link>。</label>
-                      <button type="submit" disabled={busy || !acceptedTerms || !transactionId.trim()} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-[#080b0f] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "提交付款申请"}</button>
-                    </form>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm leading-7 text-white/55">当前未配置收款码，新的付款申请已暂停。请稍后再试，不要向公开渠道或个人私信发送付款信息。</div>
-                )}
               </section>
             )}
 

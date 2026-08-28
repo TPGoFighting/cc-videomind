@@ -83,4 +83,10 @@ describe("Tencent PostgreSQL authoritative schema", () => {
     assert.match(schemaSql, /refund_requested_at timestamptz/);
     assert.match(schemaSql, /refunded_at timestamptz/);
   });
+
+  it("supports an admin-only username alias without changing user email identity", () => {
+    assert.match(schemaSql, /username text/);
+    assert.match(schemaSql, /alter table app_users add column if not exists username text/);
+    assert.match(schemaSql, /create unique index if not exists app_users_username_unique_idx on app_users\(username\)/);
+  });
 });

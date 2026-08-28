@@ -26,6 +26,7 @@ export const TENCENT_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS app_users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
+    username TEXT UNIQUE,
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'user',
@@ -35,6 +36,8 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     subscription_payment_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
+  `ALTER TABLE app_users ADD COLUMN IF NOT EXISTS username TEXT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS app_users_username_unique_idx ON app_users(username) WHERE username IS NOT NULL`,
   `ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ`,
   `ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_usage_started_at TIMESTAMPTZ`,
   `ALTER TABLE app_users ADD COLUMN IF NOT EXISTS subscription_payment_id TEXT`,
@@ -288,6 +291,31 @@ export const TENCENT_SCHEMA_STATEMENTS = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`,
   `CREATE INDEX IF NOT EXISTS extension_capture_tickets_expiry_idx ON extension_capture_tickets(expires_at)`,
+  `CREATE TABLE IF NOT EXISTS payment_orders (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    out_trade_no TEXT NOT NULL UNIQUE,
+    tier TEXT NOT NULL CHECK (tier IN ('pro', 'max')),
+    amount_total INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'expired')),
+    provider TEXT NOT NULL DEFAULT 'dypay',
+    transaction_id TEXT,
+    code_url TEXT,
+    code_url_generated_at TIMESTAMPTZ,
+    time_expire TIMESTAMPTZ NOT NULL,
+    last_verified_at TIMESTAMPTZ,
+    paid_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS payment_orders_user_idx ON payment_orders(user_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS payment_orders_status_idx ON payment_orders(status, created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS payment_events (
+    id TEXT PRIMARY KEY,
+    out_trade_no TEXT NOT NULL,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`,
+  `CREATE INDEX IF NOT EXISTS payment_events_out_trade_no_idx ON payment_events(out_trade_no)`,
 ];
 
 export async function ensureTencentSchema(): Promise<void> {

@@ -14,7 +14,8 @@ test("keeps transcript learning available when AI analysis is unavailable", () =
   const guidance = getRecoveryGuidance("analysis", "ai_quota_exhausted");
 
   assert.equal(guidance.primaryAction, "continue_with_transcript");
-  assert.match(guidance.message, /字幕/);
+  assert.match(guidance.title, /额度/);
+  assert.match(guidance.message, /仅使用免费额度/);
 });
 
 test("keeps the user's question when chat is rate limited", () => {
@@ -29,4 +30,12 @@ test("gives translation failures a non-destructive retry", () => {
 
   assert.equal(guidance.primaryAction, "retry");
   assert.match(guidance.message, /不会覆盖/);
+});
+
+test("explains translation quota failures and keeps retry available", () => {
+  const guidance = getRecoveryGuidance("translation", "ai_quota_exhausted");
+
+  assert.equal(guidance.primaryAction, "retry");
+  assert.match(guidance.title, /额度/);
+  assert.match(guidance.message, /已完成的译文会保留/);
 });

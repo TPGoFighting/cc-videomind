@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       return errorResponse("file_too_large", "字幕文件不能超过 2MB。", 413);
     }
 
-    const formData = await request.formData();
+    const formData = await request.formData() as unknown as { get(name: string): string | File | null };
     const file = formData.get("file");
     const sourceVideoId = String(formData.get("sourceVideoId") ?? "").trim();
     const suppliedTitle = String(formData.get("title") ?? "").trim();

@@ -148,6 +148,21 @@ export const WordDefinitionSchema = z.object({
 });
 export type WordDefinition = z.infer<typeof WordDefinitionSchema>;
 
+export const GrammarPosTagSchema = z.object({
+  word: z.string().min(1),
+  pos: z.string().min(1),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+});
+
+export const GrammarAnalysisSchema = z.object({
+  sentence: z.string().min(1),
+  translation: z.string().min(1),
+  posTags: z.array(GrammarPosTagSchema).min(1).max(100),
+  structure: z.string().min(1),
+  explanation: z.string().min(1),
+});
+export type GrammarAnalysis = z.infer<typeof GrammarAnalysisSchema>;
+
 export const UserQuoteSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),

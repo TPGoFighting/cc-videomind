@@ -33,11 +33,18 @@ import {
   type RecoveryGuidance,
 } from "@/lib/product/recovery-guidance";
 import {
+  getTranslationPollDelay,
+  isRetryableTranslationFailure,
+  shouldContinueTranslation,
+  TRANSLATION_POLL_MAX_ATTEMPTS,
+  type TranslationPollSignal,
+} from "@/lib/utils/translation-polling";
+import {
   WORKSPACE_FIXTURE,
   type WorkspaceFixtureSaveMode,
   type WorkspaceFixtureState,
 } from "@/lib/video/workspace-fixture";
-import { hasCompleteTranslation } from "@/lib/utils/translation";
+import { hasCompleteTranslation, hasUsableTranslation } from "@/lib/utils/translation";
 import type {
   GenerationDebug,
   JsonResponse,
@@ -88,6 +95,9 @@ type AnalyzePayload = {
   };
   cached: boolean;
   preview: boolean;
+  degraded?: boolean;
+  message?: string;
+  errorCode?: string;
 };
 
 type WorkspaceStage = "transcript" | "analysis" | "ready" | "partial" | "failure";
@@ -214,6 +224,7 @@ export function VideoWorkspace({
   // 翻译状态
   const [translating, setTranslating] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
+  const [translationHasMore, setTranslationHasMore] = useState(false);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   const [currentTime, setCurrentTime] = useState(0);
@@ -224,11 +235,19 @@ export function VideoWorkspace({
   const retryModeRef = useRef<"all" | "analysis">("all");
   const metadataRef = useRef(metadata);
   const transcriptRef = useRef(transcript);
+  const translationRunRef = useRef(0);
+  const translationAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     metadataRef.current = metadata;
     transcriptRef.current = transcript;
   }, [metadata, transcript]);
+
+  useEffect(() => {
+    return () => {
+      translationAbortRef.current?.abort();
+    };
+  }, []);
 
   useGSAP(() => {
     gsap.fromTo(
@@ -242,7 +261,12 @@ export function VideoWorkspace({
   const transcriptMode = useDisplayMode("en");
 
   // 词义定义
-  const wordDefinitions = useWordDefinitions(transcript, !fixtureState);
+  // 分析阶段优先保证字幕和翻译；分析结束后再加载词义卡片，避免长视频的
+  // 词义批量请求与首批翻译争用同一模型网关。
+  const wordDefinitions = useWordDefinitions(
+    transcript,
+    !fixtureState && (stage === "ready" || stage === "partial"),
+  );
 
   const handleSeekTo = useCallback((seconds: number) => {
     playerRef.current?.seekTo(seconds);
@@ -255,19 +279,6 @@ export function VideoWorkspace({
     }, 250);
     return () => clearInterval(interval);
   }, []);
-
-  // 渲染状态日志
-  useEffect(() => {
-    console.log("[Frontend:Render] 状态快照:", {
-      momentsLoading,
-      summaryLoading,
-      loading,
-      momentCount: moments.length,
-      takeawayCount: takeaways.length,
-      transcriptError,
-      analysisNotice,
-    });
-  }, [momentsLoading, summaryLoading, loading, moments.length, takeaways.length, transcriptError, analysisNotice]);
 
   useEffect(() => {
     if (fixtureState) return;
@@ -331,6 +342,9 @@ export function VideoWorkspace({
 
         if (analyzePayload.ok) {
           setAnalysis(analyzePayload.data.analysis);
+          if (analyzePayload.data.degraded) {
+            setAnalysisNotice(getRecoveryGuidance("analysis", analyzePayload.data.errorCode));
+          }
           return analyzePayload.data;
         } else {
           setAnalysisNotice(getRecoveryGuidance("analysis", analyzePayload.error.code));
@@ -471,88 +485,242 @@ export function VideoWorkspace({
 
   // 切换到中英/中文模式时，懒加载翻译（SSE 流式，逐句返回）
   const ensureTranslation = useCallback(async (mode: string) => {
-    if (mode === "en") return;
+    if (mode === "en") {
+      translationRunRef.current += 1;
+      translationAbortRef.current?.abort();
+      translationAbortRef.current = null;
+      setTranslating(false);
+      return;
+    }
     // 检查是否已有翻译
-    if (hasCompleteTranslation(transcript)) return;
+    if (hasCompleteTranslation(transcript)) {
+      setTranslationHasMore(false);
+      return;
+    }
 
+    // 一页请求进行中时忽略重复点击，避免并行消耗模型额度。
+    if (translationAbortRef.current) return;
+    const controller = new AbortController();
+    translationAbortRef.current = controller;
+    const runId = ++translationRunRef.current;
     setTranslating(true);
     setTranslationError(null);
-    try {
-      const res = await fetch("/api/translate-transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId }),
-      });
+    setTranslationHasMore(false);
 
-      // 快速路径：非流式（已全部翻译完成）
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("text/event-stream")) {
-        const payload = await res.json();
-        if (payload.ok && payload.data?.transcript) {
-          setTranscript(payload.data.transcript);
-        } else {
-          const guidance = getRecoveryGuidance("translation", payload.error?.code);
-          setTranslationError(`${guidance.title}：${guidance.message}`);
-        }
-        setTranslating(false);
+    const translatedStartTimes = new Set<number>();
+    let retryStreak = 0;
+    let pendingCount = transcriptRef.current.filter((segment) => !hasUsableTranslation(segment)).length;
+
+    const waitForRetry = (delayMs: number) => new Promise<boolean>((resolve) => {
+      if (controller.signal.aborted) {
+        resolve(false);
         return;
       }
 
-      // 流式读取 SSE
+      let timer: ReturnType<typeof setTimeout>;
+      const onAbort = () => {
+        clearTimeout(timer);
+        resolve(false);
+      };
+      timer = setTimeout(() => {
+        controller.signal.removeEventListener("abort", onAbort);
+        resolve(true);
+      }, delayMs);
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+    });
+
+    const createTranslationError = (message: string, status: number, code: string) => {
+      const error = new Error(message) as Error & { status: number; code: string };
+      error.status = status;
+      error.code = code;
+      return error;
+    };
+
+    const applyTranslatedSegment = (startTime: number, text_zh: string): boolean => {
+      const source = transcriptRef.current.find((segment) => segment.startTime === startTime);
+      if (!source) return false;
+
+      const translated = { ...source, text_zh };
+      if (!hasUsableTranslation(translated)) return false;
+
+      translatedStartTimes.add(startTime);
+      const nextTranscript = transcriptRef.current.map((segment) => (
+        segment.startTime === startTime ? translated : segment
+      ));
+      transcriptRef.current = nextTranscript;
+      setTranscript(nextTranscript);
+      return true;
+    };
+
+    const requestTranslationPage = async (): Promise<TranslationPollSignal> => {
+      const page: TranslationPollSignal = {
+        receivedUpdates: 0,
+        failedBatchCount: 0,
+        hasMore: false,
+        sawDone: false,
+      };
+
+      const res = await fetch("/api/translate-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({ videoId }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        let message = "翻译服务暂时不可用，请稍后重试。";
+        let code = "translation_failed";
+        try {
+          const payload = JSON.parse(body) as JsonResponse<unknown>;
+          if (!payload.ok) {
+            message = payload.error.message;
+            code = payload.error.code;
+          }
+        } catch {
+          // 保留通用错误文案，避免把 HTML/代理响应直接显示给用户。
+        }
+        throw createTranslationError(message, res.status, code);
+      }
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/event-stream")) {
+        const payload = await res.json() as JsonResponse<{
+          transcript: TranscriptSegment[];
+          complete?: boolean;
+        }>;
+        if (!payload.ok || !payload.data?.transcript) {
+          throw createTranslationError(
+            payload.ok ? "翻译服务没有返回译文。" : payload.error.message,
+            502,
+            payload.ok ? "empty_translation" : payload.error.code,
+          );
+        }
+
+        for (const segment of payload.data.transcript) {
+          if (typeof segment.startTime === "number" && segment.text_zh && applyTranslatedSegment(segment.startTime, segment.text_zh)) {
+            page.receivedUpdates += 1;
+          }
+        }
+        page.hasMore = payload.data.complete === false;
+        page.sawDone = true;
+        return page;
+      }
+
       const reader = res.body?.getReader();
       if (!reader) {
-        const guidance = getRecoveryGuidance("translation", "stream_unavailable");
-        setTranslationError(`${guidance.title}：${guidance.message}`);
-        setTranslating(false);
-        return;
+        throw createTranslationError("翻译连接暂时不可用。", 502, "translation_stream_interrupted");
       }
 
       const decoder = new TextDecoder();
       let buffer = "";
-      let receivedTranslation = false;
+      const consumeEvent = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) return;
+        try {
+          const event = JSON.parse(trimmed.replace(/^data:\s?/, "")) as {
+            type?: string;
+            data?: {
+              startTime?: number;
+              text_zh?: string;
+              translatedCount?: number;
+              failedBatchCount?: number;
+              hasMore?: boolean;
+              code?: string;
+              message?: string;
+            };
+          };
+          if (event.type === "segment" && typeof event.data?.startTime === "number" && event.data.text_zh) {
+            if (applyTranslatedSegment(event.data.startTime, event.data.text_zh)) {
+              page.receivedUpdates += 1;
+            }
+          } else if (event.type === "done") {
+            page.sawDone = true;
+            page.hasMore = Boolean(event.data?.hasMore);
+            page.failedBatchCount = Number(event.data?.failedBatchCount ?? 0) || 0;
+          } else if (event.type === "error") {
+            page.failedBatchCount = Math.max(page.failedBatchCount, Number(event.data?.failedBatchCount ?? 1) || 1);
+            page.hasMore = true;
+          }
+        } catch {
+          // 等待下一次读取补齐当前 SSE 行。
+        }
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
+        buffer += decoder.decode(value, { stream: !done });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
+        for (const line of lines) consumeEvent(line);
+        if (done) break;
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) consumeEvent(buffer);
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            if (event.type === "segment" && event.data?.text_zh) {
-              const { startTime, text_zh } = event.data;
-              receivedTranslation = true;
-              setTranscript((prev) =>
-                prev.map((s) =>
-                  s.startTime === startTime ? { ...s, text_zh } : s
-                )
-              );
-            } else if (event.type === "done") {
-              if (!receivedTranslation || event.data?.translatedCount === 0) {
-                const guidance = getRecoveryGuidance("translation", "empty_translation");
-                setTranslationError(`${guidance.title}：${guidance.message}`);
-              }
-              setTranslating(false);
-            } else if (event.type === "error") {
-              console.error("[Translate] 服务端错误:", event.data?.message);
-              const guidance = getRecoveryGuidance("translation", event.data?.code);
-              setTranslationError(`${guidance.title}：${guidance.message}`);
-              setTranslating(false);
-            }
-          } catch {
-            // 忽略解析失败的行
+      if (!page.sawDone) {
+        page.hasMore = true;
+      }
+      return page;
+    };
+
+    try {
+      while (pendingCount > 0 && !controller.signal.aborted) {
+        let page: TranslationPollSignal;
+        try {
+          page = await requestTranslationPage();
+        } catch (error) {
+          if (controller.signal.aborted || translationRunRef.current !== runId) return;
+          if (!isRetryableTranslationFailure(error) || retryStreak >= TRANSLATION_POLL_MAX_ATTEMPTS) {
+            throw error;
           }
+
+          retryStreak += 1;
+          setTranslationError(null);
+          setTranslationHasMore(true);
+          if (!await waitForRetry(getTranslationPollDelay(retryStreak - 1))) return;
+          continue;
         }
+
+        pendingCount = transcriptRef.current.filter((segment) => (
+          !hasUsableTranslation(segment) && !translatedStartTimes.has(segment.startTime)
+        )).length;
+
+        if (pendingCount === 0) {
+          setTranslationHasMore(false);
+          break;
+        }
+
+        // hasMore、部分失败和缺少 done 都会进入下一次自动轮询；服务端/客户端
+        // 对缓存进度出现短暂不同步时，也使用有上限的恢复轮询补齐状态。
+        const shouldPoll = shouldContinueTranslation(page, pendingCount);
+        if (!shouldPoll) break;
+
+        retryStreak = page.receivedUpdates > 0 ? 0 : retryStreak + 1;
+        if (retryStreak >= TRANSLATION_POLL_MAX_ATTEMPTS) {
+          setTranslationHasMore(true);
+          setTranslationError("自动翻译已重试多次，已保存当前译文；重新打开视频会继续。" );
+          break;
+        }
+
+        setTranslationError(null);
+        setTranslationHasMore(true);
+        if (!await waitForRetry(getTranslationPollDelay(Math.max(0, retryStreak - 1)))) return;
       }
     } catch (err) {
+      if (controller.signal.aborted || translationRunRef.current !== runId) return;
       console.error("[Translate] 翻译请求失败:", err);
-      const guidance = getRecoveryGuidance("translation", "network_error");
+      const errorCode = typeof err === "object" && err !== null && "code" in err && typeof err.code === "string"
+        ? err.code
+        : undefined;
+      const guidance = getRecoveryGuidance("translation", errorCode ?? "network_error");
       setTranslationError(`${guidance.title}：${guidance.message}`);
-      setTranslating(false);
+      setTranslationHasMore(true);
+    } finally {
+      if (translationRunRef.current === runId) {
+        setTranslating(false);
+        translationAbortRef.current = null;
+      }
     }
   }, [transcript, videoId]);
 
@@ -561,6 +729,12 @@ export function VideoWorkspace({
     transcriptMode.setDisplayMode(mode);
     ensureTranslation(mode);
   }, [transcriptMode, ensureTranslation]);
+
+  const translationProgress = {
+    translated: transcript.filter(hasUsableTranslation).length,
+    total: transcript.length,
+    hasMore: translationHasMore,
+  };
 
   const retryTranscript = useCallback(() => {
     retryModeRef.current = "all";
@@ -832,6 +1006,8 @@ export function VideoWorkspace({
                 translating={translating}
                 translationError={translationError}
                 onRetryTranslation={() => void ensureTranslation(transcriptMode.displayMode)}
+                translationProgress={translationProgress}
+                onContinueTranslation={() => void ensureTranslation(transcriptMode.displayMode)}
                 saveNotice={saveNotice}
                 chatEnabled={transcript.length > 0}
               />
@@ -871,6 +1047,8 @@ export function VideoWorkspace({
                 translating={translating}
                 translationError={translationError}
                 onRetryTranslation={() => void ensureTranslation(transcriptMode.displayMode)}
+                translationProgress={translationProgress}
+                onContinueTranslation={() => void ensureTranslation(transcriptMode.displayMode)}
                 saveNotice={saveNotice}
                 chatEnabled={transcript.length > 0}
               />

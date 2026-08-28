@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     let videoId: string | null = null;
     let savedPath: string | null = null;
     try {
-      const formData = await request.formData();
+      const formData = await request.formData() as unknown as { get(name: string): string | File | null };
       const file = formData.get("file") as File | null;
       const durationStr = formData.get("duration") as string | null;
       const titleStr = formData.get("title") as string | null;
@@ -153,7 +153,8 @@ export async function POST(request: Request) {
         return errorResponse("file_too_large", "上传文件不能超过 200MB。", 413);
       }
 
-      const duration = durationStr ? parseFloat(durationStr) : 60;
+      const parsedDuration = durationStr ? parseFloat(durationStr) : Number.NaN;
+      const duration = Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 60;
       const originalTitle = titleStr || file.name || "本地视频";
 
       // 生成唯一的 local ID

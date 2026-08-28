@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getTencentUser } from "@/lib/tencent-auth";
 import { queryTencent } from "@/lib/tencent-db";
 import { getManualPaymentConfig, getPlanOrderSnapshot } from "@/lib/product/manual-payment";
+import { isDyPayConfigured } from "@/lib/dypay/server";
 import { withSecurity } from "@/lib/security/middleware";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
     const pending = result.rows[0];
     const config = getManualPaymentConfig();
     return successResponse({
+      dypayAvailable: isDyPayConfigured(),
       manualPayment: config.enabled ? {
         available: true,
         qrImageUrl: config.qrImageUrl,

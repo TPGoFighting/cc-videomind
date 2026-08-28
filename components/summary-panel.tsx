@@ -38,7 +38,7 @@ export function SummaryPanel({
             </div>
           </div>
         ) : takeaways.length === 0 ? (
-          <p className="text-sm leading-6 text-[var(--tp-text-muted)]">深入解析暂未生成；字幕仍可继续阅读和收藏。</p>
+          <p className="text-sm leading-6 text-[var(--tp-text-muted)]">AI 解析暂时没有结果；字幕仍可继续阅读和收藏。</p>
         ) : (
           <div className="stagger-children space-y-4">
             {takeaways.map((t) => (
@@ -48,7 +48,7 @@ export function SummaryPanel({
               >
                 <h4 className="text-[14px] font-semibold leading-snug">
                   <span>{t.label}</span>
-                  {t.label_zh && (
+                  {t.label_zh && t.label_zh !== t.label && (
                     <span className="ml-2 text-white/60">
                       {t.label_zh}
                     </span>
@@ -58,7 +58,7 @@ export function SummaryPanel({
                 <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--tp-text-secondary)]">
                   {t.insight}
                 </p>
-                {t.insight_zh && (
+                {t.insight_zh && t.insight_zh !== t.insight && (
                   <p className="mt-1 text-[13px] leading-relaxed text-white/50">
                     {t.insight_zh}
                   </p>
@@ -72,7 +72,7 @@ export function SummaryPanel({
                         key={ts}
                         type="button"
                         onClick={() => onSeekTo?.(seconds)}
-                        className="inline-flex min-h-11 items-center rounded-md bg-[rgba(91,168,255,0.1)] px-3 font-mono text-xs font-semibold text-[var(--tp-accent)] transition-colors hover:bg-[rgba(91,168,255,0.18)] hover:text-[var(--tp-accent-hover)]"
+                        className="inline-flex min-h-10 items-center rounded-md bg-[rgba(91,168,255,0.1)] px-3 font-mono text-xs font-semibold text-[var(--tp-accent)] transition-colors hover:bg-[rgba(91,168,255,0.18)] hover:text-[var(--tp-accent-hover)]"
                       >
                         {ts}
                       </button>

@@ -28,11 +28,14 @@ const fetcher = async (lemmas: string[]): Promise<WordDefinition[]> => {
   return json.data?.definitions ?? [];
 };
 
+// 词义卡片按需使用。首屏只预取一小页，避免长视频一次发起数百个词义请求，
+// 抢占字幕翻译和视频分析的 AI 配额。
+const INITIAL_LEMMA_LIMIT = 60;
+
 export function useWordDefinitions(transcript: TranscriptSegment[], enabled = true) {
   const lemmas = useMemo(() => {
     const all = extractLemmas(transcript);
-    // 截断到 400，避免超出 API schema 的 max 限制
-    return all.length > 400 ? all.slice(0, 400) : all;
+    return all.slice(0, INITIAL_LEMMA_LIMIT);
   }, [transcript]);
 
   // 用哈希缩短 SWR key，避免超长 key 引发性能问题

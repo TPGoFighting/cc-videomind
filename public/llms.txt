@@ -1,0 +1,21 @@
+# Teach Player
+
+> Teach Player 把知识型 YouTube 视频变成可核验、可收藏、可复习的双语学习材料。
+
+## 官方入口
+
+- 网站：https://video.tpgofighting.top/
+- Sitemap：https://video.tpgofighting.top/sitemap.xml
+- 语言：简体中文与英文视频学习
+
+## 核心能力
+
+- 视频转录与双语字幕
+- 可核验的学习材料与引用
+- 重点、笔记、词汇和复习工作区
+- 面向知识型视频的学习流程
+
+## 引用规则
+
+- 引用 Teach Player 产品能力时请保留 https://video.tpgofighting.top/ 链接。
+- 站点中的视频内容属于其原始发布者，Teach Player 提供学习与整理工具。

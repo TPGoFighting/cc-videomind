@@ -292,7 +292,7 @@ export function buildDegradedResponse<T>(
  * 构建降级的视频分析响应
  */
 export function buildDegradedAnalysisResponse(
-  result: DegradedResult<VideoAnalysis | Partial<VideoAnalysis>>,
+  result: DegradedResult<VideoAnalysis | Partial<VideoAnalysis> | null>,
   transcript: TranscriptSegment[]
 ): {
   ok: boolean;
@@ -306,10 +306,11 @@ export function buildDegradedAnalysisResponse(
 
   // 从字幕构建基础分析
   const fallbackAnalysis: VideoAnalysis = {
-    summary: "AI 分析暂时不可用，请查看原始字幕。",
+    summary: "AI 深入解析暂时不可用。以下内容根据字幕的时间位置整理，可先用于阅读和回看。",
     takeaways: [
-      "视频包含 " + transcript.length + " 段字幕。",
-      "总时长约 " + Math.round(transcript[transcript.length - 1]?.endTime ?? 0) + " 秒。",
+      "开头：" + (transcript.slice(0, 10).map((segment) => segment.text).join(" ").slice(0, 180) || "暂无可读内容。"),
+      "中段：" + (transcript.slice(Math.floor(transcript.length / 2), Math.floor(transcript.length / 2) + 10).map((segment) => segment.text).join(" ").slice(0, 180) || "暂无可读内容。"),
+      "结尾：" + (transcript.slice(-10).map((segment) => segment.text).join(" ").slice(0, 180) || "暂无可读内容。"),
     ],
     suggestedQuestions: ["视频的主要内容是什么？"],
     highlights: transcript.slice(0, 5).map(s => ({

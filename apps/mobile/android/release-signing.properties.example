@@ -1,0 +1,6 @@
+# Copy this file to release-signing.properties on the secure build machine.
+# Keep the keystore and the copied file out of Git.
+storeFile=/absolute/path/to/teach-player-release.jks
+storePassword=replace-with-keystore-password
+keyAlias=teach-player
+keyPassword=replace-with-key-password

@@ -68,15 +68,15 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} aria-busy={loading} className="mt-7 space-y-5">
         <div className="space-y-2">
-          <label htmlFor="login-email" className="text-sm font-medium text-[var(--tp-text-secondary)]">邮箱</label>
+          <label htmlFor="login-email" className="text-sm font-medium text-[var(--tp-text-secondary)]">账号或邮箱</label>
           <Input
             id="login-email"
-            type="email"
+            type="text"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@example.com"
+            placeholder="邮箱或 admin"
             required
-            autoComplete="email"
+            autoComplete="username"
             aria-describedby={error ? errorId : undefined}
             className="h-14"
           />

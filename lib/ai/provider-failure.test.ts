@@ -24,6 +24,23 @@ test("identifies an AI provider credential rejection", () => {
   assert.equal(failure?.status, 401);
 });
 
+test("identifies a provider quota rejection reported as 403", () => {
+  const failure = getAiProviderFailure(
+    new ExternalServiceError(
+      "AI provider returned 403",
+      "AI provider",
+      403,
+      "insufficient_quota",
+    ),
+  );
+
+  assert.deepEqual(failure, {
+    code: "ai_quota_exhausted",
+    message: "AI 服务免费额度已用尽。请在供应商控制台充值，或关闭“仅使用免费额度”后重试。",
+    status: 403,
+  });
+});
+
 test("does not misclassify non-AI service failures", () => {
   const failure = getAiProviderFailure(
     new ExternalServiceError("YouTube returned 429", "YouTube", 429),

@@ -919,11 +919,16 @@
   gap: 1.5rem;
 }
 
-.footerPending span {
+.footerPending a {
   min-height: 2.75rem;
   padding-block: 0.55rem;
   color: var(--taste-faint);
-  cursor: not-allowed;
+  transition: color 180ms ease;
+}
+
+.footerPending a:hover,
+.footerPending a:focus-visible {
+  color: var(--taste-text);
 }
 
 @media (max-width: 74rem) {

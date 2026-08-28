@@ -20,6 +20,6 @@ describe("analysis quota contract", () => {
     assert.equal(quota.allowed, true);
     assert.equal(quota.totalLimit, 30);
     assert.equal(quota.startsAt?.toISOString(), startsAt.toISOString());
-    assert.equal(buildAnalysisQuota("max", 100, startsAt).allowed, false);
+    assert.equal(buildAnalysisQuota("max", 200, startsAt).allowed, false);
   });
 });

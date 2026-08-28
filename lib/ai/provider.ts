@@ -4,6 +4,7 @@ import {
   CitationSchema,
   VideoAnalysisSchema,
   WordDefinitionSchema,
+  GrammarAnalysisSchema,
   type ChatAnswer,
   type GenerationDebug,
   type KeyMoment,
@@ -11,7 +12,8 @@ import {
   type SummaryTakeaway,
   type TranscriptSegment,
   type VideoAnalysis,
-  type WordDefinition
+  type WordDefinition,
+  type GrammarAnalysis
 } from "@/lib/types";
 import { buildAnalysisPrompt, buildChatPrompt, buildRagChatPrompt } from "@/lib/ai/prompts";
 import type { RetrievedChunk } from "@/lib/embedding/retriever";
@@ -31,9 +33,11 @@ import {
 import {
   buildWordDefinitionsPrompt,
   buildTranscriptTranslationPrompt,
+  buildGrammarAnalysisPrompt,
   parseIndexedTranslation
 } from "@/lib/ai/prompts-learn";
 import { fetchJsonWithTimeout, ExternalServiceError } from "@/lib/utils/http";
+import { getModelFallbackChain } from "@/lib/ai/provider-registry";
 import { chunkTranscript } from "@/lib/utils/chunk";
 import { extractBalancedJson, extractJsonFromThinking, repairBrokenJson } from "@/lib/utils/json";
 import {
@@ -49,6 +53,53 @@ const isAiDebug =
 function debugLog(...args: unknown[]): void {
   if (isAiDebug) {
     console.log(...args);
+  }
+}
+
+const RETRYABLE_PROVIDER_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const SURFACE_PROVIDER_STATUSES = new Set([401, 402, 403, 429]);
+const DEFAULT_PROVIDER_MIN_INTERVAL_MS = 1_500;
+const DEFAULT_PROVIDER_RETRY_BASE_MS = 1_500;
+
+type ProviderRequestGate = {
+  tail: Promise<void>;
+  nextStartAt: number;
+};
+
+const providerRequestGates = new Map<string, ProviderRequestGate>();
+
+function getConfiguredDelay(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function waitFor(milliseconds: number): Promise<void> {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function withProviderRequestGate<T>(
+  baseUrl: string,
+  operation: () => Promise<T>,
+  lane = "default",
+): Promise<T> {
+  const key = `${baseUrl.replace(/\/$/, "")}::${lane}`;
+  const gate = providerRequestGates.get(key) ?? { tail: Promise.resolve(), nextStartAt: 0 };
+  const previous = gate.tail;
+  let release!: () => void;
+  gate.tail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  providerRequestGates.set(key, gate);
+
+  await previous;
+  try {
+    const intervalMs = getConfiguredDelay("AI_PROVIDER_MIN_INTERVAL_MS", DEFAULT_PROVIDER_MIN_INTERVAL_MS);
+    await waitFor(Math.max(0, gate.nextStartAt - Date.now()));
+    gate.nextStartAt = Date.now() + intervalMs;
+    return await operation();
+  } finally {
+    release();
   }
 }
 
@@ -89,6 +140,115 @@ export interface AiProvider {
 
   /** 翻译转录文本为中文或英文 */
   translateTranscript(input: { segments: TranscriptSegment[]; targetLanguage?: string }): Promise<TranscriptSegment[]>;
+  generateGrammarAnalysis(input: { sentence: string }): Promise<GrammarAnalysis>;
+}
+
+/**
+ * Keeps the configured provider as the primary path while allowing a separate
+ * environment-configured provider to recover from provider-side outages,
+ * quota blocks, and transient response failures.
+ */
+export class FallbackAiProvider implements AiProvider {
+  constructor(
+    private readonly primary: AiProvider,
+    private readonly fallback: AiProvider,
+  ) {}
+
+  private async run<T>(
+    operation: string,
+    primaryOperation: () => Promise<T>,
+    fallbackOperation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await primaryOperation();
+    } catch (primaryError) {
+      console.warn(
+        "[AI:Fallback] %s 主模型失败，切换备用模型: %s",
+        operation,
+        primaryError instanceof Error ? primaryError.message : "unknown error",
+      );
+      return fallbackOperation();
+    }
+  }
+
+  generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }): Promise<VideoAnalysis> {
+    return this.run(
+      "analysis",
+      () => this.primary.generateAnalysis(input),
+      () => this.fallback.generateAnalysis(input),
+    );
+  }
+
+  answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }): Promise<ChatAnswerWithDiagnostics> {
+    return this.run(
+      "chat",
+      () => this.primary.answerQuestion(input),
+      () => this.fallback.answerQuestion(input),
+    );
+  }
+
+  generateKeyMoments(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    mode: MomentsMode;
+    theme?: string;
+    targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
+  }): Promise<KeyMoment[]> {
+    return this.run(
+      "moments",
+      () => this.primary.generateKeyMoments(input),
+      () => this.fallback.generateKeyMoments(input),
+    );
+  }
+
+  generateStructuredSummary(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+    targetLanguage?: "zh" | "en";
+    debug?: GenerationDebug;
+  }): Promise<SummaryTakeaway[]> {
+    return this.run(
+      "summary",
+      () => this.primary.generateStructuredSummary(input),
+      () => this.fallback.generateStructuredSummary(input),
+    );
+  }
+
+  generateComprehensiveAnalysis(input: {
+    title: string;
+    transcript: TranscriptSegment[];
+  }): Promise<ComprehensiveAnalysis> {
+    return this.run(
+      "comprehensive",
+      () => this.primary.generateComprehensiveAnalysis(input),
+      () => this.fallback.generateComprehensiveAnalysis(input),
+    );
+  }
+
+  defineWords(input: { lemmas: string[] }): Promise<WordDefinition[]> {
+    return this.run(
+      "word-definitions",
+      () => this.primary.defineWords(input),
+      () => this.fallback.defineWords(input),
+    );
+  }
+
+  translateTranscript(input: { segments: TranscriptSegment[]; targetLanguage?: string }): Promise<TranscriptSegment[]> {
+    return this.run(
+      "translation",
+      () => this.primary.translateTranscript(input),
+      () => this.fallback.translateTranscript(input),
+    );
+  }
+
+  generateGrammarAnalysis(input: { sentence: string }): Promise<GrammarAnalysis> {
+    return this.run(
+      "grammar-analysis",
+      () => this.primary.generateGrammarAnalysis(input),
+      () => this.fallback.generateGrammarAnalysis(input),
+    );
+  }
 }
 
 const OpenAiChatResponseSchema = z.object({
@@ -143,15 +303,30 @@ export type ComprehensiveAnalysis = z.infer<typeof ComprehensiveAnalysisSchema>;
 
 export class OpenAiCompatibleProvider implements AiProvider {
   private readonly modelChain: string[];
+  private readonly requestTimeoutMs: number;
+  private readonly translationTimeoutMs: number;
+  private readonly maxAttempts: number;
 
   constructor(
     private readonly apiKey: string,
     private readonly baseUrl: string,
     primaryModel: string,
     fallbackModels?: string[],
+    options: {
+      requestTimeoutMs?: number;
+      translationTimeoutMs?: number;
+      maxAttempts?: number;
+    } = {},
   ) {
     this.model = primaryModel;
     this.modelChain = [primaryModel, ...(fallbackModels ?? []).filter(m => m !== primaryModel)];
+    // 兼容网关的复杂 JSON 请求偶尔需要超过 30 秒；分析接口本身有独立的
+    // 长任务预算，给模型足够时间返回完整结构，避免过早切到不可用的备用模型。
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 90_000;
+    // A translation page is deliberately small and should hand control back to
+    // the workspace quickly when a compatibility gateway stops responding.
+    this.translationTimeoutMs = options.translationTimeoutMs ?? 25_000;
+    this.maxAttempts = options.maxAttempts ?? 2;
   }
 
   private model: string;
@@ -162,6 +337,11 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const direct = VideoAnalysisSchema.safeParse(value);
     if (direct.success) return direct.data;
     return repairAnalysis(value, input.transcript, direct.error);
+  }
+
+  async generateGrammarAnalysis(input: { sentence: string }): Promise<GrammarAnalysis> {
+    const content = await this.chatJson(buildGrammarAnalysisPrompt(input.sentence));
+    return parseGrammarAnalysis(content, input.sentence);
   }
 
   async answerQuestion(input: { question: string; transcript: TranscriptSegment[]; chunks?: RetrievedChunk[] }) {
@@ -357,11 +537,14 @@ export class OpenAiCompatibleProvider implements AiProvider {
       messages: [
         { role: "system" as const, content: "你是一位专业翻译。只输出要求的格式，不要加任何解释。" },
         { role: "user" as const, content: prompt }
-      ]
+      ],
+      // 翻译页只包含少量字幕。限制输出预算可避免兼容模型进入长推理，
+      // 让单页在备用模型排队时仍能及时完成并交给下一页继续处理。
+      max_tokens: 2_048,
     };
 
     // 直接调 tryChat，不强制 JSON mode
-    const content = await this.tryChat(body);
+    const content = await this.tryChat(body, this.translationTimeoutMs, true, "translation");
     if (content) {
       debugLog("[AI:Translation] 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
       return content;
@@ -385,7 +568,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       const body = { model: modelName, messages };
 
       // 先尝试带 response_format（快速失败，30s 超时）
-      const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } }, 30_000);
+      const withFormat = await this.tryChat({ ...body, response_format: { type: "json_object" as const } }, this.requestTimeoutMs);
       if (withFormat) {
         if (modelName !== this.model) debugLog("[AI:Fallback] 切换到 %s 成功", modelName);
         debugLog("[AI:Chat] model=%s, 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withFormat.length);
@@ -393,7 +576,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       }
 
       // 不带 response_format 再试（30s 超时）
-      const withoutFormat = await this.tryChat(body, 30_000);
+      const withoutFormat = await this.tryChat(body, this.requestTimeoutMs);
       if (withoutFormat) {
         if (modelName !== this.model) debugLog("[AI:Fallback] 切换到 %s 成功 (no-format)", modelName);
         debugLog("[AI:Chat] model=%s (no-format), 耗时 %dms, 响应长度 %d", modelName, Date.now() - t0, withoutFormat.length);
@@ -412,31 +595,57 @@ export class OpenAiCompatibleProvider implements AiProvider {
     return this.baseUrl.includes("deepseek");
   }
 
-  private async tryChat(body: Record<string, unknown>, timeoutMs = 60_000): Promise<string | null> {
+  private async tryChat(
+    body: Record<string, unknown>,
+    timeoutMs = 60_000,
+    throwOnError = false,
+    lane = "default",
+  ): Promise<string | null> {
     const t0 = Date.now();
     const model = body.model ?? this.model;
-    try {
-      const response = OpenAiChatResponseSchema.parse(
-        await fetchJsonWithTimeout<unknown>(`${this.baseUrl.replace(/\/$/, "")}/chat/completions`, {
-          method: "POST",
-          timeoutMs,
-          service: "AI provider",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`
-          },
-          body: JSON.stringify(body)
-        })
-      );
-      debugLog("[AI:Chat] API 调用成功, model=%s, 耗时 %dms", model, Date.now() - t0);
-      return response.choices[0]?.message.content ?? null;
-    } catch (error) {
-      const errStatus = error instanceof ExternalServiceError ? error.status : undefined;
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error("[AI:Chat] API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
-        model, errStatus ?? "N/A", errMsg, Date.now() - t0);
-      return null;
+    const endpoint = `${this.baseUrl.replace(/\/$/, "")}/chat/completions`;
+    const maxAttempts = this.maxAttempts;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = OpenAiChatResponseSchema.parse(
+          await withProviderRequestGate(this.baseUrl, () => fetchJsonWithTimeout<unknown>(endpoint, {
+            method: "POST",
+            timeoutMs,
+            service: "AI provider",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify(body)
+          }), lane)
+        );
+        debugLog("[AI:Chat] API 调用成功, model=%s, 耗时 %dms", model, Date.now() - t0);
+        return response.choices[0]?.message.content ?? null;
+      } catch (error) {
+        const errStatus = error instanceof ExternalServiceError ? error.status : undefined;
+        const retryable = error instanceof ExternalServiceError
+          && errStatus !== undefined
+          && RETRYABLE_PROVIDER_STATUSES.has(errStatus);
+        if (retryable && attempt < maxAttempts) {
+          const retryBaseMs = getConfiguredDelay("AI_PROVIDER_RETRY_BASE_MS", DEFAULT_PROVIDER_RETRY_BASE_MS);
+          await waitFor(retryBaseMs * 2 ** (attempt - 1));
+          continue;
+        }
+
+        const errMsg = error instanceof Error ? error.message : String(error);
+        console.error("[AI:Chat] API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
+          model, errStatus ?? "N/A", errMsg, Date.now() - t0);
+        // 没有状态码通常代表网络失败或超时。继续尝试相同请求没有收益，
+        // 还会把一次等待放大成两次，延迟备用模型接管。
+        if (throwOnError || errStatus === undefined || (errStatus !== undefined && SURFACE_PROVIDER_STATUSES.has(errStatus))) {
+          throw error;
+        }
+        return null;
+      }
     }
+
+    return null;
   }
 }
 
@@ -451,6 +660,11 @@ export class AnthropicProvider implements AiProvider {
     private readonly model: string,
     private readonly fallbackModels: string[] = [],
   ) {}
+
+  async generateGrammarAnalysis(input: { sentence: string }): Promise<GrammarAnalysis> {
+    const content = await this.chatJson(buildGrammarAnalysisPrompt(input.sentence));
+    return parseGrammarAnalysis(content, input.sentence);
+  }
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
     const content = await this.chatJson(buildAnalysisPrompt(input.title, input.transcript));
@@ -703,6 +917,11 @@ export class GeminiProvider implements AiProvider {
     private readonly apiKey: string,
     private readonly model: string,
   ) {}
+
+  async generateGrammarAnalysis(input: { sentence: string }): Promise<GrammarAnalysis> {
+    const content = await this.generateJson(buildGrammarAnalysisPrompt(input.sentence));
+    return parseGrammarAnalysis(content, input.sentence);
+  }
 
   async generateAnalysis(input: { title: string; transcript: TranscriptSegment[] }) {
     const content = await this.generateJson(buildAnalysisPrompt(input.title, input.transcript));
@@ -968,43 +1187,109 @@ export type AiConfig = {
   model: string;
 };
 
-async function getResolvedConfig(userId?: string): Promise<AiConfig> {
+export type AiConfigSource = "environment" | "user" | "database" | "default" | "unset";
+
+export type AiConfigResolution = {
+  config: AiConfig;
+  sources: {
+    provider: AiConfigSource;
+    apiKey: AiConfigSource;
+    baseUrl: AiConfigSource;
+    model: AiConfigSource;
+  };
+  envOverrides: {
+    provider: boolean;
+    apiKey: boolean;
+    baseUrl: boolean;
+    model: boolean;
+  };
+};
+
+async function resolveAiConfig(userId?: string): Promise<AiConfigResolution> {
   const envProvider = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
   const envApiKey = (process.env.AI_API_KEY ?? "").trim();
-  const envBaseUrl = (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim();
-  const envModel = (process.env.AI_MODEL ?? "deepseek-v4-flash").trim();
+  const envBaseUrl = (process.env.AI_API_BASE_URL ?? "").trim();
+  const envModel = (process.env.AI_MODEL ?? "").trim();
 
   const [db, user] = await Promise.all([
     loadDbConfig(),
     userId ? loadUserConfig(userId) : Promise.resolve({} as Record<string, string>),
   ]);
 
-  // 优先级: 环境变量 > 用户个人配置 > 全局 app_settings
+  function resolveValue(
+    environmentValue: string,
+    userValue: string | undefined,
+    databaseValue: string | undefined,
+    fallback: string | undefined,
+  ): { value: string; source: AiConfigSource } {
+    if (environmentValue) return { value: environmentValue, source: "environment" };
+    if (userValue?.trim()) return { value: userValue.trim(), source: "user" };
+    if (databaseValue?.trim()) return { value: databaseValue.trim(), source: "database" };
+    if (fallback !== undefined) return { value: fallback, source: "default" };
+    return { value: "", source: "unset" };
+  }
+
+  // 优先级: 环境变量 > 用户个人配置 > 全局 app_settings > 默认值
+  const provider = resolveValue(envProvider, user?.ai_provider, db.ai_provider, undefined);
+  provider.value = provider.value.toLowerCase();
+  const apiKey = resolveValue(envApiKey, user?.ai_api_key, db.ai_api_key, undefined);
+  const baseUrl = resolveValue(
+    envBaseUrl,
+    user?.ai_api_base_url,
+    db.ai_api_base_url,
+    "https://api.openai.com/v1",
+  );
+  const model = resolveValue(envModel, user?.ai_model, db.ai_model, "deepseek-v4-flash");
+
   return {
-    provider: (envProvider || user.ai_provider || db.ai_provider),
-    apiKey: (envApiKey || user.ai_api_key || db.ai_api_key),
-    baseUrl: (envBaseUrl || user.ai_api_base_url || db.ai_api_base_url),
-    model: (envModel || user.ai_model || db.ai_model),
+    config: {
+      provider: provider.value,
+      apiKey: apiKey.value,
+      baseUrl: baseUrl.value,
+      model: model.value,
+    },
+    sources: {
+      provider: provider.source,
+      apiKey: apiKey.source,
+      baseUrl: baseUrl.source,
+      model: model.source,
+    },
+    envOverrides: {
+      provider: provider.source === "environment",
+      apiKey: apiKey.source === "environment",
+      baseUrl: baseUrl.source === "environment",
+      model: model.source === "environment",
+    },
   };
 }
 
-export async function getAiProvider(userId?: string): Promise<AiProvider> {
-  const config = await getResolvedConfig(userId);
+async function getResolvedConfig(userId?: string): Promise<AiConfig> {
+  return (await resolveAiConfig(userId)).config;
+}
 
+/** Return the global runtime configuration for admin diagnostics without exposing the key. */
+export async function getEffectiveAiConfigResolution(): Promise<AiConfigResolution> {
+  return resolveAiConfig();
+}
+
+function createProviderFromConfig(
+  config: AiConfig,
+  options: ConstructorParameters<typeof OpenAiCompatibleProvider>[4] = {},
+): AiProvider {
   if (!config.apiKey) {
     throw new Error(
       "AI_API_KEY 未配置。请在环境变量或管理后台设置 API Key。",
     );
   }
 
-  if (config.provider === "openai-compatible" || config.provider === "deepseek") {
-    const { getModelFallbackChain } = await import("@/lib/ai/provider-registry");
+  if (config.provider === "openai-compatible" || config.provider === "deepseek" || config.provider === "glm" || config.provider === "qwen") {
     const chain = getModelFallbackChain(config.model || "deepseek-v4-flash");
     return new OpenAiCompatibleProvider(
       config.apiKey,
       normalizeOpenAiCompatibleBaseUrl(config.baseUrl),
       chain[0],
       chain.slice(1),
+      options,
     );
   }
 
@@ -1016,7 +1301,6 @@ export async function getAiProvider(userId?: string): Promise<AiProvider> {
   }
 
   if (config.provider === "anthropic") {
-    const { getModelFallbackChain } = await import("@/lib/ai/provider-registry");
     const chain = getModelFallbackChain(config.model || "claude-3-5-sonnet-20241022");
     return new AnthropicProvider(
       config.apiKey,
@@ -1027,8 +1311,60 @@ export async function getAiProvider(userId?: string): Promise<AiProvider> {
   }
 
   throw new Error(
-    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", "gemini", or "anthropic".`,
+    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", "glm", "qwen", "gemini", or "anthropic".`,
   );
+}
+
+function getFallbackEnvironmentConfig(): AiConfig | null {
+  const apiKey = (process.env.AI_FALLBACK_API_KEY ?? "").trim();
+  if (!apiKey) return null;
+
+  return {
+    provider: (process.env.AI_FALLBACK_PROVIDER ?? "openai-compatible").trim().toLowerCase(),
+    apiKey,
+    baseUrl: (process.env.AI_FALLBACK_API_BASE_URL ?? "https://api.openai.com/v1").trim(),
+    model: (process.env.AI_FALLBACK_MODEL ?? "gpt-4o-mini").trim(),
+  };
+}
+
+function getFallbackProviderOptions(): ConstructorParameters<typeof OpenAiCompatibleProvider>[4] {
+  const readPositiveInteger = (name: string, fallback: number) => {
+    const value = Number(process.env[name]);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+  };
+
+  return {
+    requestTimeoutMs: readPositiveInteger("AI_FALLBACK_TIMEOUT_MS", 8_000),
+    translationTimeoutMs: readPositiveInteger("AI_FALLBACK_TRANSLATION_TIMEOUT_MS", 12_000),
+    maxAttempts: readPositiveInteger("AI_FALLBACK_MAX_ATTEMPTS", 1),
+  };
+}
+
+export async function getAiProvider(userId?: string): Promise<AiProvider> {
+  const config = await getResolvedConfig(userId);
+  const fallbackConfig = getFallbackEnvironmentConfig();
+  let primary: AiProvider;
+  try {
+    primary = createProviderFromConfig(config);
+  } catch (primaryError) {
+    if (!fallbackConfig) throw primaryError;
+    console.warn(
+      "[AI:Fallback] 主模型配置不可用，直接使用备用模型: %s",
+      primaryError instanceof Error ? primaryError.message : "unknown error",
+    );
+    return createProviderFromConfig(fallbackConfig, getFallbackProviderOptions());
+  }
+  if (!fallbackConfig) return primary;
+
+  try {
+    return new FallbackAiProvider(primary, createProviderFromConfig(fallbackConfig, getFallbackProviderOptions()));
+  } catch (error) {
+    console.warn(
+      "[AI:Fallback] 备用模型配置无效，继续使用主模型: %s",
+      error instanceof Error ? error.message : "unknown error",
+    );
+    return primary;
+  }
 }
 
 function fillDebug(debug: GenerationDebug, data: Partial<GenerationDebug>) {
@@ -1095,6 +1431,38 @@ export function parseJsonContentWithDiagnostics(content: string): { value: unkno
 
 function parseJsonContent(content: string) {
   return parseJsonContentWithDiagnostics(content).value;
+}
+
+const GRAMMAR_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#B76CFD", "#FF6B6B"];
+
+function parseGrammarAnalysis(content: string, sentence: string): GrammarAnalysis {
+  const parsed = parseJsonContent(content);
+  const direct = GrammarAnalysisSchema.safeParse(parsed);
+  if (direct.success) return direct.data;
+  if (!isRecord(parsed)) throw direct.error;
+
+  const rawTags = Array.isArray(parsed.posTags) ? parsed.posTags : [];
+  const fallbackWords = sentence.match(/[A-Za-z]+(?:['-][A-Za-z]+)*/g) ?? [sentence];
+  const posTags = rawTags
+    .map((tag, index) => {
+      if (!isRecord(tag)) return null;
+      const word = getString(tag, ["word", "text", "token"])?.trim() || fallbackWords[index] || "";
+      const pos = getString(tag, ["pos", "partOfSpeech", "tag"])?.trim() || "word";
+      return word ? { word, pos, color: GRAMMAR_COLORS[index % GRAMMAR_COLORS.length] } : null;
+    })
+    .filter((tag): tag is { word: string; pos: string; color: string } => tag !== null);
+
+  const repaired = GrammarAnalysisSchema.safeParse({
+    sentence: getString(parsed, ["sentence", "original", "text"])?.trim() || sentence,
+    translation: getString(parsed, ["translation", "translationZh", "meaning"])?.trim() || "暂时无法生成翻译。",
+    posTags: posTags.length > 0
+      ? posTags
+      : fallbackWords.map((word, index) => ({ word, pos: "word", color: GRAMMAR_COLORS[index % GRAMMAR_COLORS.length] })),
+    structure: getString(parsed, ["structure", "syntax", "pattern"])?.trim() || "句子结构解析暂不可用。",
+    explanation: getString(parsed, ["explanation", "analysis", "detail"])?.trim() || "暂时无法生成详细语法说明。",
+  });
+  if (repaired.success) return repaired.data;
+  throw direct.error;
 }
 
 function repairAnalysis(
@@ -1364,7 +1732,7 @@ async function runConcurrent<T, R>(
 }
 
 const COMPREHENSIVE_CHUNK_THRESHOLD = 220;
-const COMPREHENSIVE_CONCURRENCY = 3;
+const COMPREHENSIVE_CONCURRENCY = 1;
 
 async function generateComprehensiveInStages(
   input: { title: string; transcript: TranscriptSegment[] },

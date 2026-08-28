@@ -1,8 +1,16 @@
 import type { TranscriptSegment } from "@/lib/types";
 
+function canKeepSourceText(source: string): boolean {
+  const normalized = source.trim();
+  if (!normalized || normalized.length > 48) return false;
+  if (/^\[[^\]\n]{1,44}\]$/.test(normalized)) return true;
+  return /^[A-Z][A-Za-z0-9]*(?:[-'.][A-Za-z0-9]+)*$/.test(normalized);
+}
+
 export function hasUsableTranslation(segment: TranscriptSegment): boolean {
+  const source = segment.text.trim();
   const translated = segment.text_zh?.trim();
-  return Boolean(translated && translated !== segment.text.trim());
+  return Boolean(translated && (translated !== source || canKeepSourceText(source)));
 }
 
 /** Whether at least one segment can be rendered in the requested language. */
@@ -36,7 +44,7 @@ export function mergeCachedTranslation(
   return sourceSegments.map((source) => {
     const cached = cachedByStartTime.get(source.startTime);
     const translated = cached?.text_zh?.trim();
-    return translated && translated !== source.text.trim()
+    return translated && (translated !== source.text.trim() || canKeepSourceText(source.text))
       ? { ...source, text_zh: translated }
       : source;
   });

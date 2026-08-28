@@ -722,6 +722,15 @@ export default function SettingsPage() {
             <CardTitle className="text-white text-base">快捷入口</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 rounded-lg border border-[#0099ff]/15 bg-[#0099ff]/5 px-3 py-2.5 text-[13px] text-[#9dceff] transition-colors hover:bg-[#0099ff]/10 min-h-[44px]"
+              >
+                <Shield className="h-4 w-4" />
+                AI 控制台
+              </Link>
+            )}
             <Link
               href="/quotes"
               className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[13px] text-white/60 transition-colors hover:bg-white/6 hover:text-white min-h-[44px]"

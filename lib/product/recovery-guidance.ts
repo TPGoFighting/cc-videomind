@@ -98,6 +98,14 @@ export function getRecoveryGuidance(
   }
 
   if (area === "analysis") {
+    if (normalizedCode === "ai_quota_exhausted") {
+      return {
+        title: "AI 额度不足，字幕仍可使用",
+        message: "当前模型额度已用尽。管理员充值或关闭供应商的“仅使用免费额度”后，重试即可补充要点与摘要。",
+        primaryAction: "continue_with_transcript",
+        secondaryAction: "retry",
+      };
+    }
     if (AI_CONFIGURATION_CODES.has(normalizedCode)) {
       return {
         title: "深入解析暂时不可用",
@@ -129,6 +137,13 @@ export function getRecoveryGuidance(
         message: "需要先取得原始字幕。请重试字幕读取或换一条视频。",
         primaryAction: "retry",
         secondaryAction: "choose_video",
+      };
+    }
+    if (normalizedCode === "ai_quota_exhausted") {
+      return {
+        title: "翻译额度不足",
+        message: "当前模型额度已用尽。已完成的译文会保留；管理员处理供应商额度后，点击重试即可继续未完成的批次。",
+        primaryAction: "retry",
       };
     }
     return {

@@ -11,8 +11,8 @@ import { isBilibiliImportedVideoId } from "@/lib/bilibili/id";
 import { isLocalMode } from "@/lib/local-mode";
 import { errorResponse, readJson, successResponse } from "@/lib/utils/api";
 import { runSingleFlight } from "@/lib/utils/single-flight";
-import { deriveComprehensiveFromAnalysis } from "@/lib/utils/comprehensive-cache";
-import { hasReusableVideoAnalysis } from "@/lib/utils/video-analysis-cache";
+import { deriveComprehensiveFromAnalysis, normalizeComprehensiveForCache } from "@/lib/utils/comprehensive-cache";
+import { hasReusableVideoAnalysis, normalizeAnalysisForCache } from "@/lib/utils/video-analysis-cache";
 import type { VideoMetadata } from "@/lib/types";
 import { recordProductEventSafely } from "@/lib/product/analytics-store";
 
@@ -34,7 +34,7 @@ const RequestSchema = z.object({
 export const maxDuration = 120;
 
 function fallbackMetadata(videoId: string, title: string): VideoMetadata {
-  return { videoId, title, authorName: "", thumbnailUrl: "", providerUrl: "" };
+  return { videoId, title, authorName: "" };
 }
 
 export async function POST(request: Request) {
@@ -120,7 +120,9 @@ export async function POST(request: Request) {
         let message: string | undefined;
 
         try {
-          comprehensiveData = await aiProvider.generateComprehensiveAnalysis({ title, transcript });
+          comprehensiveData = normalizeComprehensiveForCache(
+            await aiProvider.generateComprehensiveAnalysis({ title, transcript }),
+          );
           analysis = {
             summary: comprehensiveData.summary,
             takeaways: comprehensiveData.suggestedQuestions.slice(0, 8),
@@ -152,6 +154,7 @@ export async function POST(request: Request) {
         if (!analysis) {
           throw new Error("AI analysis returned no result.");
         }
+        analysis = normalizeAnalysisForCache(analysis, transcript);
         const aiCall = recordAiCall({
           provider: "default",
           model: "default",
@@ -204,7 +207,29 @@ export async function POST(request: Request) {
           name: "analysis_failed",
           payload: { durationMs: Date.now() - analyticsStartedAt, modelAlias: "configured", errorCode: providerFailure.code },
         });
-        return errorResponse(providerFailure.code, providerFailure.message, providerFailure.status);
+        // Keep the workspace usable when every configured provider is unavailable.
+        // This response is deliberately not written to the durable AI cache, so a
+        // later retry can still generate and persist a real model result.
+        const degraded = buildDegradedAnalysisResponse(
+          {
+            data: null,
+            level: "degraded",
+            message: providerFailure.message,
+            originalError: error instanceof Error ? error : new Error(String(error)),
+          },
+          transcript,
+        );
+        return successResponse({
+          videoId,
+          transcript,
+          analysis: degraded.data,
+          comprehensive: deriveComprehensiveFromAnalysis(degraded.data),
+          cached: false,
+          preview: userId === null,
+          degraded: true,
+          message: providerFailure.message,
+          errorCode: providerFailure.code,
+        });
       }
       const message = error instanceof Error ? `分析失败：${error.message}` : "AI analysis could not be generated.";
       await recordProductEventSafely(userId, {

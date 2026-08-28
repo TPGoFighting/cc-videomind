@@ -18,7 +18,19 @@ export function getAiProviderFailure(error: unknown): AiProviderFailure | null {
 
   switch (error.status) {
     case 401:
+      return {
+        code: "ai_credentials_invalid",
+        message: "AI 服务认证失败。请检查服务器中的 AI API Key 和模型配置。",
+        status: error.status,
+      };
     case 403:
+      if (["insufficient_quota", "quota_exhausted", "billing_required"].includes(error.code ?? "")) {
+        return {
+          code: "ai_quota_exhausted",
+          message: "AI 服务免费额度已用尽。请在供应商控制台充值，或关闭“仅使用免费额度”后重试。",
+          status: 403,
+        };
+      }
       return {
         code: "ai_credentials_invalid",
         message: "AI 服务认证失败。请检查服务器中的 AI API Key 和模型配置。",
