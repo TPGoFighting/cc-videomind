@@ -51,6 +51,46 @@ export interface YtDlpMetadata {
   providerUrl: string;
 }
 
+export interface YtDlpArgsOptions {
+  videoId: string;
+  outDir: string;
+  lang?: string;
+  proxy?: string;
+  cookiesFile?: string;
+  cookiesFromBrowser?: string;
+  dumpSingleJson?: boolean;
+}
+
+/** Build the yt-dlp command shared by transcript and metadata extraction. */
+export function buildYtDlpArgs(options: YtDlpArgsOptions): string[] {
+  const lang = (options.lang || "en").split("-")[0];
+  const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(options.videoId)}`;
+  const args: string[] = [
+    "--js-runtimes", "node",
+    // The default client is frequently challenged by YouTube from server IPs.
+    "--extractor-args", "youtube:player_client=android",
+    "--skip-download",
+    ...(options.dumpSingleJson ? ["--dump-single-json"] : ["--write-auto-subs", "--write-subs"]),
+    ...(options.dumpSingleJson ? [] : ["--sub-lang", lang, "--sub-format", "json3"]),
+    "--no-warnings",
+    "--no-progress",
+    "--no-playlist",
+    ...(options.dumpSingleJson ? [] : ["-o", path.join(options.outDir, "%(id)s.%(ext)s")]),
+  ];
+
+  if (options.proxy?.trim()) {
+    args.push("--proxy", options.proxy.trim());
+  }
+  if (options.cookiesFile?.trim()) {
+    args.push("--cookies", options.cookiesFile.trim());
+  } else if (options.cookiesFromBrowser?.trim()) {
+    args.push("--cookies-from-browser", options.cookiesFromBrowser.trim());
+  }
+
+  args.push(watchUrl);
+  return args;
+}
+
 export class YtDlpTranscriptProvider implements TranscriptProvider {
   constructor(private readonly opts: YtDlpOptions = {}) {}
 
@@ -64,34 +104,13 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     }
 
     const outDir = await fs.mkdtemp(path.join(tmpdir(), "tp-ytdlp-"));
-    const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
     const lang = (preferredLang || "en").split("-")[0];
 
-    const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "http://127.0.0.1:7890";
-    const args: string[] = [
-      "--js-runtimes", "node",
-      "--proxy", proxy,
-      "--skip-download",
-      "--write-auto-subs",
-      "--write-subs",
-      "--sub-lang", lang,
-      "--sub-format", "json3",
-      "--no-warnings",
-      "--no-progress",
-      "--no-playlist",
-      "-o", path.join(outDir, "%(id)s.%(ext)s"),
-    ];
-
+    const proxy = process.env.YTDLP_PROXY?.trim() || process.env.HTTPS_PROXY?.trim() || process.env.HTTP_PROXY?.trim();
     const cookiesFromBrowser =
       this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "";
     const cookiesFile = this.opts.cookiesFile ?? process.env.YTDLP_COOKIES_FILE ?? "";
-
-    if (cookiesFile) {
-      args.push("--cookies", cookiesFile);
-    } else if (cookiesFromBrowser) {
-      args.push("--cookies-from-browser", cookiesFromBrowser);
-    }
-    args.push(watchUrl);
+    const args = buildYtDlpArgs({ videoId, outDir, lang, proxy, cookiesFile, cookiesFromBrowser });
 
     try {
       await this.run(binary, args);
@@ -124,27 +143,11 @@ export class YtDlpTranscriptProvider implements TranscriptProvider {
     }
 
     const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
-    const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || "http://127.0.0.1:7890";
-    const args: string[] = [
-      "--js-runtimes", "node",
-      "--proxy", proxy,
-      "--skip-download",
-      "--dump-single-json",
-      "--no-warnings",
-      "--no-progress",
-      "--no-playlist",
-    ];
-
+    const proxy = process.env.YTDLP_PROXY?.trim() || process.env.HTTPS_PROXY?.trim() || process.env.HTTP_PROXY?.trim();
     const cookiesFromBrowser =
       this.opts.cookiesFromBrowser ?? process.env.YTDLP_COOKIES_FROM_BROWSER ?? "";
     const cookiesFile = this.opts.cookiesFile ?? process.env.YTDLP_COOKIES_FILE ?? "";
-
-    if (cookiesFile) {
-      args.push("--cookies", cookiesFile);
-    } else if (cookiesFromBrowser) {
-      args.push("--cookies-from-browser", cookiesFromBrowser);
-    }
-    args.push(watchUrl);
+    const args = buildYtDlpArgs({ videoId, proxy, cookiesFile, cookiesFromBrowser, dumpSingleJson: true, outDir: "" });
 
     const { stdout } = await this.run(binary, args);
     try {

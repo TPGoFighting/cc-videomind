@@ -40,3 +40,6 @@ test-layout-new.png
 mobile-feasibility-report.html
 debug-report.html
 AI-Provider-JSON-修复报告.html
+*.bak*
+youtube_cookies.txt
+.env.local*

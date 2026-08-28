@@ -34,6 +34,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="dark">
       <head>
+        <script type="application/ld+json" data-tp-seo-jsonld dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "WebApplication", name: SITE_NAME, url: SITE_URL, description: SITE_DESCRIPTION, applicationCategory: "EducationalApplication", inLanguage: "zh-CN" }) }} />
         <link rel="preconnect" href="https://api.fontshare.com" />
         <link
           rel="stylesheet"

@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     let videoId: string | null = null;
     let savedPath: string | null = null;
     try {
-      const formData = await request.formData();
+      const formData = await request.formData() as unknown as { get(name: string): string | File | null };
       const file = formData.get("file") as File | null;
       const durationStr = formData.get("duration") as string | null;
       const titleStr = formData.get("title") as string | null;

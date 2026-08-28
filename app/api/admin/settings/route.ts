@@ -54,6 +54,12 @@ const PROVIDERS: ProviderInfo[] = [
     defaultBaseUrl: "",
     defaultModel: "gemini-2.5-flash",
   },
+  {
+    id: "glm",
+    displayName: "智谱 GLM",
+    defaultBaseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    defaultModel: "glm-5.3-flash",
+  },
 ];
 
 /**

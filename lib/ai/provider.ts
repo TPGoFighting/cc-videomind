@@ -361,7 +361,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     };
 
     // 直接调 tryChat，不强制 JSON mode
-    const content = await this.tryChat(body);
+    const content = await this.tryChat(body, 60_000, true);
     if (content) {
       debugLog("[AI:Translation] 耗时 %dms, 响应长度 %d", Date.now() - t0, content.length);
       return content;
@@ -412,7 +412,11 @@ export class OpenAiCompatibleProvider implements AiProvider {
     return this.baseUrl.includes("deepseek");
   }
 
-  private async tryChat(body: Record<string, unknown>, timeoutMs = 60_000): Promise<string | null> {
+  private async tryChat(
+    body: Record<string, unknown>,
+    timeoutMs = 60_000,
+    throwOnError = false,
+  ): Promise<string | null> {
     const t0 = Date.now();
     const model = body.model ?? this.model;
     try {
@@ -435,6 +439,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error("[AI:Chat] API 调用失败, model=%s, status=%s, error=%s, 耗时 %dms",
         model, errStatus ?? "N/A", errMsg, Date.now() - t0);
+      if (throwOnError) throw error;
       return null;
     }
   }
@@ -971,8 +976,8 @@ export type AiConfig = {
 async function getResolvedConfig(userId?: string): Promise<AiConfig> {
   const envProvider = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
   const envApiKey = (process.env.AI_API_KEY ?? "").trim();
-  const envBaseUrl = (process.env.AI_API_BASE_URL ?? "https://api.openai.com/v1").trim();
-  const envModel = (process.env.AI_MODEL ?? "deepseek-v4-flash").trim();
+  const envBaseUrl = (process.env.AI_API_BASE_URL ?? "").trim();
+  const envModel = (process.env.AI_MODEL ?? "").trim();
 
   const [db, user] = await Promise.all([
     loadDbConfig(),
@@ -981,10 +986,10 @@ async function getResolvedConfig(userId?: string): Promise<AiConfig> {
 
   // 优先级: 环境变量 > 用户个人配置 > 全局 app_settings
   return {
-    provider: (envProvider || user.ai_provider || db.ai_provider),
+    provider: (envProvider || user.ai_provider || db.ai_provider || "").trim().toLowerCase(),
     apiKey: (envApiKey || user.ai_api_key || db.ai_api_key),
-    baseUrl: (envBaseUrl || user.ai_api_base_url || db.ai_api_base_url),
-    model: (envModel || user.ai_model || db.ai_model),
+    baseUrl: (envBaseUrl || user.ai_api_base_url || db.ai_api_base_url || "https://api.openai.com/v1").trim(),
+    model: (envModel || user.ai_model || db.ai_model || "deepseek-v4-flash").trim(),
   };
 }
 
@@ -997,7 +1002,7 @@ export async function getAiProvider(userId?: string): Promise<AiProvider> {
     );
   }
 
-  if (config.provider === "openai-compatible" || config.provider === "deepseek") {
+  if (config.provider === "openai-compatible" || config.provider === "deepseek" || config.provider === "glm") {
     const { getModelFallbackChain } = await import("@/lib/ai/provider-registry");
     const chain = getModelFallbackChain(config.model || "deepseek-v4-flash");
     return new OpenAiCompatibleProvider(
@@ -1027,7 +1032,7 @@ export async function getAiProvider(userId?: string): Promise<AiProvider> {
   }
 
   throw new Error(
-    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", "gemini", or "anthropic".`,
+    `AI_PROVIDER "${config.provider || "(not set)"}" is invalid. Set to "openai-compatible", "deepseek", "glm", "gemini", or "anthropic".`,
   );
 }
 
